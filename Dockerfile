@@ -59,13 +59,14 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy public assets (images, fonts, etc.)
-COPY --from=builder /app/public ./public
-
 # Copy Next.js build output
 # Set correct permissions for nextjs user
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Copy public assets (images, fonts, etc.) if they exist
+# Public folder is optional - Next.js works without it
+RUN mkdir -p ./public
 
 # Switch to non-root user
 USER nextjs
