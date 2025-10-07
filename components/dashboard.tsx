@@ -141,6 +141,14 @@ export function Dashboard() {
 
   const filteredOrders = getFilteredOrders();
 
+  // Calculate stats based on filtered orders
+  const filteredStats = {
+    total: filteredOrders.length,
+    pending: filteredOrders.filter((o: any) => o.status === "pending").length,
+    sentToLogistic: filteredOrders.filter((o: any) => o.status === "sent_to_logistic").length,
+    totalRevenue: filteredOrders.reduce((sum: number, o: any) => sum + (o.price * o.quantity), 0),
+  };
+
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
@@ -150,7 +158,12 @@ export function Dashboard() {
             <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.total || 0}</div>
+            <div className="text-2xl font-bold">{filteredStats.total}</div>
+            {filteredStats.total !== orders.length && (
+              <div className="text-xs text-gray-500 mt-1">
+                of {orders.length} total
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -160,8 +173,13 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-600">
-              {stats?.pending || 0}
+              {filteredStats.pending}
             </div>
+            {filteredStats.total !== orders.length && (
+              <div className="text-xs text-gray-500 mt-1">
+                of {stats?.pending || 0} total
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -173,8 +191,13 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">
-              {stats?.sent_to_logistic || 0}
+              {filteredStats.sentToLogistic}
             </div>
+            {filteredStats.total !== orders.length && (
+              <div className="text-xs text-gray-500 mt-1">
+                of {stats?.sent_to_logistic || 0} total
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -184,8 +207,13 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-line">
-              ฿{stats?.totalRevenue.toLocaleString() || 0}
+              ฿{filteredStats.totalRevenue.toLocaleString()}
             </div>
+            {filteredStats.total !== orders.length && (
+              <div className="text-xs text-gray-500 mt-1">
+                of ฿{stats?.totalRevenue.toLocaleString() || 0} total
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
