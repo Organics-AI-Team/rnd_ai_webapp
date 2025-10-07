@@ -17,6 +17,7 @@ export const Channel = z.enum(["line", "shopee", "lazada", "other"]);
 export const OrderSchema = z.object({
   _id: z.string().optional(),
   organizationId: z.string(),
+  productCode: z.string().optional(),
   productName: z.string().min(1, "Product name is required"),
   price: z.number().positive("Price must be positive"),
   quantity: z.number().int().positive("Quantity must be positive"),
@@ -26,6 +27,7 @@ export const OrderSchema = z.object({
   shippingAddress: z.string().min(1, "Shipping address is required"),
   status: OrderStatus.default("pending"),
   createdBy: z.string(),
+  orderDate: z.string().optional(), // Date when order was placed (from form)
   // Shipping cost fields
   pickPackCost: z.number().default(0),
   bubbleCost: z.number().default(0),

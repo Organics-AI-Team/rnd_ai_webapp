@@ -1,0 +1,62 @@
+# Railway.toml Configuration File
+# This file configures how Railway builds and deploys your application
+# Documentation: https://docs.railway.app/deploy/config-as-code
+
+[build]
+# Builder specifies the build system Railway will use
+# Options: NIXPACKS (default, auto-detects), DOCKERFILE (uses Dockerfile)
+builder = "DOCKERFILE"
+
+# buildCommand runs during the build phase (optional, Dockerfile handles this)
+# buildCommand = "npm run build"
+
+[deploy]
+# startCommand defines how to start your application in production
+# This runs after the build is complete
+startCommand = "npm start"
+
+# numReplicas defines how many instances of your app to run (for scaling)
+# Default is 1. Increase for high availability or load balancing
+numReplicas = 1
+
+# restartPolicyType defines when Railway should restart your service
+# Options: ON_FAILURE (restart only on crashes), ALWAYS, NEVER
+restartPolicyType = "ON_FAILURE"
+
+# restartPolicyMaxRetries limits restart attempts if service keeps failing
+# Prevents infinite restart loops
+restartPolicyMaxRetries = 10
+
+# healthcheckPath is the endpoint Railway pings to verify your app is healthy
+# Next.js automatically serves pages, so we check the root path
+# Railway will mark service as unhealthy if this endpoint fails
+healthcheckPath = "/"
+
+# healthcheckTimeout is how long to wait for healthcheck response (seconds)
+healthcheckTimeout = 100
+
+[deploy.env]
+# Environment variables that should be set during deployment
+# Actual values are set in Railway dashboard for security
+
+# NODE_ENV tells Next.js to run in production mode (optimizations, no dev features)
+# This is automatically set by Railway, but explicit is better
+# NODE_ENV = "production"
+
+# MONGODB_URI is required for database connection
+# Set this in Railway dashboard after adding MongoDB service
+# Format: mongodb://username:password@host:port/database
+# MONGODB_URI = "set-in-railway-dashboard"
+
+# Optional: Admin credentials for seeding initial admin account
+# ADMIN_EMAIL = "admin@admin.com"
+# ADMIN_PASSWORD = "admin"
+
+# PORT is automatically set by Railway (usually 3000 for Next.js)
+# Railway injects this and your app should listen on process.env.PORT
+# PORT = "3000"
+
+[service]
+# Service name as it appears in Railway dashboard
+# Change this to match your project name
+name = "supplement-management"

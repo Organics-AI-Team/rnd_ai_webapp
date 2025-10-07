@@ -290,46 +290,6 @@ export default function ShippingPage() {
         )}
       </Card>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="rounded-xl bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">รอจัดส่ง</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">
-              {pendingOrders.length}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              ส่งไปรษณีย์แล้ว
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {shippedOrders.length}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              ส่งสำเร็จแล้ว
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-line">
-              {deliveredOrders.length}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Pending Orders */}
       <Card className="rounded-xl overflow-hidden bg-white">
         <CardHeader className="border-b">

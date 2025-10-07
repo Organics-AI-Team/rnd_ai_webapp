@@ -21,10 +21,13 @@ import {
 import { OrderStatusType } from "@/lib/types";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth-context";
 
 type TabType = "active" | "delivered" | "cancelled" | "all";
 
 export function Dashboard() {
+  const { user, organization } = useAuth();
   const { data: orders = [], isLoading, error } = trpc.orders.list.useQuery();
   const { data: stats, error: statsError } = trpc.orders.getStats.useQuery();
   const utils = trpc.useUtils();
@@ -39,7 +42,116 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [timeFrame, setTimeFrame] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("date-desc");
+  const [reportMonth, setReportMonth] = useState<string>(
+    new Date().toISOString().slice(0, 7)
+  );
 
+  const generateMonthlyReport = async () => {
+    const jsPDF = (await import("jspdf")).default;
+    const autoTable = (await import("jspdf-autotable")).default;
+
+    const doc = new jsPDF() as any;
+
+    const [year, month] = reportMonth.split("-");
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const monthYear = `${monthNames[parseInt(month) - 1]} ${year}`;
+
+    // Filter orders for the selected month
+    const monthOrders = orders.filter((order: any) => {
+      const orderDate = new Date(order.createdAt);
+      return (
+        orderDate.getMonth() === parseInt(month) - 1 &&
+        orderDate.getFullYear() === parseInt(year)
+      );
+    });
+
+    // Helper function to format currency
+    const formatCurrency = (amount: number) => {
+      return `THB ${amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    };
+
+    // Title
+    doc.setFontSize(20);
+    doc.text("Monthly Report", 14, 20);
+    doc.setFontSize(12);
+    doc.text(monthYear, 14, 28);
+    doc.text(`Organization: ${organization?.name || "N/A"}`, 14, 35);
+
+    // Orders Summary
+    let yPos = 45;
+    doc.setFontSize(16);
+    doc.text("Orders Summary", 14, yPos);
+    yPos += 5;
+
+    const totalRevenue = monthOrders.reduce(
+      (sum: number, o: any) => sum + o.price * o.quantity,
+      0
+    );
+    const totalShippingCost = monthOrders.reduce(
+      (sum: number, o: any) => sum + (o.totalShippingCost || 0),
+      0
+    );
+
+    doc.setFontSize(10);
+    doc.text(`Total Orders: ${monthOrders.length}`, 14, yPos + 5);
+    doc.text(`Total Revenue: ${formatCurrency(totalRevenue)}`, 14, yPos + 12);
+    doc.text(`Total Shipping Cost: ${formatCurrency(totalShippingCost)}`, 14, yPos + 19);
+    doc.text(
+      `Net Revenue: ${formatCurrency(totalRevenue - totalShippingCost)}`,
+      14,
+      yPos + 26
+    );
+
+    // Orders Details Table
+    yPos += 35;
+
+    if (monthOrders.length > 0) {
+      autoTable(doc, {
+        startY: yPos,
+        head: [["Date", "Product", "Customer", "Channel", "Status", "Qty", "Price", "Revenue", "Shipping"]],
+        body: monthOrders.map((order: any) => [
+          new Date(order.createdAt).toLocaleDateString("en-GB"),
+          order.productName,
+          order.customerName,
+          order.channel.toUpperCase(),
+          order.status.replace(/_/g, " ").toUpperCase(),
+          order.quantity,
+          formatCurrency(order.price),
+          formatCurrency(order.price * order.quantity),
+          formatCurrency(order.totalShippingCost || 0),
+        ]),
+        theme: "grid",
+        headStyles: { fillColor: [6, 199, 85], textColor: [255, 255, 255] },
+        styles: { fontSize: 8, font: "helvetica" },
+      });
+    } else {
+      doc.setFontSize(10);
+      doc.text("No orders found for this month", 14, yPos);
+    }
+
+    // Footer
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(128);
+      doc.text(
+        `Generated on ${new Date().toLocaleDateString("en-GB")} | Page ${i} of ${pageCount}`,
+        doc.internal.pageSize.width / 2,
+        doc.internal.pageSize.height - 10,
+        { align: "center" }
+      );
+    }
+
+    // Save PDF
+    doc.save(`monthly-report-${reportMonth}.pdf`);
+  };
 
   if (error || statsError) {
     return (
@@ -221,7 +333,25 @@ export function Dashboard() {
       {/* Orders Table */}
       <Card className="rounded-xl overflow-hidden bg-white">
         <CardHeader className="border-b">
-          <CardTitle className="text-line">Orders Management</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-line">Orders Management</CardTitle>
+            <div className="flex gap-3 items-center">
+              <Input
+                type="month"
+                value={reportMonth}
+                onChange={(e) => setReportMonth(e.target.value)}
+                max={new Date().toISOString().slice(0, 7)}
+                className="w-40"
+              />
+              <Button
+                onClick={generateMonthlyReport}
+                className="bg-line hover:bg-line-dark text-white whitespace-nowrap"
+                size="sm"
+              >
+                Download PDF Report
+              </Button>
+            </div>
+          </div>
         </CardHeader>
 
         {/* Tabs */}

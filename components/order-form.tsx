@@ -128,6 +128,7 @@ export function OrderForm() {
         await createOrder.mutateAsync({
           organizationId: organization._id,
           createdBy: user._id,
+          productCode: order.productCode,
           productName: order.productName,
           price: parseFloat(order.price),
           quantity: parseInt(order.quantity),
@@ -135,6 +136,7 @@ export function OrderForm() {
           customerName: order.customerName,
           customerContact: order.customerContact,
           shippingAddress: order.shippingAddress,
+          orderDate: order.orderDate,
           status: "pending",
         });
       }

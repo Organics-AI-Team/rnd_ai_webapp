@@ -1,0 +1,86 @@
+# Multi-stage Dockerfile for Next.js 15 Application
+# This creates an optimized production build with minimal image size
+
+# Stage 1: Dependencies
+# Install all dependencies needed for building
+FROM node:18-alpine AS deps
+
+# Add libc6-compat for compatibility with certain npm packages on Alpine Linux
+RUN apk add --no-cache libc6-compat
+
+# Set working directory for all subsequent commands
+WORKDIR /app
+
+# Copy package files first (for Docker layer caching)
+# If package.json hasn't changed, Docker reuses this layer
+COPY package.json package-lock.json ./
+
+# Install dependencies
+# --frozen-lockfile ensures exact versions from package-lock.json
+# Uses npm ci for faster, more reliable installs in CI/CD
+RUN npm ci
+
+# Stage 2: Builder
+# Build the Next.js application
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy all source code
+COPY . .
+
+# Set environment to production for optimized build
+ENV NODE_ENV=production
+
+# Disable Next.js telemetry during build
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build the Next.js app
+# This generates optimized production bundles in .next folder
+RUN npm run build
+
+# Stage 3: Runner
+# Final stage with minimal size for running the app
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+
+# Set environment to production
+ENV NODE_ENV=production
+
+# Disable telemetry in production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create non-root user for security
+# Running as root in containers is a security risk
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy public assets (images, fonts, etc.)
+COPY --from=builder /app/public ./public
+
+# Copy Next.js build output
+# Set correct permissions for nextjs user
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Switch to non-root user
+USER nextjs
+
+# Expose port 3000
+# Railway will map this to a public URL
+EXPOSE 3000
+
+# Set port environment variable
+ENV PORT=3000
+
+# Set hostname to listen on all network interfaces
+# Required for Railway to properly route traffic
+ENV HOSTNAME="0.0.0.0"
+
+# Start the Next.js application
+# Uses the standalone output from build for faster cold starts
+CMD ["node", "server.js"]
