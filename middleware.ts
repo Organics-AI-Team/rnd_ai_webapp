@@ -2,15 +2,15 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
-  const session = request.cookies.get("supplement-auth-session");
+  const authToken = request.cookies.get("auth_token");
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require authentication
-  const publicRoutes = ["/login"];
+  const publicRoutes = ["/login", "/signup"];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
-  // Check if user is authenticated
-  const isAuthenticated = session && session.value === "authenticated";
+  // Check if user is authenticated (has auth token)
+  const isAuthenticated = !!authToken?.value;
 
   // If user is not authenticated and trying to access protected route
   if (!isAuthenticated && !isPublicRoute) {
@@ -18,10 +18,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // If user is authenticated and trying to access login page
-  if (isAuthenticated && pathname === "/login") {
-    const dashboardUrl = new URL("/dashboard", request.url);
-    return NextResponse.redirect(dashboardUrl);
+  // If user is authenticated and trying to access login or signup page
+  if (isAuthenticated && (pathname === "/login" || pathname === "/signup")) {
+    const homeUrl = new URL("/", request.url);
+    return NextResponse.redirect(homeUrl);
   }
 
   return NextResponse.next();

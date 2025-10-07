@@ -11,11 +11,11 @@ async function cleanupAdmin() {
 
     const db = client.db("supplement_management");
 
-    // Delete old admin user
-    await db.collection("user").deleteMany({ id: "admin-001" });
-    await db.collection("account").deleteMany({ userId: "admin-001" });
+    // Delete old legacy collections (no longer used)
+    await db.collection("user").drop().catch(() => console.log("Collection 'user' doesn't exist"));
+    await db.collection("account").drop().catch(() => console.log("Collection 'account' doesn't exist"));
 
-    console.log("✅ Cleaned up old admin user");
+    console.log("✅ Cleaned up legacy collections (user, account)");
   } catch (error) {
     console.error("❌ Error:", error);
   } finally {

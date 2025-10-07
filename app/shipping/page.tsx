@@ -16,17 +16,11 @@ import { Input } from "@/components/ui/input";
 import { OrderStatusType } from "@/lib/types";
 import { useState } from "react";
 import React from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useAuth } from "@/lib/auth-context";
 
 export default function ShippingPage() {
+  const { user, organization } = useAuth();
   const { data: orders = [], isLoading, error } = trpc.orders.list.useQuery();
-  const { data: users = [] } = trpc.users.list.useQuery();
   const utils = trpc.useUtils();
   const updateStatus = trpc.orders.updateStatus.useMutation({
     onSuccess: () => {
@@ -37,10 +31,9 @@ export default function ShippingPage() {
   const updateShippingCost = trpc.orders.updateShippingCost.useMutation({
     onSuccess: () => {
       utils.orders.list.invalidate();
-      utils.users.list.invalidate();
+      utils.auth.me.invalidate();
       setEditingOrderId(null);
       setShippingCosts({});
-      setSelectedUserId({});
     },
     onError: (error) => {
       alert(`เกิดข้อผิดพลาด: ${error.message}`);
@@ -49,7 +42,6 @@ export default function ShippingPage() {
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [shippingCosts, setShippingCosts] = useState<Record<string, any>>({});
-  const [selectedUserId, setSelectedUserId] = useState<Record<string, string>>({});
 
   const handleShipOrder = (orderId: string) => {
     updateStatus.mutate({
@@ -67,16 +59,15 @@ export default function ShippingPage() {
 
   const handleCalculateShippingCost = (orderId: string) => {
     const costs = shippingCosts[orderId] || {};
-    const userId = selectedUserId[orderId];
 
-    if (!userId) {
-      alert("กรุณาเลือกผู้ใช้");
+    if (!organization) {
+      alert("กรุณาเข้าสู่ระบบก่อนทำรายการ");
       return;
     }
 
     updateShippingCost.mutate({
       id: orderId,
-      userId,
+      organizationId: organization._id,
       pickPackCost: costs.pickPackCost || 0,
       bubbleCost: costs.bubbleCost || 0,
       paperInsideCost: costs.paperInsideCost || 0,
@@ -258,36 +249,15 @@ export default function ShippingPage() {
                       <TableRow>
                         <TableCell colSpan={8} className="bg-gray-50">
                           <div className="p-4 space-y-4">
-                            <h4 className="font-semibold text-sm mb-3">
-                              คำนวณค่าจัดส่ง (จำนวนสินค้า: {order.quantity} ชิ้น)
-                            </h4>
-
-                            {/* User Selection */}
                             <div className="mb-4">
-                              <label className="text-sm font-medium mb-2 block">
-                                เลือกผู้ใช้ (เพื่อหัก credits)
-                              </label>
-                              <Select
-                                value={selectedUserId[order._id] || ""}
-                                onValueChange={(value) =>
-                                  setSelectedUserId((prev) => ({
-                                    ...prev,
-                                    [order._id]: value,
-                                  }))
-                                }
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="เลือกผู้ใช้..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {users.map((user: any) => (
-                                    <SelectItem key={user._id} value={user._id}>
-                                      {user.name} ({user.email}) - Credits:{" "}
-                                      ฿{user.credits.toFixed(2)}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <h4 className="font-semibold text-sm">
+                                คำนวณค่าจัดส่ง (จำนวนสินค้า: {order.quantity} ชิ้น)
+                              </h4>
+                              {organization && (
+                                <p className="text-xs text-gray-600 mt-1">
+                                  Credits คงเหลือ: <span className="font-medium text-line">฿{organization.credits.toFixed(2)}</span>
+                                </p>
+                              )}
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

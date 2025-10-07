@@ -5,7 +5,7 @@ import { UserSchema, CreditTransactionSchema, CreditTransactionType } from "@/li
 import { ObjectId } from "mongodb";
 
 export const usersRouter = router({
-  // List all users
+  // List all users with their organization credits
   list: publicProcedure.query(async () => {
     const client = await clientPromise;
     const db = client.db();
@@ -14,10 +14,24 @@ export const usersRouter = router({
       .find({})
       .sort({ createdAt: -1 })
       .toArray();
-    return users.map((user) => ({
-      ...user,
-      _id: user._id.toString(),
-    }));
+
+    // Enrich users with organization data
+    const enrichedUsers = await Promise.all(
+      users.map(async (user) => {
+        const organization = await db
+          .collection("organizations")
+          .findOne({ _id: new ObjectId(user.organizationId) });
+
+        return {
+          ...user,
+          _id: user._id.toString(),
+          credits: organization?.credits || 0,
+          organizationName: organization?.name || "Unknown",
+        };
+      })
+    );
+
+    return enrichedUsers;
   }),
 
   // Get user by ID
@@ -57,7 +71,7 @@ export const usersRouter = router({
       return { id: result.insertedId.toString() };
     }),
 
-  // Add credits to user
+  // Add credits to organization
   addCredits: publicProcedure
     .input(
       z.object({
@@ -76,12 +90,19 @@ export const usersRouter = router({
         throw new Error("User not found");
       }
 
-      const balanceBefore = user.credits || 0;
+      const organization = await db.collection("organizations").findOne({
+        _id: new ObjectId(user.organizationId)
+      });
+      if (!organization) {
+        throw new Error("Organization not found");
+      }
+
+      const balanceBefore = organization.credits || 0;
       const balanceAfter = balanceBefore + input.amount;
 
-      // Update user credits
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(input.userId) },
+      // Update organization credits
+      await db.collection("organizations").updateOne(
+        { _id: new ObjectId(user.organizationId) },
         {
           $set: {
             credits: balanceAfter,
@@ -92,6 +113,8 @@ export const usersRouter = router({
 
       // Log transaction
       await db.collection("credit_transactions").insertOne({
+        organizationId: user.organizationId,
+        organizationName: organization.name,
         userId: input.userId,
         userName: user.name,
         userEmail: user.email,
@@ -169,7 +192,7 @@ export const usersRouter = router({
       };
     }),
 
-  // Adjust credits (can be positive or negative)
+  // Adjust organization credits (can be positive or negative)
   adjustCredits: publicProcedure
     .input(
       z.object({
@@ -188,13 +211,20 @@ export const usersRouter = router({
         throw new Error("User not found");
       }
 
-      const balanceBefore = user.credits || 0;
+      const organization = await db.collection("organizations").findOne({
+        _id: new ObjectId(user.organizationId)
+      });
+      if (!organization) {
+        throw new Error("Organization not found");
+      }
+
+      const balanceBefore = organization.credits || 0;
       const balanceAfter = input.newAmount;
       const amount = balanceAfter - balanceBefore;
 
-      // Update user credits
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(input.userId) },
+      // Update organization credits
+      await db.collection("organizations").updateOne(
+        { _id: new ObjectId(user.organizationId) },
         {
           $set: {
             credits: balanceAfter,
@@ -205,6 +235,8 @@ export const usersRouter = router({
 
       // Log transaction
       await db.collection("credit_transactions").insertOne({
+        organizationId: user.organizationId,
+        organizationName: organization.name,
         userId: input.userId,
         userName: user.name,
         userEmail: user.email,

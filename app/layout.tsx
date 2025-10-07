@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Sans_Thai } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { Navigation } from "@/components/navigation";
+import { ConditionalLayout } from "@/components/conditional-layout";
 
 const notoSansThai = Noto_Sans_Thai({
   subsets: ["latin", "thai"],
@@ -23,9 +23,7 @@ export default function RootLayout({
     <html lang="th">
       <body className={notoSansThai.className}>
         <Providers>
-          <Navigation>
-            <main className="p-6">{children}</main>
-          </Navigation>
+          <ConditionalLayout>{children}</ConditionalLayout>
         </Providers>
       </body>
     </html>

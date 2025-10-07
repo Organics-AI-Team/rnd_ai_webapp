@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,7 @@ type OrderItem = {
 };
 
 export function OrderForm() {
+  const { user, organization, isLoading: authLoading } = useAuth();
   const utils = trpc.useUtils();
   const createOrder = trpc.orders.create.useMutation();
 
@@ -65,6 +67,13 @@ export function OrderForm() {
 
   const handleAddToList = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate channel is selected
+    if (!formData.channel) {
+      alert("กรุณาเลือกช่องทางการขาย");
+      return;
+    }
+
     const newOrder: OrderItem = {
       id: Date.now().toString(),
       ...formData,
@@ -90,10 +99,35 @@ export function OrderForm() {
   const handleSubmitAll = async () => {
     if (ordersList.length === 0) return;
 
+    if (authLoading) {
+      alert("กำลังโหลดข้อมูล กรุณารอสักครู่");
+      return;
+    }
+
+    if (!user || !organization) {
+      alert("กรุณาเข้าสู่ระบบก่อนทำรายการ");
+      console.log("User:", user, "Organization:", organization);
+      return;
+    }
+
+    // Validate all orders have required fields
+    const invalidOrders = ordersList.filter(order => !order.channel || !order.productName);
+    if (invalidOrders.length > 0) {
+      alert("พบออเดอร์ที่ไม่มีข้อมูลครบถ้วน กรุณาตรวจสอบและลองใหม่");
+      console.log("Invalid orders:", invalidOrders);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       for (const order of ordersList) {
+        console.log("Submitting order:", {
+          channel: order.channel,
+          productName: order.productName,
+        });
         await createOrder.mutateAsync({
+          organizationId: organization._id,
+          createdBy: user._id,
           productName: order.productName,
           price: parseFloat(order.price),
           quantity: parseInt(order.quantity),
@@ -107,8 +141,10 @@ export function OrderForm() {
       utils.orders.list.invalidate();
       utils.orders.getStats.invalidate();
       setOrdersList([]);
-    } catch (error) {
+      alert(`บันทึกออเดอร์สำเร็จ ${ordersList.length} รายการ`);
+    } catch (error: any) {
       console.error("Error submitting orders:", error);
+      alert(`เกิดข้อผิดพลาด: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -197,12 +233,13 @@ export function OrderForm() {
           </div>
 
           <div>
-            <Label htmlFor="channel">ช่องทางการขาย</Label>
+            <Label htmlFor="channel">ช่องทางการขาย <span className="text-red-500">*</span></Label>
             <Select
               value={formData.channel}
               onValueChange={(value) =>
                 setFormData({ ...formData, channel: value })
               }
+              required
             >
               <SelectTrigger>
                 <SelectValue placeholder="เลือกช่องทางการขาย" />

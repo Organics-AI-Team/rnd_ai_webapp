@@ -1,8 +1,36 @@
 import { initTRPC } from "@trpc/server";
 import { cache } from "react";
+import { cookies } from "next/headers";
+import clientPromise from "@/lib/mongodb";
 
 export const createTRPCContext = cache(async () => {
-  return {};
+  const cookieStore = await cookies();
+  const token = cookieStore.get("auth_token")?.value;
+
+  let userId: string | null = null;
+
+  if (token) {
+    try {
+      const client = await clientPromise;
+      const db = client.db();
+      const session = await db.collection("sessions").findOne({
+        token,
+        expiresAt: { $gt: new Date() },
+      });
+
+      if (session) {
+        // Get user by accountId from session
+        const user = await db.collection("users").findOne({ accountId: session.accountId });
+        if (user) {
+          userId = user._id.toString();
+        }
+      }
+    } catch (error) {
+      console.error("Error getting user from token:", error);
+    }
+  }
+
+  return { userId };
 });
 
 const t = initTRPC.context<typeof createTRPCContext>().create();

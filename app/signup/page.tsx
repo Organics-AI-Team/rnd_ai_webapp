@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 
-export default function LoginPage() {
-  const { login, isLoading } = useAuth();
+export default function SignupPage() {
+  const { signup, isLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [organizationName, setOrganizationName] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -21,9 +23,9 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
+      await signup(email, password, name, organizationName);
     } catch (err: any) {
-      setError(err.message || "เข้าสู่ระบบไม่สำเร็จ");
+      setError(err.message || "ลงทะเบียนไม่สำเร็จ");
     } finally {
       setIsSubmitting(false);
     }
@@ -42,14 +44,26 @@ export default function LoginPage() {
       <Card className="w-full max-w-md rounded-xl shadow-lg">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">
-            เข้าสู่ระบบ
+            ลงทะเบียน
           </CardTitle>
           <p className="text-sm text-gray-500 text-center">
-            กรอกอีเมลและรหัสผ่านเพื่อเข้าสู่ระบบ
+            สร้างบัญชีและองค์กรของคุณ
           </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">ชื่อ</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="ชื่อของคุณ"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="email">อีเมล</Label>
               <Input
@@ -71,6 +85,20 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={6}
+              />
+              <p className="text-xs text-gray-500">รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="organizationName">ชื่อองค์กร</Label>
+              <Input
+                id="organizationName"
+                type="text"
+                placeholder="ชื่อบริษัทหรือองค์กรของคุณ"
+                value={organizationName}
+                onChange={(e) => setOrganizationName(e.target.value)}
+                required
               />
             </div>
 
@@ -85,13 +113,13 @@ export default function LoginPage() {
               className="w-full bg-line hover:bg-line-dark"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+              {isSubmitting ? "กำลังสร้างบัญชี..." : "ลงทะเบียน"}
             </Button>
 
             <div className="text-center text-sm">
-              <span className="text-gray-500">ยังไม่มีบัญชี? </span>
-              <Link href="/signup" className="text-line hover:underline font-medium">
-                ลงทะเบียน
+              <span className="text-gray-500">มีบัญชีอยู่แล้ว? </span>
+              <Link href="/login" className="text-line hover:underline font-medium">
+                เข้าสู่ระบบ
               </Link>
             </div>
           </form>

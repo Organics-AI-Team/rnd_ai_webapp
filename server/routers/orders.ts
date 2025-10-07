@@ -18,19 +18,51 @@ export const ordersRouter = router({
       return { id: result.insertedId.toString() };
     }),
 
-  list: publicProcedure.query(async () => {
-    const client = await clientPromise;
-    const db = client.db();
-    const orders = await db
-      .collection("orders")
-      .find({})
-      .sort({ createdAt: -1 })
-      .toArray();
-    return orders.map((order) => ({
-      ...order,
-      _id: order._id.toString(),
-    }));
-  }),
+  list: publicProcedure
+    .input(z.object({ organizationId: z.string().optional() }).optional())
+    .query(async ({ input, ctx }) => {
+      const client = await clientPromise;
+      const db = client.db();
+
+      const filter: any = {};
+
+      // Filter by logged-in user's ID
+      if (ctx.userId) {
+        filter.createdBy = ctx.userId;
+      }
+
+      if (input?.organizationId) {
+        filter.organizationId = input.organizationId;
+      }
+
+      const orders = await db
+        .collection("orders")
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      // Enrich orders with creator info
+      const enrichedOrders = await Promise.all(
+        orders.map(async (order) => {
+          const creator = order.createdBy
+            ? await db.collection("users").findOne({ _id: new ObjectId(order.createdBy) })
+            : null;
+
+          const org = order.organizationId
+            ? await db.collection("organizations").findOne({ _id: new ObjectId(order.organizationId) })
+            : null;
+
+          return {
+            ...order,
+            _id: order._id.toString(),
+            creatorName: creator?.name || "Unknown",
+            organizationName: org?.name || "Unknown",
+          };
+        })
+      );
+
+      return enrichedOrders;
+    }),
 
   updateStatus: publicProcedure
     .input(
@@ -54,10 +86,17 @@ export const ordersRouter = router({
       return { success: true };
     }),
 
-  getStats: publicProcedure.query(async () => {
+  getStats: publicProcedure.query(async ({ ctx }) => {
     const client = await clientPromise;
     const db = client.db();
-    const orders = await db.collection("orders").find({}).toArray();
+
+    const filter: any = {};
+    // Filter by logged-in user's ID
+    if (ctx.userId) {
+      filter.createdBy = ctx.userId;
+    }
+
+    const orders = await db.collection("orders").find(filter).toArray();
 
     const stats = {
       total: orders.length,
@@ -76,7 +115,7 @@ export const ordersRouter = router({
     .input(
       z.object({
         id: z.string(),
-        userId: z.string(),
+        organizationId: z.string(),
         pickPackCost: z.number().optional(),
         bubbleCost: z.number().optional(),
         paperInsideCost: z.number().optional(),
@@ -96,10 +135,10 @@ export const ordersRouter = router({
         throw new Error("Order not found");
       }
 
-      // Get the user
-      const user = await db.collection("users").findOne({ _id: new ObjectId(input.userId) });
-      if (!user) {
-        throw new Error("User not found");
+      // Get the organization
+      const org = await db.collection("organizations").findOne({ _id: new ObjectId(input.organizationId) });
+      if (!org) {
+        throw new Error("Organization not found");
       }
 
       const quantity = order.quantity || 1;
@@ -122,16 +161,16 @@ export const ordersRouter = router({
         boxCost +
         deliveryFeeCost;
 
-      // Check if user has enough credits
-      const currentCredits = user.credits || 0;
+      // Check if organization has enough credits
+      const currentCredits = org.credits || 0;
       if (currentCredits < totalShippingCost) {
-        throw new Error(`Insufficient credits. Required: ${totalShippingCost}, Available: ${currentCredits}`);
+        throw new Error(`Insufficient credits. Required: ฿${totalShippingCost.toFixed(2)}, Available: ฿${currentCredits.toFixed(2)}`);
       }
 
-      // Deduct credits from user
+      // Deduct credits from organization
       const newBalance = currentCredits - totalShippingCost;
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(input.userId) },
+      await db.collection("organizations").updateOne(
+        { _id: new ObjectId(input.organizationId) },
         {
           $set: {
             credits: newBalance,
@@ -142,9 +181,8 @@ export const ordersRouter = router({
 
       // Log the credit transaction
       await db.collection("credit_transactions").insertOne({
-        userId: input.userId,
-        userName: user.name,
-        userEmail: user.email,
+        organizationId: input.organizationId,
+        organizationName: org.name,
         type: "deduct",
         amount: totalShippingCost,
         balanceBefore: currentCredits,
@@ -167,7 +205,6 @@ export const ordersRouter = router({
             boxCost,
             deliveryFeeCost,
             totalShippingCost,
-            userId: input.userId,
             updatedAt: new Date(),
           },
         }
