@@ -8,6 +8,7 @@ export const createTRPCContext = cache(async () => {
   const token = cookieStore.get("auth_token")?.value;
 
   let userId: string | null = null;
+  let organizationId: string | null = null;
 
   if (token) {
     try {
@@ -23,6 +24,7 @@ export const createTRPCContext = cache(async () => {
         const user = await db.collection("users").findOne({ accountId: session.accountId });
         if (user) {
           userId = user._id.toString();
+          organizationId = user.organizationId?.toString() || null;
         }
       }
     } catch (error) {
@@ -30,7 +32,7 @@ export const createTRPCContext = cache(async () => {
     }
   }
 
-  return { userId };
+  return { userId, organizationId };
 });
 
 const t = initTRPC.context<typeof createTRPCContext>().create();

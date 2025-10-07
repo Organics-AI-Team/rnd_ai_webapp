@@ -5,13 +5,21 @@ import { UserSchema, CreditTransactionSchema, CreditTransactionType } from "@/li
 import { ObjectId } from "mongodb";
 
 export const usersRouter = router({
-  // List all users with their organization credits
-  list: publicProcedure.query(async () => {
+  // List all users with their organization credits (filtered by user's organization)
+  list: publicProcedure.query(async ({ ctx }) => {
     const client = await clientPromise;
     const db = client.db();
+
+    const filter: any = {};
+
+    // Filter by logged-in user's organization
+    if (ctx.organizationId) {
+      filter.organizationId = ctx.organizationId;
+    }
+
     const users = await db
       .collection("users")
-      .find({})
+      .find(filter)
       .sort({ createdAt: -1 })
       .toArray();
 
@@ -272,13 +280,21 @@ export const usersRouter = router({
       }));
     }),
 
-  // Get all credit transactions (for admin)
-  getAllTransactions: publicProcedure.query(async () => {
+  // Get all credit transactions (filtered by user's organization)
+  getAllTransactions: publicProcedure.query(async ({ ctx }) => {
     const client = await clientPromise;
     const db = client.db();
+
+    const filter: any = {};
+
+    // Filter by logged-in user's organization
+    if (ctx.organizationId) {
+      filter.organizationId = ctx.organizationId;
+    }
+
     const transactions = await db
       .collection("credit_transactions")
-      .find({})
+      .find(filter)
       .sort({ createdAt: -1 })
       .limit(100)
       .toArray();
