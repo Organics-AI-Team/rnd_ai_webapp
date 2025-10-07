@@ -154,13 +154,13 @@ export function OrderForm() {
 
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold text-line mb-6">รับออเดอร์ใหม่</h2>
+    <div className="p-4 md:p-6">
+      <h2 className="text-xl md:text-2xl font-bold text-line mb-4 md:mb-6">รับออเดอร์ใหม่</h2>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Left Side - Input Form */}
         <div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6 sticky top-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 lg:sticky lg:top-6">
             <form onSubmit={handleAddToList} className="space-y-4">
           <div>
             <Label htmlFor="orderDate">วันที่</Label>
@@ -175,7 +175,7 @@ export function OrderForm() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="productCode">รหัสสินค้า</Label>
               <Input
@@ -203,7 +203,7 @@ export function OrderForm() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="price">ราคา (฿)</Label>
               <Input
@@ -255,7 +255,7 @@ export function OrderForm() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="customerName">ชื่อลูกค้า</Label>
               <Input
@@ -310,10 +310,10 @@ export function OrderForm() {
         {/* Right Side - Orders List */}
         <div>
           {ordersList.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <div className="bg-white rounded-xl border border-gray-200 p-8 md:p-12 text-center">
               <div className="text-gray-400 mb-4">
-                <Plus size={64} className="mx-auto mb-4 opacity-50" />
-                <p className="text-lg">ยังไม่มีรายการออเดอร์</p>
+                <Plus size={48} className="mx-auto mb-4 opacity-50 md:w-16 md:h-16" />
+                <p className="text-base md:text-lg">ยังไม่มีรายการออเดอร์</p>
                 <p className="text-sm mt-2">
                   กรอกข้อมูลทางซ้ายแล้วกด &quot;เพิ่มในรายการ&quot;
                 </p>
@@ -321,72 +321,74 @@ export function OrderForm() {
             </div>
           ) : (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold text-gray-900">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+                <h3 className="text-lg md:text-xl font-bold text-gray-900">
                   รายการออเดอร์ ({ordersList.length})
                 </h3>
                 <Button
                   onClick={handleSubmitAll}
                   disabled={isSubmitting}
-                  className="bg-line hover:bg-line-dark rounded-lg"
+                  className="bg-line hover:bg-line-dark rounded-lg w-full sm:w-auto"
                 >
                   {isSubmitting ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
                 </Button>
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>วันที่</TableHead>
-                  <TableHead>รหัสสินค้า</TableHead>
-                  <TableHead>ชื่อสินค้า</TableHead>
-                  <TableHead>ราคา</TableHead>
-                  <TableHead>จำนวน</TableHead>
-                  <TableHead>ช่องทาง</TableHead>
-                  <TableHead>ลูกค้า</TableHead>
-                  <TableHead>เบอร์ติดต่อ</TableHead>
-                  <TableHead>ที่อยู่</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ordersList.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell>{order.orderDate}</TableCell>
-                    <TableCell className="font-medium text-gray-600">
-                      {order.productCode}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {order.productName}
-                    </TableCell>
-                    <TableCell>฿{parseFloat(order.price).toLocaleString()}</TableCell>
-                    <TableCell>{order.quantity}</TableCell>
-                    <TableCell>
-                      <Badge variant={order.channel as any}>
-                        {order.channel.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{order.customerName}</TableCell>
-                    <TableCell>{order.customerContact}</TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {order.shippingAddress}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveFromList(order.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              </Table>
-            </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="whitespace-nowrap">วันที่</TableHead>
+                        <TableHead className="whitespace-nowrap">รหัสสินค้า</TableHead>
+                        <TableHead className="whitespace-nowrap">ชื่อสินค้า</TableHead>
+                        <TableHead className="whitespace-nowrap">ราคา</TableHead>
+                        <TableHead className="whitespace-nowrap">จำนวน</TableHead>
+                        <TableHead className="whitespace-nowrap">ช่องทาง</TableHead>
+                        <TableHead className="whitespace-nowrap">ลูกค้า</TableHead>
+                        <TableHead className="whitespace-nowrap">เบอร์ติดต่อ</TableHead>
+                        <TableHead className="whitespace-nowrap">ที่อยู่</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ordersList.map((order) => (
+                        <TableRow key={order.id}>
+                          <TableCell className="whitespace-nowrap">{order.orderDate}</TableCell>
+                          <TableCell className="font-medium text-gray-600 whitespace-nowrap">
+                            {order.productCode}
+                          </TableCell>
+                          <TableCell className="font-medium whitespace-nowrap">
+                            {order.productName}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">฿{parseFloat(order.price).toLocaleString()}</TableCell>
+                          <TableCell>{order.quantity}</TableCell>
+                          <TableCell>
+                            <Badge variant={order.channel as any}>
+                              {order.channel.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">{order.customerName}</TableCell>
+                          <TableCell className="whitespace-nowrap">{order.customerContact}</TableCell>
+                          <TableCell className="max-w-xs truncate">
+                            {order.shippingAddress}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveFromList(order.id)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
           </div>
         )}
       </div>

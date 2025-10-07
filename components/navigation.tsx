@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, ClipboardList, Truck, LogOut, Settings } from "lucide-react";
+import { Package, ClipboardList, Truck, LogOut, Settings, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
 export function Navigation({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, organization, logout } = useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const links = [
     {
@@ -35,12 +37,46 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     },
   ];
 
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
   return (
     <div className="flex h-screen">
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-2">
+            <Package size={24} className="text-line" />
+            <h1 className="text-base font-bold text-gray-900">
+              ระบบจัดการสินค้าเสริม
+            </h1>
+          </div>
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Toggle menu"
+          >
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Overlay for mobile menu */}
+      {isMobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+          onClick={closeMobileMenu}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r flex flex-col">
-        {/* Header */}
-        <div className="p-6 border-b">
+      <aside
+        className={cn(
+          "fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white border-r flex flex-col transition-transform duration-300 lg:translate-x-0",
+          isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Header - Desktop only */}
+        <div className="hidden lg:block p-6 border-b">
           <div className="flex items-center gap-3">
             <Package size={28} className="text-line" />
             <h1 className="text-lg font-bold text-gray-900">
@@ -50,7 +86,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto mt-16 lg:mt-0">
           <div className="space-y-1">
             {links.map((link: any) => {
               // Skip admin-only links if user is not admin/owner
@@ -65,6 +101,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                 <Link
                   key={link.href}
                   href={link.href}
+                  onClick={closeMobileMenu}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors",
                     isActive
@@ -123,7 +160,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-auto bg-gray-50">
+      <div className="flex-1 overflow-auto bg-gray-50 pt-16 lg:pt-0">
         {children}
       </div>
     </div>

@@ -12,6 +12,11 @@ const notoSansThai = Noto_Sans_Thai({
 export const metadata: Metadata = {
   title: "Supplement Management System",
   description: "Stock management system for supplements",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 5,
+  },
 };
 
 export default function RootLayout({

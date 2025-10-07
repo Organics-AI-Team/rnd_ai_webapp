@@ -92,30 +92,31 @@ export default function AdminCreditsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">จัดการ Credits ผู้ใช้</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">จัดการ Credits ผู้ใช้</h1>
       </div>
 
       {/* Users List */}
       <Card className="rounded-xl overflow-hidden bg-white">
-        <CardHeader className="border-b">
-          <CardTitle className="text-line">รายชื่อผู้ใช้</CardTitle>
+        <CardHeader className="border-b p-4 md:p-6">
+          <CardTitle className="text-line text-lg md:text-xl">รายชื่อผู้ใช้</CardTitle>
         </CardHeader>
-        <CardContent className="mt-6">
+        <CardContent className="p-0 md:p-6 md:mt-0">
           {users.length === 0 ? (
             <p className="text-center text-gray-500 py-8">ยังไม่มีผู้ใช้</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ชื่อ</TableHead>
-                  <TableHead>อีเมล</TableHead>
-                  <TableHead>Credits คงเหลือ</TableHead>
-                  <TableHead>จัดการ</TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="whitespace-nowrap">ชื่อ</TableHead>
+                    <TableHead className="whitespace-nowrap">อีเมล</TableHead>
+                    <TableHead className="whitespace-nowrap">Credits คงเหลือ</TableHead>
+                    <TableHead className="whitespace-nowrap">จัดการ</TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {users.map((user: any) => (
                   <TableRow key={user._id}>
@@ -242,34 +243,36 @@ export default function AdminCreditsPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
 
       {/* Transaction History */}
       <Card className="rounded-xl overflow-hidden bg-white">
-        <CardHeader className="border-b">
-          <CardTitle className="text-line">ประวัติการทำรายการ (100 รายการล่าสุด)</CardTitle>
+        <CardHeader className="border-b p-4 md:p-6">
+          <CardTitle className="text-line text-base md:text-lg">ประวัติการทำรายการ (100 รายการล่าสุด)</CardTitle>
         </CardHeader>
-        <CardContent className="mt-6">
+        <CardContent className="p-0 md:p-6 md:mt-0">
           {transactions.length === 0 ? (
             <p className="text-center text-gray-500 py-8">
               ยังไม่มีประวัติการทำรายการ
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>วันที่</TableHead>
-                  <TableHead>ผู้ใช้</TableHead>
-                  <TableHead>ประเภท</TableHead>
-                  <TableHead>จำนวน</TableHead>
-                  <TableHead>ยอดก่อน</TableHead>
-                  <TableHead>ยอดหลัง</TableHead>
-                  <TableHead>รายละเอียด</TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="whitespace-nowrap">วันที่</TableHead>
+                    <TableHead className="whitespace-nowrap">ผู้ใช้</TableHead>
+                    <TableHead className="whitespace-nowrap">ประเภท</TableHead>
+                    <TableHead className="whitespace-nowrap">จำนวน</TableHead>
+                    <TableHead className="whitespace-nowrap">ยอดก่อน</TableHead>
+                    <TableHead className="whitespace-nowrap">ยอดหลัง</TableHead>
+                    <TableHead className="whitespace-nowrap">รายละเอียด</TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {transactions.map((tx: any) => (
                   <TableRow key={tx._id}>
@@ -324,7 +327,8 @@ export default function AdminCreditsPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

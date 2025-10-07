@@ -188,18 +188,18 @@ export default function ShippingPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
       {/* Global Rate Settings */}
       <Card className="rounded-xl overflow-hidden bg-white">
         <CardHeader
-          className="border-b bg-line cursor-pointer hover:bg-line-dark transition-colors"
+          className="border-b bg-line cursor-pointer hover:bg-line-dark transition-colors p-4 md:p-6"
           onClick={() => setShowRateSettings(!showRateSettings)}
         >
           <div className="flex justify-between items-center">
-            <CardTitle className="text-white">
+            <CardTitle className="text-white text-base md:text-lg">
               ตั้งค่าอัตราค่าจัดส่ง (ใช้กับทุกออเดอร์)
             </CardTitle>
-            <button className="text-white hover:text-gray-200 transition-colors">
+            <button className="text-white hover:text-gray-200 transition-colors flex-shrink-0">
               {showRateSettings ? (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -213,8 +213,8 @@ export default function ShippingPage() {
           </div>
         </CardHeader>
         {showRateSettings && (
-          <CardContent className="mt-6 bg-white">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <CardContent className="p-4 md:p-6 md:mt-0 bg-white">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="text-xs text-gray-700 font-medium block mb-2">
                   Pick & Pack (฿/คำสั่ง)
@@ -292,25 +292,26 @@ export default function ShippingPage() {
 
       {/* Pending Orders */}
       <Card className="rounded-xl overflow-hidden bg-white">
-        <CardHeader className="border-b">
-          <CardTitle className="text-line">รายการรอจัดส่ง</CardTitle>
+        <CardHeader className="border-b p-4 md:p-6">
+          <CardTitle className="text-line text-lg md:text-xl">รายการรอจัดส่ง</CardTitle>
         </CardHeader>
-        <CardContent className="mt-6">
+        <CardContent className="p-0 md:p-6 md:mt-0">
           {pendingOrders.length === 0 ? (
             <p className="text-center text-gray-500 py-8">ไม่มีรายการรอจัดส่ง</p>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>สินค้า</TableHead>
-                  <TableHead>ลูกค้า</TableHead>
-                  <TableHead>ช่องทาง</TableHead>
-                  <TableHead>ที่อยู่จัดส่ง</TableHead>
-                  <TableHead>จำนวน</TableHead>
-                  <TableHead>ยอดรวม</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  <TableHead>ค่าจัดส่งที่คำนวณ</TableHead>
-                  <TableHead>จัดการ</TableHead>
+                  <TableHead className="whitespace-nowrap">สินค้า</TableHead>
+                  <TableHead className="whitespace-nowrap">ลูกค้า</TableHead>
+                  <TableHead className="whitespace-nowrap">ช่องทาง</TableHead>
+                  <TableHead className="whitespace-nowrap">ที่อยู่จัดส่ง</TableHead>
+                  <TableHead className="whitespace-nowrap">จำนวน</TableHead>
+                  <TableHead className="whitespace-nowrap">ยอดรวม</TableHead>
+                  <TableHead className="whitespace-nowrap">สถานะ</TableHead>
+                  <TableHead className="whitespace-nowrap">ค่าจัดส่งที่คำนวณ</TableHead>
+                  <TableHead className="whitespace-nowrap">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -463,31 +464,33 @@ export default function ShippingPage() {
                   </React.Fragment>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
 
       {/* Shipped Orders */}
       <Card className="rounded-xl overflow-hidden bg-white">
-        <CardHeader className="border-b">
-          <CardTitle className="text-line">รายการส่งไปรษณีย์แล้ว</CardTitle>
+        <CardHeader className="border-b p-4 md:p-6">
+          <CardTitle className="text-line text-lg md:text-xl">รายการส่งไปรษณีย์แล้ว</CardTitle>
         </CardHeader>
-        <CardContent className="mt-6">
+        <CardContent className="p-0 md:p-6 md:mt-0">
           {shippedOrders.length === 0 ? (
             <p className="text-center text-gray-500 py-8">
               ไม่มีรายการที่ส่งไปรษณีย์แล้ว
             </p>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>สินค้า</TableHead>
-                  <TableHead>ลูกค้า</TableHead>
-                  <TableHead>ช่องทาง</TableHead>
-                  <TableHead>ที่อยู่จัดส่ง</TableHead>
-                  <TableHead>จำนวน</TableHead>
-                  <TableHead>จัดการ</TableHead>
+                  <TableHead className="whitespace-nowrap">สินค้า</TableHead>
+                  <TableHead className="whitespace-nowrap">ลูกค้า</TableHead>
+                  <TableHead className="whitespace-nowrap">ช่องทาง</TableHead>
+                  <TableHead className="whitespace-nowrap">ที่อยู่จัดส่ง</TableHead>
+                  <TableHead className="whitespace-nowrap">จำนวน</TableHead>
+                  <TableHead className="whitespace-nowrap">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -524,7 +527,8 @@ export default function ShippingPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

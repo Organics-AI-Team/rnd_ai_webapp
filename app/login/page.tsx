@@ -38,17 +38,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md rounded-xl ">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <Card className="w-full max-w-md rounded-xl">
+        <CardHeader className="space-y-1 p-4 md:p-6">
+          <CardTitle className="text-xl md:text-2xl font-bold text-center">
             เข้าสู่ระบบ
           </CardTitle>
           <p className="text-sm text-gray-500 text-center">
             กรอกอีเมลและรหัสผ่านเพื่อเข้าสู่ระบบ
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 md:p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">อีเมล</Label>

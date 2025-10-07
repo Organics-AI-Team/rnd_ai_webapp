@@ -262,15 +262,15 @@ export function Dashboard() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <Card className="rounded-xl bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+          <CardHeader className="pb-2 p-3 md:p-6 md:pb-2">
+            <CardTitle className="text-xs md:text-sm font-medium">Total Orders</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{filteredStats.total}</div>
+          <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+            <div className="text-xl md:text-2xl font-bold">{filteredStats.total}</div>
             {filteredStats.total !== orders.length && (
               <div className="text-xs text-gray-500 mt-1">
                 of {orders.length} total
@@ -280,11 +280,11 @@ export function Dashboard() {
         </Card>
 
         <Card className="rounded-xl bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Pending</CardTitle>
+          <CardHeader className="pb-2 p-3 md:p-6 md:pb-2">
+            <CardTitle className="text-xs md:text-sm font-medium">Pending</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">
+          <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+            <div className="text-xl md:text-2xl font-bold text-yellow-600">
               {filteredStats.pending}
             </div>
             {filteredStats.total !== orders.length && (
@@ -296,13 +296,13 @@ export function Dashboard() {
         </Card>
 
         <Card className="rounded-xl bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
+          <CardHeader className="pb-2 p-3 md:p-6 md:pb-2">
+            <CardTitle className="text-xs md:text-sm font-medium">
               Sent to Logistic
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
+          <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+            <div className="text-xl md:text-2xl font-bold text-purple-600">
               {filteredStats.sentToLogistic}
             </div>
             {filteredStats.total !== orders.length && (
@@ -314,11 +314,11 @@ export function Dashboard() {
         </Card>
 
         <Card className="rounded-xl bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+          <CardHeader className="pb-2 p-3 md:p-6 md:pb-2">
+            <CardTitle className="text-xs md:text-sm font-medium">Total Revenue</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-line">
+          <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+            <div className="text-xl md:text-2xl font-bold text-line">
               ฿{filteredStats.totalRevenue.toLocaleString()}
             </div>
             {filteredStats.total !== orders.length && (
@@ -332,16 +332,16 @@ export function Dashboard() {
 
       {/* Orders Table */}
       <Card className="rounded-xl overflow-hidden bg-white">
-        <CardHeader className="border-b">
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-line">Orders Management</CardTitle>
-            <div className="flex gap-3 items-center">
+        <CardHeader className="border-b p-4 md:p-6">
+          <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+            <CardTitle className="text-line text-lg md:text-xl">Orders Management</CardTitle>
+            <div className="flex flex-col sm:flex-row gap-2 md:gap-3 items-stretch sm:items-center">
               <Input
                 type="month"
                 value={reportMonth}
                 onChange={(e) => setReportMonth(e.target.value)}
                 max={new Date().toISOString().slice(0, 7)}
-                className="w-40"
+                className="w-full sm:w-40"
               />
               <Button
                 onClick={generateMonthlyReport}
@@ -355,11 +355,11 @@ export function Dashboard() {
         </CardHeader>
 
         {/* Tabs */}
-        <div className="border-b">
-          <div className="flex gap-2 px-6 pt-4">
+        <div className="border-b overflow-x-auto">
+          <div className="flex gap-1 md:gap-2 px-3 md:px-6 pt-4 min-w-max">
             <button
               onClick={() => setActiveTab("active")}
-              className={`px-4 py-2 font-medium rounded-t-lg transition-colors ${
+              className={`px-3 md:px-4 py-2 text-sm md:text-base font-medium rounded-t-lg transition-colors whitespace-nowrap ${
                 activeTab === "active"
                   ? "bg-line text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -371,7 +371,7 @@ export function Dashboard() {
             </button>
             <button
               onClick={() => setActiveTab("delivered")}
-              className={`px-4 py-2 font-medium rounded-t-lg transition-colors ${
+              className={`px-3 md:px-4 py-2 text-sm md:text-base font-medium rounded-t-lg transition-colors whitespace-nowrap ${
                 activeTab === "delivered"
                   ? "bg-line text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -381,7 +381,7 @@ export function Dashboard() {
             </button>
             <button
               onClick={() => setActiveTab("cancelled")}
-              className={`px-4 py-2 font-medium rounded-t-lg transition-colors ${
+              className={`px-3 md:px-4 py-2 text-sm md:text-base font-medium rounded-t-lg transition-colors whitespace-nowrap ${
                 activeTab === "cancelled"
                   ? "bg-line text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -391,7 +391,7 @@ export function Dashboard() {
             </button>
             <button
               onClick={() => setActiveTab("all")}
-              className={`px-4 py-2 font-medium rounded-t-lg transition-colors ${
+              className={`px-3 md:px-4 py-2 text-sm md:text-base font-medium rounded-t-lg transition-colors whitespace-nowrap ${
                 activeTab === "all"
                   ? "bg-line text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -403,7 +403,7 @@ export function Dashboard() {
         </div>
 
         {/* Filters */}
-        <div className="p-6 bg-gray-50 border-b">
+        <div className="p-4 md:p-6 bg-gray-50 border-b">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-xs text-gray-600 font-medium block mb-2">
@@ -453,83 +453,85 @@ export function Dashboard() {
           </div>
         </div>
 
-        <CardContent className="mt-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Channel</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrders.map((order: any) => (
-                <TableRow key={order._id}>
-                  <TableCell className="font-medium">
-                    {order.productName}
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      <div>{order.customerName}</div>
-                      <div className="text-gray-500">{order.customerContact}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={order.channel as any}>
-                      {order.channel.toUpperCase()}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>฿{order.price.toLocaleString()}</TableCell>
-                  <TableCell>{order.quantity}</TableCell>
-                  <TableCell className="font-semibold">
-                    ฿{(order.price * order.quantity).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={order.status}
-                      onValueChange={(value) =>
-                        updateStatus.mutate({
-                          id: order._id,
-                          status: value as OrderStatusType,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="w-[160px]">
-                        <Badge variant={order.status as any}>
-                          {order.status.replace(/_/g, " ").toUpperCase()}
-                        </Badge>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">
-                          <Badge variant="pending">PENDING</Badge>
-                        </SelectItem>
-                        <SelectItem value="processing">
-                          <Badge variant="processing">PROCESSING</Badge>
-                        </SelectItem>
-                        <SelectItem value="sent_to_logistic">
-                          <Badge variant="sent_to_logistic">SENT TO LOGISTIC</Badge>
-                        </SelectItem>
-                        <SelectItem value="delivered">
-                          <Badge variant="delivered">DELIVERED</Badge>
-                        </SelectItem>
-                        <SelectItem value="cancelled">
-                          <Badge variant="cancelled">CANCELLED</Badge>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(order.createdAt).toLocaleDateString()}
-                  </TableCell>
+        <CardContent className="p-0 md:p-6 md:mt-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="whitespace-nowrap">Product</TableHead>
+                  <TableHead className="whitespace-nowrap">Customer</TableHead>
+                  <TableHead className="whitespace-nowrap">Channel</TableHead>
+                  <TableHead className="whitespace-nowrap">Price</TableHead>
+                  <TableHead className="whitespace-nowrap">Qty</TableHead>
+                  <TableHead className="whitespace-nowrap">Total</TableHead>
+                  <TableHead className="whitespace-nowrap">Status</TableHead>
+                  <TableHead className="whitespace-nowrap">Date</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredOrders.map((order: any) => (
+                  <TableRow key={order._id}>
+                    <TableCell className="font-medium whitespace-nowrap">
+                      {order.productName}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <div className="text-sm">
+                        <div>{order.customerName}</div>
+                        <div className="text-gray-500">{order.customerContact}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={order.channel as any}>
+                        {order.channel.toUpperCase()}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">฿{order.price.toLocaleString()}</TableCell>
+                    <TableCell>{order.quantity}</TableCell>
+                    <TableCell className="font-semibold whitespace-nowrap">
+                      ฿{(order.price * order.quantity).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={order.status}
+                        onValueChange={(value) =>
+                          updateStatus.mutate({
+                            id: order._id,
+                            status: value as OrderStatusType,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="w-[160px]">
+                          <Badge variant={order.status as any}>
+                            {order.status.replace(/_/g, " ").toUpperCase()}
+                          </Badge>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">
+                            <Badge variant="pending">PENDING</Badge>
+                          </SelectItem>
+                          <SelectItem value="processing">
+                            <Badge variant="processing">PROCESSING</Badge>
+                          </SelectItem>
+                          <SelectItem value="sent_to_logistic">
+                            <Badge variant="sent_to_logistic">SENT TO LOGISTIC</Badge>
+                          </SelectItem>
+                          <SelectItem value="delivered">
+                            <Badge variant="delivered">DELIVERED</Badge>
+                          </SelectItem>
+                          <SelectItem value="cancelled">
+                            <Badge variant="cancelled">CANCELLED</Badge>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {new Date(order.createdAt).toLocaleDateString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
