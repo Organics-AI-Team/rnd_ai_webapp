@@ -50,25 +50,11 @@ export default function AdminCreditsPage() {
     },
   });
 
-  const createUser = trpc.users.create.useMutation({
-    onSuccess: () => {
-      utils.users.list.invalidate();
-      setCreateUserDialog(false);
-      setNewUserName("");
-      setNewUserEmail("");
-      setNewUserCredits(0);
-    },
-  });
-
   const [addCreditsDialog, setAddCreditsDialog] = useState<string | null>(null);
   const [adjustCreditsDialog, setAdjustCreditsDialog] = useState<string | null>(null);
-  const [createUserDialog, setCreateUserDialog] = useState(false);
   const [amount, setAmount] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserCredits, setNewUserCredits] = useState(0);
 
   const handleAddCredits = (userId: string) => {
     addCredits.mutate({
@@ -88,17 +74,9 @@ export default function AdminCreditsPage() {
     });
   };
 
-  const handleCreateUser = () => {
-    createUser.mutate({
-      name: newUserName,
-      email: newUserEmail,
-      credits: newUserCredits,
-    });
-  };
-
   if (error) {
     return (
-      <Card className="border-red-500 rounded-xl overflow-hidden shadow-lg">
+      <Card className="border-red-500 rounded-xl overflow-hidden ">
         <CardHeader className="bg-red-500 text-white rounded-t-xl">
           <CardTitle>เกิดข้อผิดพลาด</CardTitle>
         </CardHeader>
@@ -118,63 +96,10 @@ export default function AdminCreditsPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">จัดการ Credits ผู้ใช้</h1>
-        <Dialog open={createUserDialog} onOpenChange={setCreateUserDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-green-600 hover:bg-green-700">
-              เพิ่มผู้ใช้ใหม่
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>เพิ่มผู้ใช้ใหม่</DialogTitle>
-              <DialogDescription>
-                สร้างผู้ใช้ใหม่และกำหนด credits เริ่มต้น
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 mt-4">
-              <div>
-                <Label htmlFor="name">ชื่อ</Label>
-                <Input
-                  id="name"
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  placeholder="ชื่อผู้ใช้"
-                />
-              </div>
-              <div>
-                <Label htmlFor="email">อีเมล</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                  placeholder="email@example.com"
-                />
-              </div>
-              <div>
-                <Label htmlFor="credits">Credits เริ่มต้น</Label>
-                <Input
-                  id="credits"
-                  type="number"
-                  value={newUserCredits}
-                  onChange={(e) => setNewUserCredits(parseFloat(e.target.value) || 0)}
-                  placeholder="0"
-                />
-              </div>
-              <Button
-                className="w-full"
-                onClick={handleCreateUser}
-                disabled={createUser.isPending || !newUserName || !newUserEmail}
-              >
-                สร้างผู้ใช้
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {/* Users List */}
-      <Card className="rounded-xl overflow-hidden shadow-lg">
+      <Card className="rounded-xl overflow-hidden bg-white">
         <CardHeader className="border-b">
           <CardTitle className="text-line">รายชื่อผู้ใช้</CardTitle>
         </CardHeader>
@@ -323,7 +248,7 @@ export default function AdminCreditsPage() {
       </Card>
 
       {/* Transaction History */}
-      <Card className="rounded-xl overflow-hidden shadow-lg">
+      <Card className="rounded-xl overflow-hidden bg-white">
         <CardHeader className="border-b">
           <CardTitle className="text-line">ประวัติการทำรายการ (100 รายการล่าสุด)</CardTitle>
         </CardHeader>

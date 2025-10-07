@@ -158,7 +158,7 @@ export function OrderForm() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Side - Input Form */}
         <div>
-          <div className="bg-white rounded-xl shadow-lg p-6 sticky top-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 sticky top-6">
             <form onSubmit={handleAddToList} className="space-y-4">
           <div>
             <Label htmlFor="orderDate">วันที่</Label>
@@ -308,7 +308,7 @@ export function OrderForm() {
         {/* Right Side - Orders List */}
         <div>
           {ordersList.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-lg p-12 text-center">
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <div className="text-gray-400 mb-4">
                 <Plus size={64} className="mx-auto mb-4 opacity-50" />
                 <p className="text-lg">ยังไม่มีรายการออเดอร์</p>
@@ -332,7 +332,7 @@ export function OrderForm() {
                 </Button>
               </div>
 
-              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
