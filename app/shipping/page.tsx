@@ -531,7 +531,7 @@ export default function ShippingPage() {
 
       {/* Confirmation Modal */}
       {confirmingOrderId && (() => {
-        const order = orders.find((o: any) => o._id === confirmingOrderId);
+        const order = orders.find((o: any) => o._id === confirmingOrderId) as any;
         if (!order) return null;
         const total = getTotalCost(order);
 
