@@ -582,7 +582,7 @@ export default function ShippingPage() {
                   <ul className="list-disc list-inside space-y-1 text-xs">
                     <li>หัก Credits จากระบบ ฿{total.toFixed(2)}</li>
                     <li>บันทึกค่าจัดส่งลงในออเดอร์</li>
-                    <li>เปลี่ยนสถานะเป็น "ส่งไปรษณีย์แล้ว"</li>
+                    <li>เปลี่ยนสถานะเป็น &quot;ส่งไปรษณีย์แล้ว&quot;</li>
                   </ul>
                 </div>
                 <div className="flex gap-3 pt-4">

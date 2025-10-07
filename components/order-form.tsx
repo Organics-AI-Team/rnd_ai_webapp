@@ -315,7 +315,7 @@ export function OrderForm() {
                 <Plus size={64} className="mx-auto mb-4 opacity-50" />
                 <p className="text-lg">ยังไม่มีรายการออเดอร์</p>
                 <p className="text-sm mt-2">
-                  กรอกข้อมูลทางซ้ายแล้วกด "เพิ่มในรายการ"
+                  กรอกข้อมูลทางซ้ายแล้วกด &quot;เพิ่มในรายการ&quot;
                 </p>
               </div>
             </div>
