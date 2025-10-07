@@ -12,8 +12,9 @@ builder = "DOCKERFILE"
 
 [deploy]
 # startCommand defines how to start your application in production
-# This runs after the build is complete
-startCommand = "npm start"
+# For Docker builds, the CMD in Dockerfile is used instead
+# Commenting out to use Dockerfile's CMD: node server.js
+# startCommand = "npm start"
 
 # numReplicas defines how many instances of your app to run (for scaling)
 # Default is 1. Increase for high availability or load balancing
