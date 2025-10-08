@@ -1,6 +1,27 @@
 import { z } from "zod";
 
 // ============================================
+// PRODUCT/INVENTORY SCHEMAS
+// ============================================
+
+export const ProductSchema = z.object({
+  _id: z.string().optional(),
+  organizationId: z.string(),
+  productCode: z.string().min(1, "Product code is required"),
+  productName: z.string().min(1, "Product name is required"),
+  description: z.string().optional(),
+  price: z.number().positive("Price must be positive"),
+  stockQuantity: z.number().int().min(0, "Stock quantity cannot be negative"),
+  lowStockThreshold: z.number().int().min(0).default(10),
+  isActive: z.boolean().default(true),
+  createdBy: z.string(),
+  createdAt: z.date().default(() => new Date()),
+  updatedAt: z.date().default(() => new Date()),
+});
+
+export type Product = z.infer<typeof ProductSchema>;
+
+// ============================================
 // ORDER SCHEMAS
 // ============================================
 
@@ -14,9 +35,12 @@ export const OrderStatus = z.enum([
 
 export const Channel = z.enum(["line", "shopee", "lazada", "other"]);
 
+export const OrderSource = z.enum(["admin", "client"]);
+
 export const OrderSchema = z.object({
   _id: z.string().optional(),
   organizationId: z.string(),
+  productId: z.string().optional(), // Link to Product
   productCode: z.string().optional(),
   productName: z.string().min(1, "Product name is required"),
   price: z.number().positive("Price must be positive"),
@@ -27,6 +51,7 @@ export const OrderSchema = z.object({
   shippingAddress: z.string().min(1, "Shipping address is required"),
   status: OrderStatus.default("pending"),
   createdBy: z.string(),
+  orderSource: OrderSource.default("admin"), // Track if order is from admin or client
   orderDate: z.string().optional(), // Date when order was placed (from form)
   // Shipping cost fields
   pickPackCost: z.number().default(0),
@@ -44,12 +69,15 @@ export const OrderSchema = z.object({
 export type Order = z.infer<typeof OrderSchema>;
 export type OrderStatusType = z.infer<typeof OrderStatus>;
 export type ChannelType = z.infer<typeof Channel>;
+export type OrderSourceType = z.infer<typeof OrderSource>;
 
 // ============================================
 // AUTH & USER SCHEMAS
 // ============================================
 
-export const UserRole = z.enum(["owner", "admin", "member"]);
+export const UserRole = z.enum(["admin", "shipper", "shopper"]);
+
+export const UserStatus = z.enum(["active", "suspend"]);
 
 // Account Schema (for authentication)
 export const AccountSchema = z.object({
@@ -69,7 +97,8 @@ export const UserSchema = z.object({
   organizationId: z.string(),
   email: z.string().email(),
   name: z.string().min(1, "Name is required"),
-  role: UserRole.default("member"),
+  role: UserRole.default("admin"),
+  status: UserStatus.default("active"),
   isActive: z.boolean().default(true),
   createdAt: z.date().default(() => new Date()),
   updatedAt: z.date().default(() => new Date()),
@@ -98,6 +127,7 @@ export const SessionSchema = z.object({
 export type Account = z.infer<typeof AccountSchema>;
 export type User = z.infer<typeof UserSchema>;
 export type UserRoleType = z.infer<typeof UserRole>;
+export type UserStatusType = z.infer<typeof UserStatus>;
 export type Organization = z.infer<typeof OrganizationSchema>;
 export type Session = z.infer<typeof SessionSchema>;
 
@@ -148,3 +178,21 @@ export const LoginInputSchema = z.object({
 
 export type SignupInput = z.infer<typeof SignupInputSchema>;
 export type LoginInput = z.infer<typeof LoginInputSchema>;
+
+// ============================================
+// USER LOG SCHEMAS
+// ============================================
+
+export const UserLogSchema = z.object({
+  _id: z.string().optional(),
+  date: z.string(), // Format: DD/MM/YYYY
+  time: z.string(), // Format: HH:mm
+  userId: z.string(), // Reference to user
+  userName: z.string().optional(), // User's name for display
+  activity: z.string(), // e.g., "create order", "add stock", "log-in"
+  refId: z.string().optional(), // Reference ID (order ID, product ID, etc.)
+  organizationId: z.string().optional(),
+  createdAt: z.date().default(() => new Date()),
+});
+
+export type UserLog = z.infer<typeof UserLogSchema>;

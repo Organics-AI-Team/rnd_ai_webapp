@@ -1,6 +1,6 @@
 import { MongoClient } from "mongodb";
 
-const uri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/supplement_management";
+const uri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/ewms";
 
 async function cleanupAdmin() {
   const client = new MongoClient(uri);
@@ -9,7 +9,7 @@ async function cleanupAdmin() {
     await client.connect();
     console.log("Connected to MongoDB");
 
-    const db = client.db("supplement_management");
+    const db = client.db("ewms");
 
     // Delete old legacy collections (no longer used)
     await db.collection("user").drop().catch(() => console.log("Collection 'user' doesn't exist"));

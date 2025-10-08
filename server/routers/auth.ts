@@ -5,6 +5,7 @@ import { SignupInputSchema, LoginInputSchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { logActivity } from "@/lib/userLog";
 
 export const authRouter = router({
   // Signup - Creates account, organization, and user
@@ -53,7 +54,8 @@ export const authRouter = router({
         organizationId,
         email: input.email,
         name: input.name,
-        role: "owner",
+        role: "admin",
+        status: "active",
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -70,6 +72,15 @@ export const authRouter = router({
         createdAt: new Date(),
       });
 
+      // Log signup activity
+      await logActivity({
+        db,
+        userId: userResult.insertedId.toString(),
+        userName: input.name,
+        activity: "sign-up",
+        organizationId,
+      });
+
       return {
         success: true,
         token,
@@ -79,7 +90,8 @@ export const authRouter = router({
           organizationId,
           email: input.email,
           name: input.name,
-          role: "owner",
+          role: "admin",
+          status: "active",
         },
       };
     }),
@@ -124,6 +136,15 @@ export const authRouter = router({
         createdAt: new Date(),
       });
 
+      // Log login activity
+      await logActivity({
+        db,
+        userId: user._id.toString(),
+        userName: user.name,
+        activity: "log-in",
+        organizationId: user.organizationId,
+      });
+
       return {
         success: true,
         token,
@@ -134,16 +155,28 @@ export const authRouter = router({
           email: user.email,
           name: user.name,
           role: user.role,
+          status: user.status || "active",
         },
       };
     }),
 
   // Logout
   logout: publicProcedure
-    .input(z.object({ token: z.string() }))
+    .input(z.object({ token: z.string(), userId: z.string().optional(), userName: z.string().optional(), organizationId: z.string().optional() }))
     .mutation(async ({ input }) => {
       const client = await clientPromise;
       const db = client.db();
+
+      // Log logout activity before deleting session
+      if (input.userId) {
+        await logActivity({
+          db,
+          userId: input.userId,
+          userName: input.userName,
+          activity: "log-out",
+          organizationId: input.organizationId,
+        });
+      }
 
       // Delete session
       await db.collection("sessions").deleteOne({ token: input.token });
@@ -191,6 +224,7 @@ export const authRouter = router({
           email: user.email,
           name: user.name,
           role: user.role,
+          status: user.status || "active",
         },
         organization: organization
           ? {

@@ -43,6 +43,9 @@ export function OrderForm() {
   const utils = trpc.useUtils();
   const createOrder = trpc.orders.create.useMutation();
 
+  // Fetch products list
+  const { data: products, isLoading: productsLoading } = trpc.products.list.useQuery();
+
   const getCurrentDate = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -52,7 +55,9 @@ export function OrderForm() {
   };
 
   const [ordersList, setOrdersList] = useState<OrderItem[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState("");
   const [formData, setFormData] = useState({
+    productId: "",
     productCode: "",
     productName: "",
     price: "",
@@ -65,8 +70,30 @@ export function OrderForm() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Handle product selection
+  const handleProductSelect = (productId: string) => {
+    setSelectedProductId(productId);
+    const selectedProduct = products?.find((p: any) => p._id === productId);
+
+    if (selectedProduct) {
+      setFormData({
+        ...formData,
+        productId: selectedProduct._id,
+        productCode: selectedProduct.productCode,
+        productName: selectedProduct.productName,
+        price: selectedProduct.price.toString(),
+      });
+    }
+  };
+
   const handleAddToList = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate product is selected
+    if (!selectedProductId) {
+      alert("กรุณาเลือกสินค้า");
+      return;
+    }
 
     // Validate channel is selected
     if (!formData.channel) {
@@ -74,12 +101,29 @@ export function OrderForm() {
       return;
     }
 
+    // Validate stock quantity
+    const selectedProduct = products?.find((p: any) => p._id === selectedProductId);
+    if (selectedProduct && parseInt(formData.quantity) > selectedProduct.stockQuantity) {
+      alert(`สต็อกไม่เพียงพอ มีสต็อกคงเหลือ ${selectedProduct.stockQuantity} ชิ้น`);
+      return;
+    }
+
     const newOrder: OrderItem = {
       id: Date.now().toString(),
-      ...formData,
+      orderDate: formData.orderDate,
+      productCode: formData.productCode,
+      productName: formData.productName,
+      price: formData.price,
+      quantity: formData.quantity,
+      channel: formData.channel,
+      customerName: formData.customerName,
+      customerContact: formData.customerContact,
+      shippingAddress: formData.shippingAddress,
     };
     setOrdersList([...ordersList, newOrder]);
+    setSelectedProductId("");
     setFormData({
+      productId: "",
       productCode: "",
       productName: "",
       price: "",
@@ -137,6 +181,7 @@ export function OrderForm() {
           customerContact: order.customerContact,
           shippingAddress: order.shippingAddress,
           orderDate: order.orderDate,
+          orderSource: "admin",
           status: "pending",
         });
       }
@@ -175,63 +220,78 @@ export function OrderForm() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="productCode">รหัสสินค้า</Label>
-              <Input
-                id="productCode"
-                value={formData.productCode}
-                onChange={(e) =>
-                  setFormData({ ...formData, productCode: e.target.value })
-                }
-                placeholder="กรอกรหัสสินค้า"
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="productName">ชื่อสินค้า</Label>
-              <Input
-                id="productName"
-                value={formData.productName}
-                onChange={(e) =>
-                  setFormData({ ...formData, productName: e.target.value })
-                }
-                placeholder="กรอกชื่อสินค้า"
-                required
-              />
-            </div>
+          <div>
+            <Label htmlFor="product">เลือกสินค้า</Label>
+            {productsLoading ? (
+              <div className="text-sm text-gray-500">กำลังโหลดรายการสินค้า...</div>
+            ) : products && products.length > 0 ? (
+              <Select
+                value={selectedProductId}
+                onValueChange={handleProductSelect}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="เลือกสินค้าจากคลัง" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((product: any) => (
+                    <SelectItem key={product._id} value={product._id}>
+                      {product.productCode} - {product.productName} (฿{product.price}) - สต็อก: {product.stockQuantity}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="text-sm text-red-600">
+                ไม่มีสินค้าในคลัง กรุณาเพิ่มสินค้าที่ ADD STOCK ก่อน
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="price">ราคา (฿)</Label>
-              <Input
-                id="price"
-                type="number"
-                step="0.01"
-                value={formData.price}
-                onChange={(e) =>
-                  setFormData({ ...formData, price: e.target.value })
-                }
-                placeholder="0.00"
-                required
-              />
+          {selectedProductId && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="text-gray-600">รหัสสินค้า:</span>
+                  <span className="ml-2 font-medium">{formData.productCode}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">ชื่อสินค้า:</span>
+                  <span className="ml-2 font-medium">{formData.productName}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">ราคา:</span>
+                  <span className="ml-2 font-medium">฿{formData.price}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">สต็อกคงเหลือ:</span>
+                  <span className="ml-2 font-medium">
+                    {products?.find((p: any) => p._id === selectedProductId)?.stockQuantity || 0} ชิ้น
+                  </span>
+                </div>
+              </div>
             </div>
+          )}
 
-            <div>
-              <Label htmlFor="quantity">จำนวน</Label>
-              <Input
-                id="quantity"
-                type="number"
-                value={formData.quantity}
-                onChange={(e) =>
-                  setFormData({ ...formData, quantity: e.target.value })
-                }
-                placeholder="0"
-                required
-              />
-            </div>
+          <div>
+            <Label htmlFor="quantity">จำนวน</Label>
+            <Input
+              id="quantity"
+              type="number"
+              min="1"
+              max={products?.find((p: any) => p._id === selectedProductId)?.stockQuantity || 999999}
+              value={formData.quantity}
+              onChange={(e) =>
+                setFormData({ ...formData, quantity: e.target.value })
+              }
+              placeholder="0"
+              required
+              disabled={!selectedProductId}
+            />
+            {selectedProductId && (
+              <p className="text-xs text-gray-500 mt-1">
+                สต็อกคงเหลือ: {products?.find((p: any) => p._id === selectedProductId)?.stockQuantity || 0} ชิ้น
+              </p>
+            )}
           </div>
 
           <div>

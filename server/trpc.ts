@@ -9,6 +9,7 @@ export const createTRPCContext = cache(async () => {
 
   let userId: string | null = null;
   let organizationId: string | null = null;
+  let user: any = null;
 
   if (token) {
     try {
@@ -21,7 +22,7 @@ export const createTRPCContext = cache(async () => {
 
       if (session) {
         // Get user by accountId from session
-        const user = await db.collection("users").findOne({ accountId: session.accountId });
+        user = await db.collection("users").findOne({ accountId: session.accountId });
         if (user) {
           userId = user._id.toString();
           organizationId = user.organizationId?.toString() || null;
@@ -32,7 +33,7 @@ export const createTRPCContext = cache(async () => {
     }
   }
 
-  return { userId, organizationId };
+  return { userId, organizationId, user };
 });
 
 const t = initTRPC.context<typeof createTRPCContext>().create();
@@ -40,3 +41,18 @@ const t = initTRPC.context<typeof createTRPCContext>().create();
 export const createCallerFactory = t.createCallerFactory;
 export const router = t.router;
 export const publicProcedure = t.procedure;
+
+// Protected procedure that requires authentication
+export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  if (!ctx.userId || !ctx.user) {
+    throw new Error("Unauthorized - Please log in");
+  }
+
+  return next({
+    ctx: {
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+      user: ctx.user,
+    },
+  });
+});

@@ -3,19 +3,154 @@ import { router, publicProcedure } from "../trpc";
 import clientPromise from "@/lib/mongodb";
 import { OrderSchema, OrderStatus } from "@/lib/types";
 import { ObjectId } from "mongodb";
+import { logActivity } from "@/lib/userLog";
 
 export const ordersRouter = router({
+  // รับออเดอร์ (Receive Order) - Admin creates order manually
   create: publicProcedure
     .input(OrderSchema.omit({ _id: true, createdAt: true, updatedAt: true }))
     .mutation(async ({ input }) => {
       const client = await clientPromise;
       const db = client.db();
+
+      // If productId is provided, reduce stock from inventory
+      if (input.productId) {
+        const product = await db.collection("products").findOne({
+          _id: new ObjectId(input.productId),
+          organizationId: input.organizationId,
+        });
+
+        if (!product) {
+          throw new Error("Product not found");
+        }
+
+        if (!product.isActive) {
+          throw new Error("Product is not active");
+        }
+
+        if (product.stockQuantity < input.quantity) {
+          throw new Error(
+            `Insufficient stock. Available: ${product.stockQuantity}, Requested: ${input.quantity}`
+          );
+        }
+
+        // Reduce stock
+        await db.collection("products").updateOne(
+          { _id: new ObjectId(input.productId) },
+          {
+            $inc: { stockQuantity: -input.quantity },
+            $set: { updatedAt: new Date() },
+          }
+        );
+
+        // Use product data if not overridden
+        input.productCode = input.productCode || product.productCode;
+        input.productName = input.productName || product.productName;
+        input.price = input.price || product.price;
+      }
+
       const result = await db.collection("orders").insertOne({
         ...input,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+
+      // Get user info for logging
+      const user = input.createdBy
+        ? await db.collection("users").findOne({ _id: new ObjectId(input.createdBy) })
+        : null;
+
+      // Log create order activity
+      if (user) {
+        await logActivity({
+          db,
+          userId: user._id.toString(),
+          userName: user.name,
+          activity: "create order",
+          refId: result.insertedId.toString(),
+          organizationId: input.organizationId,
+        });
+      }
+
       return { id: result.insertedId.toString() };
+    }),
+
+  // Client order submission - Public endpoint for clients to submit orders
+  submitClientOrder: publicProcedure
+    .input(
+      z.object({
+        organizationId: z.string(),
+        productId: z.string().optional(),
+        productCode: z.string().optional(),
+        productName: z.string().min(1, "Product name is required"),
+        price: z.number().positive("Price must be positive"),
+        quantity: z.number().int().positive("Quantity must be positive"),
+        channel: z.enum(["line", "shopee", "lazada", "other"]),
+        customerName: z.string().min(1, "Customer name is required"),
+        customerContact: z.string().min(1, "Customer contact is required"),
+        shippingAddress: z.string().min(1, "Shipping address is required"),
+        orderDate: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const client = await clientPromise;
+      const db = client.db();
+
+      // If productId is provided, check stock and reduce
+      if (input.productId) {
+        const product = await db.collection("products").findOne({
+          _id: new ObjectId(input.productId),
+          organizationId: input.organizationId,
+        });
+
+        if (!product) {
+          throw new Error("Product not found");
+        }
+
+        if (!product.isActive) {
+          throw new Error("Product is not available");
+        }
+
+        if (product.stockQuantity < input.quantity) {
+          throw new Error(
+            `Insufficient stock. Available: ${product.stockQuantity}, Requested: ${input.quantity}`
+          );
+        }
+
+        // Reduce stock
+        await db.collection("products").updateOne(
+          { _id: new ObjectId(input.productId) },
+          {
+            $inc: { stockQuantity: -input.quantity },
+            $set: { updatedAt: new Date() },
+          }
+        );
+      }
+
+      const result = await db.collection("orders").insertOne({
+        ...input,
+        orderSource: "client",
+        status: "pending",
+        createdBy: "client", // No user authentication required for client orders
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // Log client order activity (without user ID since it's public)
+      await logActivity({
+        db,
+        userId: "client",
+        userName: input.customerName,
+        activity: "submit client order",
+        refId: result.insertedId.toString(),
+        organizationId: input.organizationId,
+      });
+
+      return {
+        success: true,
+        id: result.insertedId.toString(),
+        message: "Order submitted successfully"
+      };
     }),
 
   list: publicProcedure
@@ -74,6 +209,25 @@ export const ordersRouter = router({
     .mutation(async ({ input }) => {
       const client = await clientPromise;
       const db = client.db();
+
+      // Get the current order
+      const order = await db.collection("orders").findOne({ _id: new ObjectId(input.id) });
+      if (!order) {
+        throw new Error("Order not found");
+      }
+
+      // If changing to cancelled and order has a productId, restore stock
+      if (input.status === "cancelled" && order.status !== "cancelled" && order.productId) {
+        await db.collection("products").updateOne(
+          { _id: new ObjectId(order.productId) },
+          {
+            $inc: { stockQuantity: order.quantity },
+            $set: { updatedAt: new Date() },
+          }
+        );
+      }
+
+      // Update order status
       await db.collection("orders").updateOne(
         { _id: new ObjectId(input.id) },
         {
@@ -83,6 +237,24 @@ export const ordersRouter = router({
           },
         }
       );
+
+      // Get user info for logging
+      const user = order.createdBy
+        ? await db.collection("users").findOne({ _id: new ObjectId(order.createdBy) })
+        : null;
+
+      // Log update order status activity
+      if (user) {
+        await logActivity({
+          db,
+          userId: user._id.toString(),
+          userName: user.name,
+          activity: `update order status to ${input.status}`,
+          refId: input.id,
+          organizationId: order.organizationId,
+        });
+      }
+
       return { success: true };
     }),
 

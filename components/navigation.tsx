@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, ClipboardList, Truck, LogOut, Settings, Menu, X } from "lucide-react";
+import { Package, ClipboardList, Truck, LogOut, Settings, Menu, X, PlusCircle, ShoppingCart, BoxIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -13,27 +13,51 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   const { user, organization, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const links = [
+  const sections = [
     {
-      href: "/",
-      label: "รับออเดอร์",
-      icon: Package,
-    },
-    {
-      href: "/dashboard",
-      label: "แดชบอร์ด",
-      icon: ClipboardList,
-    },
-    {
-      href: "/shipping",
-      label: "จัดส่ง",
-      icon: Truck,
-    },
-    {
-      href: "/admin/credits",
-      label: "จัดการ Credits",
-      icon: Settings,
+      title: "ADMIN PANEL",
       adminOnly: true,
+      links: [
+        {
+          href: "/admin/products",
+          label: "ADD STOCK",
+          icon: BoxIcon,
+          adminOnly: true,
+        },
+        {
+          href: "/admin/orders",
+          label: "ADD ORDER",
+          icon: PlusCircle,
+          adminOnly: true,
+        },
+      ],
+    },
+    {
+      title: "MANAGEMENT",
+      links: [
+        {
+          href: "/dashboard",
+          label: "แดชบอร์ด",
+          icon: ClipboardList,
+        },
+        {
+          href: "/shipping",
+          label: "จัดส่ง",
+          icon: Truck,
+        },
+      ],
+    },
+    {
+      title: "SETTINGS",
+      adminOnly: true,
+      links: [
+        {
+          href: "/admin/credits",
+          label: "จัดการ Credits",
+          icon: Settings,
+          adminOnly: true,
+        },
+      ],
     },
   ];
 
@@ -87,31 +111,52 @@ export function Navigation({ children }: { children: React.ReactNode }) {
 
         {/* Navigation Links */}
         <nav className="flex-1 p-4 overflow-y-auto mt-16 lg:mt-0">
-          <div className="space-y-1">
-            {links.map((link: any) => {
-              // Skip admin-only links if user is not admin/owner
-              if (link.adminOnly && user?.role !== "owner" && user?.role !== "admin") {
+          <div className="space-y-6">
+            {sections.map((section: any, sectionIndex: number) => {
+              // Skip admin-only sections if user is not admin
+              if (section.adminOnly && user?.role !== "admin") {
                 return null;
               }
 
-              const Icon = link.icon;
-              const isActive = pathname === link.href;
-
               return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={closeMobileMenu}
-                  className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors",
-                    isActive
-                      ? "bg-line text-white"
-                      : "text-gray-600 hover:bg-gray-100"
+                <div key={sectionIndex}>
+                  {/* Section Title */}
+                  {section.title && (
+                    <h3 className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      {section.title}
+                    </h3>
                   )}
-                >
-                  <Icon size={20} />
-                  {link.label}
-                </Link>
+
+                  {/* Section Links */}
+                  <div className="space-y-1">
+                    {section.links.map((link: any) => {
+                      // Skip admin-only links if user is not admin
+                      if (link.adminOnly && user?.role !== "admin") {
+                        return null;
+                      }
+
+                      const Icon = link.icon;
+                      const isActive = pathname === link.href;
+
+                      return (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          onClick={closeMobileMenu}
+                          className={cn(
+                            "flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors",
+                            isActive
+                              ? "bg-line text-white"
+                              : "text-gray-600 hover:bg-gray-100"
+                          )}
+                        >
+                          <Icon size={20} />
+                          {link.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -139,8 +184,15 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                 </div>
               </div>
               <div className="mt-2">
-                <span className="inline-block px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                  {user.role === "owner" ? "เจ้าของ" : user.role === "admin" ? "ผู้ดูแล" : "สมาชิก"}
+                <span className={cn(
+                  "inline-block px-2 py-1 text-xs font-medium rounded-full",
+                  user.role === "admin" ? "bg-blue-100 text-blue-800" :
+                  user.role === "shipper" ? "bg-green-100 text-green-800" :
+                  "bg-purple-100 text-purple-800"
+                )}>
+                  {user.role === "admin" ? "ผู้ดูแลระบบ" :
+                   user.role === "shipper" ? "พนักงานจัดส่ง" :
+                   "พนักงานจัดซื้อ"}
                 </span>
               </div>
             </div>
