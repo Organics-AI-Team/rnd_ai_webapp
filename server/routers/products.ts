@@ -4,6 +4,7 @@ import clientPromise from "@/lib/mongodb";
 import { ProductSchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
+import { logProductActivity } from "@/lib/productLog";
 
 export const productsRouter = router({
   // Get all products for organization
@@ -95,6 +96,22 @@ export const productsRouter = router({
         organizationId: ctx.user.organizationId,
       });
 
+      // Log product activity
+      await logProductActivity({
+        db,
+        productId: result.insertedId.toString(),
+        productCode: input.productCode,
+        productName: input.productName,
+        action: "create",
+        previousStock: 0,
+        newStock: input.stockQuantity,
+        quantityChange: input.stockQuantity,
+        userId: ctx.userId,
+        userName: ctx.user.name,
+        organizationId: ctx.user.organizationId,
+        notes: `Created with initial stock: ${input.stockQuantity}`,
+      });
+
       return {
         _id: result.insertedId.toString(),
         success: true,
@@ -120,6 +137,16 @@ export const productsRouter = router({
       const db = client.db();
 
       const { id, ...updateData } = input;
+
+      // Get current product data before update
+      const currentProduct = await db.collection("products").findOne({
+        _id: new ObjectId(id),
+        organizationId: ctx.user.organizationId,
+      });
+
+      if (!currentProduct) {
+        throw new Error("Product not found");
+      }
 
       // If updating product code, check it doesn't conflict
       if (updateData.productCode) {
@@ -147,10 +174,6 @@ export const productsRouter = router({
         }
       );
 
-      if (result.matchedCount === 0) {
-        throw new Error("Product not found");
-      }
-
       // Log update product activity
       await logActivity({
         db,
@@ -159,6 +182,23 @@ export const productsRouter = router({
         activity: "update product",
         refId: id,
         organizationId: ctx.user.organizationId,
+      });
+
+      // Log product activity with stock changes if stock was updated
+      const stockChanged = updateData.stockQuantity !== undefined && updateData.stockQuantity !== currentProduct.stockQuantity;
+      await logProductActivity({
+        db,
+        productId: id,
+        productCode: updateData.productCode || currentProduct.productCode,
+        productName: updateData.productName || currentProduct.productName,
+        action: "update",
+        previousStock: currentProduct.stockQuantity,
+        newStock: updateData.stockQuantity !== undefined ? updateData.stockQuantity : currentProduct.stockQuantity,
+        quantityChange: stockChanged ? (updateData.stockQuantity! - currentProduct.stockQuantity) : undefined,
+        userId: ctx.userId,
+        userName: ctx.user.name,
+        organizationId: ctx.user.organizationId,
+        notes: stockChanged ? `Stock manually adjusted from ${currentProduct.stockQuantity} to ${updateData.stockQuantity}` : "Product details updated",
       });
 
       return { success: true };

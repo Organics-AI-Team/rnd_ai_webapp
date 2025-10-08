@@ -21,6 +21,27 @@ export const ProductSchema = z.object({
 
 export type Product = z.infer<typeof ProductSchema>;
 
+export const ProductLogSchema = z.object({
+  _id: z.string().optional(),
+  date: z.string(), // Format: DD/MM/YYYY
+  time: z.string(), // Format: HH:mm
+  productId: z.string(),
+  productCode: z.string(),
+  productName: z.string(),
+  action: z.enum(["create", "update", "add_stock", "reduce_stock", "delete"]),
+  quantityChange: z.number().optional(), // Positive for add, negative for reduce
+  previousStock: z.number().optional(),
+  newStock: z.number().optional(),
+  userId: z.string(),
+  userName: z.string().optional(),
+  organizationId: z.string(),
+  refId: z.string().optional(), // Order ID if stock reduced by order
+  notes: z.string().optional(),
+  createdAt: z.date().default(() => new Date()),
+});
+
+export type ProductLog = z.infer<typeof ProductLogSchema>;
+
 // ============================================
 // ORDER SCHEMAS
 // ============================================

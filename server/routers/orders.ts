@@ -4,6 +4,7 @@ import clientPromise from "@/lib/mongodb";
 import { OrderSchema, OrderStatus } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
+import { logProductActivity } from "@/lib/productLog";
 
 export const ordersRouter = router({
   // รับออเดอร์ (Receive Order) - Admin creates order manually
@@ -47,6 +48,28 @@ export const ordersRouter = router({
         input.productCode = input.productCode || product.productCode;
         input.productName = input.productName || product.productName;
         input.price = input.price || product.price;
+
+        // Get user for logging
+        const user = input.createdBy
+          ? await db.collection("users").findOne({ _id: new ObjectId(input.createdBy) })
+          : null;
+
+        // Log product stock reduction
+        await logProductActivity({
+          db,
+          productId: input.productId,
+          productCode: product.productCode,
+          productName: product.productName,
+          action: "reduce_stock",
+          previousStock: product.stockQuantity,
+          newStock: product.stockQuantity - input.quantity,
+          quantityChange: -input.quantity,
+          userId: input.createdBy || "system",
+          userName: user?.name || "System",
+          organizationId: input.organizationId,
+          refId: "", // Will be updated after order is created
+          notes: `Stock reduced by order for customer: ${input.customerName}`,
+        });
       }
 
       const result = await db.collection("orders").insertOne({
@@ -220,13 +243,41 @@ export const ordersRouter = router({
       if (input.status === "cancelled" && order.status !== "cancelled") {
         // Restore stock if productId exists
         if (order.productId) {
-          await db.collection("products").updateOne(
-            { _id: new ObjectId(order.productId) },
-            {
-              $inc: { stockQuantity: order.quantity },
-              $set: { updatedAt: new Date() },
-            }
-          );
+          const product = await db.collection("products").findOne({
+            _id: new ObjectId(order.productId),
+          });
+
+          if (product) {
+            await db.collection("products").updateOne(
+              { _id: new ObjectId(order.productId) },
+              {
+                $inc: { stockQuantity: order.quantity },
+                $set: { updatedAt: new Date() },
+              }
+            );
+
+            // Get user for logging
+            const user = order.createdBy
+              ? await db.collection("users").findOne({ _id: new ObjectId(order.createdBy) })
+              : null;
+
+            // Log product stock restoration
+            await logProductActivity({
+              db,
+              productId: order.productId,
+              productCode: product.productCode,
+              productName: product.productName,
+              action: "add_stock",
+              previousStock: product.stockQuantity,
+              newStock: product.stockQuantity + order.quantity,
+              quantityChange: order.quantity,
+              userId: order.createdBy || "system",
+              userName: user?.name || "System",
+              organizationId: order.organizationId,
+              refId: input.id,
+              notes: `Stock restored from cancelled order for customer: ${order.customerName}`,
+            });
+          }
         }
 
         // Deduct cancellation fee: 10 THB per piece
