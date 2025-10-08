@@ -107,7 +107,7 @@ export default function ClientOrderPage() {
                 <CheckCircle className="h-6 w-6" />
                 <div>
                   <p className="font-semibold">Order submitted successfully!</p>
-                  <p className="text-sm">We'll process your order shortly.</p>
+                  <p className="text-sm">We&apos;ll process your order shortly.</p>
                 </div>
               </div>
             </CardContent>

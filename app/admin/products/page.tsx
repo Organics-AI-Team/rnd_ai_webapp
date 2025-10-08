@@ -443,7 +443,7 @@ export default function AdminProductsPage() {
                 <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600 mb-2">ยังไม่มีสินค้า</p>
                 <p className="text-sm text-gray-500">
-                  คลิก "เพิ่มสินค้า" เพื่อเริ่มต้น
+                  คลิก &quot;เพิ่มสินค้า&quot; เพื่อเริ่มต้น
                 </p>
               </div>
             )}
