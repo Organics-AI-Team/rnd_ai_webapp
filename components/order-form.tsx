@@ -74,7 +74,7 @@ export function OrderForm() {
   // Handle product selection
   const handleProductSelect = (productId: string) => {
     setSelectedProductId(productId);
-    const selectedProduct = products?.find((p: any) => p._id === productId);
+    const selectedProduct = products?.find((p: any) => p._id === productId) as any;
 
     if (selectedProduct) {
       setFormData({
