@@ -143,14 +143,14 @@ export const ordersRouter = router({
 
       const quantity = order.quantity || 1;
 
-      // Calculate costs based on credits usage
+      // Use the costs sent from frontend (already calculated)
       const pickPackCost = input.pickPackCost ?? 0;
-      const bubbleCost = (input.bubbleCost ?? 0) * quantity;
-      const paperInsideCost = (input.paperInsideCost ?? 0) * quantity;
+      const bubbleCost = input.bubbleCost ?? 0;
+      const paperInsideCost = input.paperInsideCost ?? 0;
       const cancelOrderCost = input.cancelOrderCost ?? 0;
       const codCost = input.codCost ?? 0;
-      const boxCost = (input.boxCost ?? 0) * quantity;
-      const deliveryFeeCost = (input.deliveryFeeCost ?? 0) * quantity;
+      const boxCost = input.boxCost ?? 0;
+      const deliveryFeeCost = input.deliveryFeeCost ?? 0;
 
       const totalShippingCost =
         pickPackCost +

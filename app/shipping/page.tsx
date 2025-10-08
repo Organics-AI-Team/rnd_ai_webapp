@@ -19,7 +19,7 @@ import React from "react";
 import { useAuth } from "@/lib/auth-context";
 
 export default function ShippingPage() {
-  const { user, organization } = useAuth();
+  const { user, organization, refreshUser } = useAuth();
   const { data: orders = [], isLoading, error } = trpc.orders.list.useQuery();
   const utils = trpc.useUtils();
   const updateStatus = trpc.orders.updateStatus.useMutation({
@@ -29,7 +29,7 @@ export default function ShippingPage() {
   });
 
   const updateShippingCost = trpc.orders.updateShippingCost.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       // After saving shipping cost, update status to sent_to_logistic
       if (confirmingOrderId) {
         updateStatus.mutate({
@@ -39,6 +39,8 @@ export default function ShippingPage() {
       }
       utils.orders.list.invalidate();
       utils.auth.me.invalidate();
+      // Refresh user data to update credits in real-time
+      await refreshUser();
       setEditingOrderId(null);
       setConfirmingOrderId(null);
     },
@@ -54,13 +56,13 @@ export default function ShippingPage() {
 
   // Global rates that apply to all orders
   const [rates, setRates] = useState({
-    pickPack: 20, // per order
-    bubble: 5,    // per item
-    paperInside: 3, // per item
-    cancelOrder: 10, // per order
+    pickPack: 20, // per piece
+    bubble: 5,    // per piece
+    paperInside: 3, // per piece
+    cancelOrder: 10, // per piece
     codPercent: 3, // 3% of order total
-    box: 0,       // TBC per item
-    deliveryFee: 0, // TBC per item
+    box: 0,       // per order
+    deliveryFee: 0, // per order
   });
 
   const handleShipOrder = (orderId: string) => {
@@ -85,13 +87,13 @@ export default function ShippingPage() {
     const isCancelled = order.status === "cancelled";
 
     return {
-      pickPackCost: rates.pickPack,
+      pickPackCost: rates.pickPack * quantity,
       bubbleCost: rates.bubble * quantity,
       paperInsideCost: rates.paperInside * quantity,
-      cancelOrderCost: isCancelled ? rates.cancelOrder : 0, // Only charge if cancelled
+      cancelOrderCost: isCancelled ? rates.cancelOrder * quantity : 0, // Per piece if cancelled
       codCost: orderTotal * (rates.codPercent / 100),
-      boxCost: rates.box * quantity,
-      deliveryFeeCost: rates.deliveryFee * quantity,
+      boxCost: rates.box, // Per order
+      deliveryFeeCost: rates.deliveryFee, // Per order
     };
   };
 
@@ -217,12 +219,14 @@ export default function ShippingPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="text-xs text-gray-700 font-medium block mb-2">
-                  Pick & Pack (฿/คำสั่ง)
+                  Pick & Pack (฿/ชิ้น)
                 </label>
                 <Input
                   type="number"
                   value={rates.pickPack}
                   onChange={(e) => updateRate("pickPack", e.target.value)}
+                  readOnly
+                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
@@ -233,6 +237,8 @@ export default function ShippingPage() {
                   type="number"
                   value={rates.bubble}
                   onChange={(e) => updateRate("bubble", e.target.value)}
+                  readOnly
+                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
@@ -243,16 +249,20 @@ export default function ShippingPage() {
                   type="number"
                   value={rates.paperInside}
                   onChange={(e) => updateRate("paperInside", e.target.value)}
+                  readOnly
+                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="text-xs text-gray-700 font-medium block mb-2">
-                  Cancel order (฿/คำสั่ง)
+                  Cancel order (฿/ชิ้น)
                 </label>
                 <Input
                   type="number"
                   value={rates.cancelOrder}
                   onChange={(e) => updateRate("cancelOrder", e.target.value)}
+                  readOnly
+                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
@@ -263,11 +273,13 @@ export default function ShippingPage() {
                   type="number"
                   value={rates.codPercent}
                   onChange={(e) => updateRate("codPercent", e.target.value)}
+                  readOnly
+                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="text-xs text-gray-700 font-medium block mb-2">
-                  Box (฿/ชิ้น)
+                  Box (฿/คำสั่ง)
                 </label>
                 <Input
                   type="number"
@@ -277,7 +289,7 @@ export default function ShippingPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-700 font-medium block mb-2">
-                  Delivery fee (฿/ชิ้น)
+                  Delivery fee (฿/คำสั่ง)
                 </label>
                 <Input
                   type="number"
@@ -390,7 +402,7 @@ export default function ShippingPage() {
                                         ฿{costs.pickPackCost.toFixed(2)}
                                       </div>
                                       <div className="text-xs text-gray-500">
-                                        ฿{rates.pickPack}/คำสั่ง
+                                        ฿{rates.pickPack}/ชิ้น × {order.quantity}
                                       </div>
                                     </div>
                                     <div className="bg-white p-3 rounded border">
@@ -417,7 +429,7 @@ export default function ShippingPage() {
                                         ฿{costs.cancelOrderCost.toFixed(2)}
                                       </div>
                                       <div className="text-xs text-gray-500">
-                                        ฿{rates.cancelOrder}/คำสั่ง
+                                        ฿{rates.cancelOrder}/ชิ้น × {order.quantity}
                                       </div>
                                     </div>
                                     <div className="bg-white p-3 rounded border">
@@ -435,7 +447,7 @@ export default function ShippingPage() {
                                         ฿{costs.boxCost.toFixed(2)}
                                       </div>
                                       <div className="text-xs text-gray-500">
-                                        ฿{rates.box}/ชิ้น × {order.quantity}
+                                        ฿{rates.box}/คำสั่ง
                                       </div>
                                     </div>
                                     <div className="bg-white p-3 rounded border">
@@ -444,7 +456,7 @@ export default function ShippingPage() {
                                         ฿{costs.deliveryFeeCost.toFixed(2)}
                                       </div>
                                       <div className="text-xs text-gray-500">
-                                        ฿{rates.deliveryFee}/ชิ้น × {order.quantity}
+                                        ฿{rates.deliveryFee}/คำสั่ง
                                       </div>
                                     </div>
                                     <div className="bg-green-100 p-3 rounded border-2 border-green-600">
