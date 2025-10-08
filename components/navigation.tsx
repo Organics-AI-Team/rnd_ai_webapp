@@ -15,25 +15,25 @@ export function Navigation({ children }: { children: React.ReactNode }) {
 
   const sections = [
     {
-      title: "ADMIN PANEL",
+      title: "แอดมิน",
       adminOnly: true,
       links: [
         {
           href: "/admin/products",
-          label: "ADD STOCK",
+          label: "เพิ่มสินค้า",
           icon: BoxIcon,
           adminOnly: true,
         },
         {
           href: "/admin/orders",
-          label: "ADD ORDER",
+          label: "รับออเดอร์",
           icon: PlusCircle,
           adminOnly: true,
         },
       ],
     },
     {
-      title: "MANAGEMENT",
+      title: "จัดการ",
       links: [
         {
           href: "/dashboard",
@@ -48,12 +48,12 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       ],
     },
     {
-      title: "SETTINGS",
+      title: "ตั้งค่า",
       adminOnly: true,
       links: [
         {
           href: "/admin/credits",
-          label: "จัดการ Credits",
+          label: "จัดการเครดิต",
           icon: Settings,
           adminOnly: true,
         },

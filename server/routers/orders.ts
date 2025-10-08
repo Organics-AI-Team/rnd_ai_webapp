@@ -216,13 +216,25 @@ export const ordersRouter = router({
         throw new Error("Order not found");
       }
 
-      // If changing to cancelled and order has a productId, restore stock
-      if (input.status === "cancelled" && order.status !== "cancelled" && order.productId) {
-        await db.collection("products").updateOne(
-          { _id: new ObjectId(order.productId) },
+      // If changing to cancelled and order has a productId, restore stock and deduct credits
+      if (input.status === "cancelled" && order.status !== "cancelled") {
+        // Restore stock if productId exists
+        if (order.productId) {
+          await db.collection("products").updateOne(
+            { _id: new ObjectId(order.productId) },
+            {
+              $inc: { stockQuantity: order.quantity },
+              $set: { updatedAt: new Date() },
+            }
+          );
+        }
+
+        // Deduct cancellation fee: 10 THB per piece
+        const cancellationFee = order.quantity * 10;
+        await db.collection("organizations").updateOne(
+          { _id: new ObjectId(order.organizationId) },
           {
-            $inc: { stockQuantity: order.quantity },
-            $set: { updatedAt: new Date() },
+            $inc: { credits: -cancellationFee },
           }
         );
       }

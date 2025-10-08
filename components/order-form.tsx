@@ -27,6 +27,7 @@ import { Trash2, Plus } from "lucide-react";
 
 type OrderItem = {
   id: string;
+  productId?: string;
   orderDate: string;
   productCode: string;
   productName: string;
@@ -110,6 +111,7 @@ export function OrderForm() {
 
     const newOrder: OrderItem = {
       id: Date.now().toString(),
+      productId: formData.productId,
       orderDate: formData.orderDate,
       productCode: formData.productCode,
       productName: formData.productName,
@@ -166,12 +168,15 @@ export function OrderForm() {
     try {
       for (const order of ordersList) {
         console.log("Submitting order:", {
+          productId: order.productId,
           channel: order.channel,
           productName: order.productName,
+          quantity: order.quantity,
         });
         await createOrder.mutateAsync({
           organizationId: organization._id,
           createdBy: user._id,
+          productId: order.productId,
           productCode: order.productCode,
           productName: order.productName,
           price: parseFloat(order.price),
@@ -187,6 +192,7 @@ export function OrderForm() {
       }
       utils.orders.list.invalidate();
       utils.orders.getStats.invalidate();
+      utils.products.list.invalidate();
       setOrdersList([]);
       alert(`บันทึกออเดอร์สำเร็จ ${ordersList.length} รายการ`);
     } catch (error: any) {

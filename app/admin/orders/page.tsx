@@ -23,8 +23,23 @@ export default function AdminOrdersPage() {
   }
 
   if (!user) {
-    router.push("/login");
-    return null;
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-red-600 font-semibold mb-4">กรุณาเข้าสู่ระบบ</p>
+              <p className="text-gray-600 mb-4">
+                คุณต้องเข้าสู่ระบบก่อนเข้าใช้งานหน้านี้
+              </p>
+              <Button onClick={() => router.push("/login")}>
+                ไปหน้าเข้าสู่ระบบ
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   // Only allow admin role
@@ -69,10 +84,10 @@ export default function AdminOrdersPage() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">
-                  ADD ORDER
+                  รับออเดอร์
                 </h1>
                 <p className="text-gray-600">
-                  Manually create orders on behalf of customers
+                  สร้างออเดอร์แทนลูกค้าด้วยตนเอง
                 </p>
               </div>
             </div>

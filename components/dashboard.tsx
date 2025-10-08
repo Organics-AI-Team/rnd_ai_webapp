@@ -23,6 +23,14 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type TabType = "active" | "delivered" | "cancelled" | "all";
 
@@ -35,6 +43,8 @@ export function Dashboard() {
     onSuccess: () => {
       utils.orders.list.invalidate();
       utils.orders.getStats.invalidate();
+      utils.products.list.invalidate();
+      utils.auth.me.invalidate();
     },
   });
 
@@ -45,6 +55,25 @@ export function Dashboard() {
   const [reportMonth, setReportMonth] = useState<string>(
     new Date().toISOString().slice(0, 7)
   );
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState<any>(null);
+
+  const handleStatusChange = (orderId: string, newStatus: OrderStatusType, order: any) => {
+    if (newStatus === "cancelled" && order.status !== "cancelled") {
+      setOrderToCancel(order);
+      setCancelDialogOpen(true);
+    } else {
+      updateStatus.mutate({ id: orderId, status: newStatus });
+    }
+  };
+
+  const confirmCancellation = () => {
+    if (orderToCancel) {
+      updateStatus.mutate({ id: orderToCancel._id, status: "cancelled" });
+      setCancelDialogOpen(false);
+      setOrderToCancel(null);
+    }
+  };
 
   const generateMonthlyReport = async () => {
     const jsPDF = (await import("jspdf")).default;
@@ -491,38 +520,39 @@ export function Dashboard() {
                       ฿{(order.price * order.quantity).toLocaleString()}
                     </TableCell>
                     <TableCell>
-                      <Select
-                        value={order.status}
-                        onValueChange={(value) =>
-                          updateStatus.mutate({
-                            id: order._id,
-                            status: value as OrderStatusType,
-                          })
-                        }
-                      >
-                        <SelectTrigger className="w-[160px]">
-                          <Badge variant={order.status as any}>
-                            {order.status.replace(/_/g, " ").toUpperCase()}
-                          </Badge>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">
-                            <Badge variant="pending">PENDING</Badge>
-                          </SelectItem>
-                          <SelectItem value="processing">
-                            <Badge variant="processing">PROCESSING</Badge>
-                          </SelectItem>
-                          <SelectItem value="sent_to_logistic">
-                            <Badge variant="sent_to_logistic">SENT TO LOGISTIC</Badge>
-                          </SelectItem>
-                          <SelectItem value="delivered">
-                            <Badge variant="delivered">DELIVERED</Badge>
-                          </SelectItem>
-                          <SelectItem value="cancelled">
-                            <Badge variant="cancelled">CANCELLED</Badge>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                      {order.status === "cancelled" ? (
+                        <Badge variant="cancelled">CANCELLED</Badge>
+                      ) : (
+                        <Select
+                          value={order.status}
+                          onValueChange={(value) =>
+                            handleStatusChange(order._id, value as OrderStatusType, order)
+                          }
+                        >
+                          <SelectTrigger className="w-[160px]">
+                            <Badge variant={order.status as any}>
+                              {order.status.replace(/_/g, " ").toUpperCase()}
+                            </Badge>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">
+                              <Badge variant="pending">PENDING</Badge>
+                            </SelectItem>
+                            <SelectItem value="processing">
+                              <Badge variant="processing">PROCESSING</Badge>
+                            </SelectItem>
+                            <SelectItem value="sent_to_logistic">
+                              <Badge variant="sent_to_logistic">SENT TO LOGISTIC</Badge>
+                            </SelectItem>
+                            <SelectItem value="delivered">
+                              <Badge variant="delivered">DELIVERED</Badge>
+                            </SelectItem>
+                            <SelectItem value="cancelled">
+                              <Badge variant="cancelled">CANCELLED</Badge>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {new Date(order.createdAt).toLocaleDateString()}
@@ -534,6 +564,60 @@ export function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Cancellation Confirmation Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ยืนยันการยกเลิกออเดอร์</DialogTitle>
+            <DialogDescription>
+              คุณแน่ใจหรือไม่ที่จะยกเลิกออเดอร์นี้?
+            </DialogDescription>
+          </DialogHeader>
+          {orderToCancel && (
+            <div className="py-4">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                <p className="font-semibold text-gray-900 mb-2">รายละเอียดออเดอร์:</p>
+                <div className="text-sm space-y-1">
+                  <p><span className="text-gray-600">สินค้า:</span> {orderToCancel.productName}</p>
+                  <p><span className="text-gray-600">จำนวน:</span> {orderToCancel.quantity} ชิ้น</p>
+                  <p><span className="text-gray-600">ลูกค้า:</span> {orderToCancel.customerName}</p>
+                </div>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="font-semibold text-red-900 mb-2">⚠️ ค่าธรรมเนียมการยกเลิก:</p>
+                <p className="text-2xl font-bold text-red-600">
+                  ฿{(orderToCancel.quantity * 10).toLocaleString()}
+                </p>
+                <p className="text-sm text-gray-600 mt-1">
+                  (฿10 ต่อชิ้น × {orderToCancel.quantity} ชิ้น)
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  จะถูกหักจากยอดเครดิตของคุณ
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelDialogOpen(false);
+                setOrderToCancel(null);
+              }}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmCancellation}
+              disabled={updateStatus.isPending}
+            >
+              {updateStatus.isPending ? "กำลังดำเนินการ..." : "ยืนยันการยกเลิก"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -45,7 +45,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logoutMutation = trpc.auth.logout.useMutation();
   const { data: meData, refetch: refetchMe, error: meError } = trpc.auth.me.useQuery(
     { token: token || "" },
-    { enabled: !!token, retry: false }
+    {
+      enabled: !!token,
+      retry: false,
+      refetchInterval: 5000, // Refetch every 5 seconds
+      refetchOnWindowFocus: true,
+    }
   );
 
   // Load token from localStorage on mount and sync with cookie
@@ -98,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log("Login - Cookie set");
       await refetchMe();
       console.log("Login - Refetched user data");
-      router.push("/");
+      router.push("/dashboard");
     } catch (error: any) {
       console.error("Login - Error:", error);
       throw new Error(error.message || "Login failed");
@@ -124,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Set cookie for middleware
       document.cookie = `auth_token=${result.token}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
       await refetchMe();
-      router.push("/");
+      router.push("/dashboard");
     } catch (error: any) {
       throw new Error(error.message || "Signup failed");
     }

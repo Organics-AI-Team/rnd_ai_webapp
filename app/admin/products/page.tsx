@@ -26,6 +26,7 @@ export default function AdminProductsPage() {
   const utils = trpc.useUtils();
 
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
   const [formData, setFormData] = useState({
     productCode: "",
     productName: "",
@@ -39,6 +40,23 @@ export default function AdminProductsPage() {
     onSuccess: () => {
       utils.products.list.invalidate();
       setShowAddForm(false);
+      setEditingProduct(null);
+      setFormData({
+        productCode: "",
+        productName: "",
+        description: "",
+        price: "",
+        stockQuantity: "",
+        lowStockThreshold: "10",
+      });
+    },
+  });
+
+  const updateProduct = trpc.products.update.useMutation({
+    onSuccess: () => {
+      utils.products.list.invalidate();
+      setShowAddForm(false);
+      setEditingProduct(null);
       setFormData({
         productCode: "",
         productName: "",
@@ -70,8 +88,23 @@ export default function AdminProductsPage() {
   }
 
   if (!user) {
-    router.push("/login");
-    return null;
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-red-600 font-semibold mb-4">กรุณาเข้าสู่ระบบ</p>
+              <p className="text-gray-600 mb-4">
+                คุณต้องเข้าสู่ระบบก่อนเข้าใช้งานหน้านี้
+              </p>
+              <Button onClick={() => router.push("/login")}>
+                ไปหน้าเข้าสู่ระบบ
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   if (user.role !== "admin") {
@@ -94,31 +127,57 @@ export default function AdminProductsPage() {
     );
   }
 
+  const handleEdit = (product: any) => {
+    setEditingProduct(product);
+    setFormData({
+      productCode: product.productCode,
+      productName: product.productName,
+      description: product.description || "",
+      price: product.price.toString(),
+      stockQuantity: product.stockQuantity.toString(),
+      lowStockThreshold: product.lowStockThreshold.toString(),
+    });
+    setShowAddForm(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
-      await createProduct.mutateAsync({
-        productCode: formData.productCode,
-        productName: formData.productName,
-        description: formData.description,
-        price: parseFloat(formData.price),
-        stockQuantity: parseInt(formData.stockQuantity),
-        lowStockThreshold: parseInt(formData.lowStockThreshold),
-      });
-      alert("Product added successfully!");
+      if (editingProduct) {
+        await updateProduct.mutateAsync({
+          id: editingProduct._id,
+          productCode: formData.productCode,
+          productName: formData.productName,
+          description: formData.description,
+          price: parseFloat(formData.price),
+          stockQuantity: parseInt(formData.stockQuantity),
+          lowStockThreshold: parseInt(formData.lowStockThreshold),
+        });
+        alert("อัปเดตสินค้าเรียบร้อยแล้ว!");
+      } else {
+        await createProduct.mutateAsync({
+          productCode: formData.productCode,
+          productName: formData.productName,
+          description: formData.description,
+          price: parseFloat(formData.price),
+          stockQuantity: parseInt(formData.stockQuantity),
+          lowStockThreshold: parseInt(formData.lowStockThreshold),
+        });
+        alert("เพิ่มสินค้าเรียบร้อยแล้ว!");
+      }
     } catch (error: any) {
-      alert(error.message || "Failed to add product");
+      alert(error.message || (editingProduct ? "ไม่สามารถอัปเดตสินค้าได้" : "ไม่สามารถเพิ่มสินค้าได้"));
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (confirm(`Are you sure you want to delete "${name}"?`)) {
+    if (confirm(`คุณแน่ใจหรือไม่ที่จะลบ "${name}"?`)) {
       try {
         await deleteProduct.mutateAsync({ id });
-        alert("Product deleted successfully!");
+        alert("ลบสินค้าเรียบร้อยแล้ว!");
       } catch (error: any) {
-        alert(error.message || "Failed to delete product");
+        alert(error.message || "ไม่สามารถลบสินค้าได้");
       }
     }
   };
@@ -144,20 +203,31 @@ export default function AdminProductsPage() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">
-                  ADD STOCK
+                  เพิ่มสินค้า
                 </h1>
                 <p className="text-gray-600">
-                  Manage your inventory and product stock
+                  จัดการสินค้าคงคลังและสต็อกสินค้า
                 </p>
               </div>
             </div>
 
             <Button
-              onClick={() => setShowAddForm(!showAddForm)}
+              onClick={() => {
+                setEditingProduct(null);
+                setFormData({
+                  productCode: "",
+                  productName: "",
+                  description: "",
+                  price: "",
+                  stockQuantity: "",
+                  lowStockThreshold: "10",
+                });
+                setShowAddForm(!showAddForm);
+              }}
               className="bg-green-600 hover:bg-green-700"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Add Product
+              เพิ่มสินค้า
             </Button>
           </div>
         </div>
@@ -166,19 +236,19 @@ export default function AdminProductsPage() {
         {showAddForm && (
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>Add New Product</CardTitle>
+              <CardTitle>{editingProduct ? "แก้ไขสินค้า" : "เพิ่มสินค้าใหม่"}</CardTitle>
               <CardDescription>
-                Fill in the product details to add to inventory
+                {editingProduct ? "อัปเดตรายละเอียดสินค้า" : "กรอกรายละเอียดสินค้าเพื่อเพิ่มเข้าคลัง"}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="productCode">Product Code *</Label>
+                    <Label htmlFor="productCode">รหัสสินค้า *</Label>
                     <Input
                       id="productCode"
-                      placeholder="e.g., PROD-001"
+                      placeholder="เช่น PROD-001"
                       value={formData.productCode}
                       onChange={(e) =>
                         setFormData({ ...formData, productCode: e.target.value })
@@ -188,10 +258,10 @@ export default function AdminProductsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="productName">Product Name *</Label>
+                    <Label htmlFor="productName">ชื่อสินค้า *</Label>
                     <Input
                       id="productName"
-                      placeholder="Enter product name"
+                      placeholder="กรอกชื่อสินค้า"
                       value={formData.productName}
                       onChange={(e) =>
                         setFormData({ ...formData, productName: e.target.value })
@@ -202,10 +272,10 @@ export default function AdminProductsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">รายละเอียด</Label>
                   <Textarea
                     id="description"
-                    placeholder="Product description (optional)"
+                    placeholder="รายละเอียดสินค้า (ไม่บังคับ)"
                     value={formData.description}
                     onChange={(e) =>
                       setFormData({ ...formData, description: e.target.value })
@@ -216,7 +286,7 @@ export default function AdminProductsPage() {
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
-                    <Label htmlFor="price">Price (฿) *</Label>
+                    <Label htmlFor="price">ราคา (฿) *</Label>
                     <Input
                       id="price"
                       type="number"
@@ -231,7 +301,7 @@ export default function AdminProductsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="stockQuantity">Initial Stock *</Label>
+                    <Label htmlFor="stockQuantity">สต็อกเริ่มต้น *</Label>
                     <Input
                       id="stockQuantity"
                       type="number"
@@ -246,7 +316,7 @@ export default function AdminProductsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="lowStockThreshold">Low Stock Alert</Label>
+                    <Label htmlFor="lowStockThreshold">แจ้งเตือนสต็อกต่ำ</Label>
                     <Input
                       id="lowStockThreshold"
                       type="number"
@@ -260,15 +330,29 @@ export default function AdminProductsPage() {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button type="submit" disabled={createProduct.isPending}>
-                    {createProduct.isPending ? "Adding..." : "Add Product"}
+                  <Button type="submit" disabled={createProduct.isPending || updateProduct.isPending}>
+                    {editingProduct
+                      ? (updateProduct.isPending ? "กำลังอัปเดต..." : "อัปเดตสินค้า")
+                      : (createProduct.isPending ? "กำลังเพิ่ม..." : "เพิ่มสินค้า")
+                    }
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setShowAddForm(false)}
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setEditingProduct(null);
+                      setFormData({
+                        productCode: "",
+                        productName: "",
+                        description: "",
+                        price: "",
+                        stockQuantity: "",
+                        lowStockThreshold: "10",
+                      });
+                    }}
                   >
-                    Cancel
+                    ยกเลิก
                   </Button>
                 </div>
               </form>
@@ -281,10 +365,10 @@ export default function AdminProductsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              Product Inventory
+              สินค้าในคลัง
             </CardTitle>
             <CardDescription>
-              {products?.length || 0} products in stock
+              มีสินค้าทั้งหมด {products?.length || 0} รายการ
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -292,12 +376,12 @@ export default function AdminProductsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Product Name</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>รหัสสินค้า</TableHead>
+                    <TableHead>ชื่อสินค้า</TableHead>
+                    <TableHead>ราคา</TableHead>
+                    <TableHead>สต็อก</TableHead>
+                    <TableHead>สถานะ</TableHead>
+                    <TableHead>จัดการ</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -323,15 +407,22 @@ export default function AdminProductsPage() {
                       </TableCell>
                       <TableCell>
                         {product.stockQuantity <= product.lowStockThreshold ? (
-                          <Badge variant="destructive">Low Stock</Badge>
+                          <Badge variant="destructive">สต็อกต่ำ</Badge>
                         ) : product.isActive ? (
-                          <Badge className="bg-green-600">Active</Badge>
+                          <Badge className="bg-green-600">ใช้งาน</Badge>
                         ) : (
-                          <Badge variant="secondary">Inactive</Badge>
+                          <Badge variant="secondary">ไม่ใช้งาน</Badge>
                         )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEdit(product)}
+                          >
+                            <Edit className="h-4 w-4 text-blue-600" />
+                          </Button>
                           <Button
                             size="sm"
                             variant="ghost"
@@ -350,9 +441,9 @@ export default function AdminProductsPage() {
             ) : (
               <div className="text-center py-12">
                 <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">No products yet</p>
+                <p className="text-gray-600 mb-2">ยังไม่มีสินค้า</p>
                 <p className="text-sm text-gray-500">
-                  Click "Add Product" to get started
+                  คลิก "เพิ่มสินค้า" เพื่อเริ่มต้น
                 </p>
               </div>
             )}
