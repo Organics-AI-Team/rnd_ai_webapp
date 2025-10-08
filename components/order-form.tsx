@@ -103,7 +103,7 @@ export function OrderForm() {
     }
 
     // Validate stock quantity
-    const selectedProduct = products?.find((p: any) => p._id === selectedProductId);
+    const selectedProduct = products?.find((p: any) => p._id === selectedProductId) as any;
     if (selectedProduct && parseInt(formData.quantity) > selectedProduct.stockQuantity) {
       alert(`สต็อกไม่เพียงพอ มีสต็อกคงเหลือ ${selectedProduct.stockQuantity} ชิ้น`);
       return;
@@ -271,7 +271,7 @@ export function OrderForm() {
                 <div>
                   <span className="text-gray-600">สต็อกคงเหลือ:</span>
                   <span className="ml-2 font-medium">
-                    {products?.find((p: any) => p._id === selectedProductId)?.stockQuantity || 0} ชิ้น
+                    {(products?.find((p: any) => p._id === selectedProductId) as any)?.stockQuantity || 0} ชิ้น
                   </span>
                 </div>
               </div>
@@ -284,7 +284,7 @@ export function OrderForm() {
               id="quantity"
               type="number"
               min="1"
-              max={products?.find((p: any) => p._id === selectedProductId)?.stockQuantity || 999999}
+              max={(products?.find((p: any) => p._id === selectedProductId) as any)?.stockQuantity || 999999}
               value={formData.quantity}
               onChange={(e) =>
                 setFormData({ ...formData, quantity: e.target.value })
@@ -295,7 +295,7 @@ export function OrderForm() {
             />
             {selectedProductId && (
               <p className="text-xs text-gray-500 mt-1">
-                สต็อกคงเหลือ: {products?.find((p: any) => p._id === selectedProductId)?.stockQuantity || 0} ชิ้น
+                สต็อกคงเหลือ: {(products?.find((p: any) => p._id === selectedProductId) as any)?.stockQuantity || 0} ชิ้น
               </p>
             )}
           </div>
