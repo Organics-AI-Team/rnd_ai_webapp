@@ -380,7 +380,7 @@ export default function ShippingPage() {
                           onClick={() => handleCalculateShippingCost(order._id)}
                           disabled={updateShippingCost.isPending}
                         >
-                          บันทึกค่าส่ง
+                          ทำการจัดส่ง
                         </Button>
                       </TableCell>
                     </TableRow>
