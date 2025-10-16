@@ -225,8 +225,6 @@ export default function ShippingPage() {
                   type="number"
                   value={rates.pickPack}
                   onChange={(e) => updateRate("pickPack", e.target.value)}
-                  readOnly
-                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
@@ -237,8 +235,6 @@ export default function ShippingPage() {
                   type="number"
                   value={rates.bubble}
                   onChange={(e) => updateRate("bubble", e.target.value)}
-                  readOnly
-                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
@@ -249,8 +245,6 @@ export default function ShippingPage() {
                   type="number"
                   value={rates.paperInside}
                   onChange={(e) => updateRate("paperInside", e.target.value)}
-                  readOnly
-                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
@@ -261,8 +255,6 @@ export default function ShippingPage() {
                   type="number"
                   value={rates.cancelOrder}
                   onChange={(e) => updateRate("cancelOrder", e.target.value)}
-                  readOnly
-                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
@@ -273,8 +265,6 @@ export default function ShippingPage() {
                   type="number"
                   value={rates.codPercent}
                   onChange={(e) => updateRate("codPercent", e.target.value)}
-                  readOnly
-                  className="bg-gray-100 cursor-not-allowed"
                 />
               </div>
               <div>
