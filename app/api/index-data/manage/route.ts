@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         console.error('Error checking/deleting index:', error);
         return NextResponse.json(
-          { success: false, error: `Failed to manage existing index: ${error.message}` },
+          { success: false, error: `Failed to manage existing index: ${error instanceof Error ? error.message : 'Unknown error'}` },
           { status: 500 }
         );
       }
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         console.error('Error creating index:', error);
         return NextResponse.json(
-          { success: false, error: `Failed to create index: ${error.message}` },
+          { success: false, error: `Failed to create index: ${error instanceof Error ? error.message : 'Unknown error'}` },
           { status: 500 }
         );
       }
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         console.error('Embedding test failed:', error);
         return NextResponse.json(
-          { success: false, error: `Embedding validation failed: ${error.message}` },
+          { success: false, error: `Embedding validation failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
           { status: 500 }
         );
       }
@@ -183,13 +183,13 @@ export async function POST(req: NextRequest) {
         });
 
         // Test delete
-        await index.deleteOne([testId]);
+        await index.deleteOne(testId);
 
         console.log('✅ Vector operations working correctly');
       } catch (error) {
         console.error('Vector operations test failed:', error);
         return NextResponse.json(
-          { success: false, error: `Vector operations validation failed: ${error.message}` },
+          { success: false, error: `Vector operations validation failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
           { status: 500 }
         );
       }
@@ -227,7 +227,7 @@ export async function POST(req: NextRequest) {
             dimension: 3072,
             status: 'Ready'
           },
-          warning: `Could not retrieve final stats: ${error.message}`
+          warning: `Could not retrieve final stats: ${error instanceof Error ? error.message : 'Unknown error'}`
         });
       }
 
@@ -275,7 +275,7 @@ export async function GET(req: NextRequest) {
         const index = pinecone.index(indexName);
         indexStats = await index.describeIndexStats();
       } catch (error) {
-        console.warn('Could not get index stats:', error.message);
+        console.warn('Could not get index stats:', error instanceof Error ? error.message : 'Unknown error');
       }
     }
 

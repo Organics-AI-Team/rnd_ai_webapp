@@ -58,7 +58,7 @@ export class EmbeddingService {
            error.message.includes('ECONNRESET') ||
            error.message.includes('ENOTFOUND'));
 
-        console.warn(`${operationName} - Attempt ${attempt}/${maxRetries} failed:`, error.message);
+        console.warn(`${operationName} - Attempt ${attempt}/${maxRetries} failed:`, error instanceof Error ? error.message : 'Unknown error');
 
         if (attempt === maxRetries) {
           break; // No more retries
@@ -147,7 +147,7 @@ export class EmbeddingService {
 
     for (let i = 0; i < materials.length; i += 100) {
       const batch = materials.slice(i, i + 100);
-      const vectors = [];
+      const vectors: any[] = [];
 
       for (const material of batch) {
         try {
@@ -171,7 +171,7 @@ export class EmbeddingService {
             }
           });
         } catch (error) {
-          console.warn(`⚠️ Skipping material ${material._id || material.id} due to embedding error:`, error.message);
+          console.warn(`⚠️ Skipping material ${material._id || material.id} due to embedding error:`, error instanceof Error ? error.message : 'Unknown error');
           // Continue with next material instead of failing the entire batch
         }
       }
@@ -210,7 +210,7 @@ export class EmbeddingService {
 
     for (let i = 0; i < formulas.length; i += 100) {
       const batch = formulas.slice(i, i + 100);
-      const vectors = [];
+      const vectors: any[] = [];
 
       for (const formula of batch) {
         try {
@@ -233,7 +233,7 @@ export class EmbeddingService {
             }
           });
         } catch (error) {
-          console.warn(`⚠️ Skipping formula ${formula._id} due to embedding error:`, error.message);
+          console.warn(`⚠️ Skipping formula ${formula._id} due to embedding error:`, error instanceof Error ? error.message : 'Unknown error');
           // Continue with next formula instead of failing entire batch
         }
       }
@@ -282,7 +282,7 @@ export class EmbeddingService {
         1000 // shorter delay
       );
 
-      const results: ChemicalSearchResult[] = response.matches.map((match: any) => ({
+      const results: ChemicalSearchResult[] = (response as any).matches.map((match: any) => ({
         id: match.id,
         type: match.metadata.type as 'raw_material' | 'formula',
         score: match.score,

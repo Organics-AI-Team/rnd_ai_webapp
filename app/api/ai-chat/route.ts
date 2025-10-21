@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const totalTime = Date.now() - startTime;
     console.error(`❌ Chat API error after ${totalTime}ms:`, error);
-    console.error('Error stack:', error.stack);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
     console.log('=== AI CHAT REQUEST FAILED ===');
     return new Response(`Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 500 });
   }

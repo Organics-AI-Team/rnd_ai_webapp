@@ -140,6 +140,7 @@ export default function AIIndexingPage() {
   // Load stats and index info on mount
   useEffect(() => {
     refreshAllData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -207,7 +208,7 @@ export default function AIIndexingPage() {
             <div className="space-y-4">
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-sm text-blue-800 font-medium mb-2">
-                  คลิกปุ่ม "สร้าง/อัปเดตดัชนี" เพื่อเริ่มต้นการจัดการดัชนีข้อมูล
+                  คลิกปุ่ม &quot;สร้าง/อัปเดตดัชนี&quot; เพื่อเริ่มต้นการจัดการดัชนีข้อมูล
                 </p>
                 <p className="text-xs text-blue-700">
                   ระบบจะตรวจสอบและสร้าง Index ใหม่ด้วยมิติ 3072 หากจำเป็นที่จำเป็น

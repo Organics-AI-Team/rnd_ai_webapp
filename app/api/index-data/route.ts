@@ -15,7 +15,7 @@ export const maxDuration = 300; // 5 minutes for indexing
 
 // Helper function to connect to MongoDB
 async function connectToDatabase(): Promise<Db> {
-  const client = new MongoClient(MONGODB_URI);
+  const client = new MongoClient(MONGODB_URI || '');
   await client.connect();
   const db = client.db(DB_NAME);
   return db;
