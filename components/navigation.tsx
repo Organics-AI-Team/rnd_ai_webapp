@@ -277,13 +277,6 @@ export function Navigation({ children }: { children: React.ReactNode }) {
           <div className="p-4 border-t bg-gray-50">
             {!isSidebarCollapsed ? (
               <>
-                {/* Credits Card */}
-                <div className="mb-3 p-3 bg-gradient-to-r from-line to-line-dark rounded-lg text-white">
-                  <p className="text-xs opacity-90">Credits คงเหลือ</p>
-                  <p className="text-2xl font-bold">฿{organization.credits.toFixed(2)}</p>
-                  <p className="text-xs opacity-90 mt-1">{organization.name}</p>
-                </div>
-
                 {/* User Info */}
                 <div className="mb-3 p-3 bg-white rounded-lg border">
                   <div className="flex items-center gap-2 mb-1">
