@@ -495,7 +495,7 @@ export const productsRouter = router({
         // Remove from favorites
         await db.collection("organizations").updateOne(
           { _id: new ObjectId(ctx.user.organizationId) },
-          { $pull: { favoriteIngredients: input.ingredientId } }
+          { $pull: { favoriteIngredients: input.ingredientId } } as any
         );
       } else {
         // Add to favorites

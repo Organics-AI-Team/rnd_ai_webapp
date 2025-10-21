@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BoxIcon, ArrowLeft, Plus, Package, Edit, Trash2, Search, ArrowUpDown, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import React from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-export default function AdminProductsPage() {
+function AdminProductsPageContent() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -40,6 +40,7 @@ export default function AdminProductsPage() {
   const itemsPerPage = 50;
 
   const [formData, setFormData] = useState({
+    productCode: "",
     productName: "",
     inciName: "",
     description: "",
@@ -66,6 +67,7 @@ export default function AdminProductsPage() {
         setIsDuplicateMode(true);
         setShowAddForm(true);
         setFormData({
+          productCode: "",
           productName: data.productName || "",
           inciName: data.inci_name || "",
           description: data.description || "",
@@ -91,6 +93,7 @@ export default function AdminProductsPage() {
       // Clear URL params
       router.replace("/admin/products");
       setFormData({
+        productCode: "",
         productName: "",
         inciName: "",
         description: "",
@@ -218,6 +221,7 @@ export default function AdminProductsPage() {
   const handleEdit = (product: any) => {
     setEditingProduct(product);
     setFormData({
+      productCode: product.productCode || "",
       productName: product.productName,
       inciName: product.inci_name || "",
       description: product.description || "",
@@ -316,6 +320,7 @@ export default function AdminProductsPage() {
                 setHasChangedDuplicate(false);
                 router.replace("/admin/products");
                 setFormData({
+                  productCode: "",
                   productName: "",
                   inciName: "",
                   description: "",
@@ -468,6 +473,7 @@ export default function AdminProductsPage() {
                       setIsDuplicateMode(false);
                       setHasChangedDuplicate(false);
                       setFormData({
+                        productCode: "",
                         productName: "",
                         inciName: "",
                         description: "",
@@ -685,5 +691,13 @@ export default function AdminProductsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function AdminProductsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+      <AdminProductsPageContent />
+    </Suspense>
   );
 }
