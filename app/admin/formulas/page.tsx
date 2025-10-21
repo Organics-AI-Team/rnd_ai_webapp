@@ -1,13 +1,13 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
-import { OrderForm } from "@/components/order-form";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { FormulaForm } from "@/components/formula-form";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { PlusCircle, ArrowLeft } from "lucide-react";
+import { Beaker, ArrowLeft } from "lucide-react";
 
-export default function AdminOrdersPage() {
+export default function AdminFormulasPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
 
@@ -53,8 +53,8 @@ export default function AdminOrdersPage() {
               <p className="text-gray-600 mb-4">
                 Only administrators can access this page.
               </p>
-              <Button onClick={() => router.push("/dashboard")}>
-                Go to Dashboard
+              <Button onClick={() => router.push("/formulas")}>
+                ไปที่สูตรทั้งหมด
               </Button>
             </div>
           </CardContent>
@@ -70,32 +70,32 @@ export default function AdminOrdersPage() {
         <div className="mb-6">
           <Button
             variant="ghost"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.back()}
             className="mb-4"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
+            ย้อนกลับ
           </Button>
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-600 rounded-lg">
-                <PlusCircle className="h-6 w-6 text-white" />
+              <div className="p-2 bg-purple-600 rounded-lg">
+                <Beaker className="h-6 w-6 text-white" />
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">
-                  รับออเดอร์
+                  เพิ่มสูตรใหม่
                 </h1>
                 <p className="text-gray-600">
-                  สร้างออเดอร์แทนลูกค้าด้วยตนเอง
+                  สร้างสูตรผลิตภัณฑ์เสริมอาหาร/เครื่องสำอาง
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Order Form - Direct, No Card Wrapper */}
-        <OrderForm />
+        {/* Formula Form */}
+        <FormulaForm />
       </div>
     </div>
   );

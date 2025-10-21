@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useRouter } from "next/navigation";
-import { BoxIcon, ArrowLeft, Plus, Package, Edit, Trash2, Search, ArrowUpDown } from "lucide-react";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { BoxIcon, ArrowLeft, Plus, Package, Edit, Trash2, Search, ArrowUpDown, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
 import React from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Table,
   TableBody,
@@ -24,18 +25,21 @@ import { Badge } from "@/components/ui/badge";
 export default function AdminProductsPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const utils = trpc.useUtils();
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState<string>("rm_code");
+  const [isDuplicateMode, setIsDuplicateMode] = useState(false);
+  const [hasChangedDuplicate, setHasChangedDuplicate] = useState(false);
+  const [searchInput, setSearchInput] = useState(""); // What user types
+  const [searchTerm, setSearchTerm] = useState(""); // What's sent to server
+  const [sortField, setSortField] = useState<string>("productCode");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 100;
+  const itemsPerPage = 50;
 
   const [formData, setFormData] = useState({
-    productCode: "",
     productName: "",
     inciName: "",
     description: "",
@@ -45,13 +49,48 @@ export default function AdminProductsPage() {
     details: "",
   });
 
+  // Fetch next auto-generated code (only when form is open and not editing)
+  const { data: nextCodeData, refetch: refetchNextCode } = trpc.products.getNextCode.useQuery(
+    undefined,
+    { enabled: showAddForm && !editingProduct }
+  );
+
+  // Handle duplicate mode on page load
+  useEffect(() => {
+    const isDuplicate = searchParams.get("duplicate") === "true";
+    const duplicateData = searchParams.get("data");
+
+    if (isDuplicate && duplicateData) {
+      try {
+        const data = JSON.parse(duplicateData);
+        setIsDuplicateMode(true);
+        setShowAddForm(true);
+        setFormData({
+          productName: data.productName || "",
+          inciName: data.inci_name || "",
+          description: data.description || "",
+          price: data.price?.toString() || "",
+          supplier: data.supplier || "",
+          benefits: Array.isArray(data.benefits) ? data.benefits.join(", ") : "",
+          details: Array.isArray(data.usecase) ? data.usecase.join(", ") : "",
+        });
+      } catch (error) {
+        console.error("Error parsing duplicate data:", error);
+      }
+    }
+  }, [searchParams]);
+
   const createProduct = trpc.products.create.useMutation({
     onSuccess: () => {
       utils.products.list.invalidate();
+      utils.products.getNextCode.invalidate(); // Refresh next code
       setShowAddForm(false);
       setEditingProduct(null);
+      setIsDuplicateMode(false);
+      setHasChangedDuplicate(false);
+      // Clear URL params
+      router.replace("/admin/products");
       setFormData({
-        productCode: "",
         productName: "",
         inciName: "",
         description: "",
@@ -87,61 +126,36 @@ export default function AdminProductsPage() {
     },
   });
 
-  const { data: products, isLoading: productsLoading } = trpc.products.list.useQuery();
+  const { data: productsData, isLoading: productsLoading } = trpc.products.list.useQuery({
+    limit: itemsPerPage,
+    offset: (currentPage - 1) * itemsPerPage,
+    sortField,
+    sortDirection,
+    searchTerm,
+  });
 
-  // Filter, sort, and paginate products
-  const filteredAndSortedProducts = React.useMemo(() => {
-    if (!products) return [];
+  const products = productsData?.products || [];
+  const totalCount = productsData?.totalCount || 0;
+  const totalPages = productsData?.totalPages || 1;
+  const hasMore = productsData?.hasMore || false;
 
-    // Filter
-    let filtered = products.filter((product: any) => {
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        product.productCode?.toLowerCase().includes(searchLower) ||
-        product.productName?.toLowerCase().includes(searchLower) ||
-        product.inci_name?.toLowerCase().includes(searchLower) ||
-        product.benefits?.toLowerCase().includes(searchLower)
-      );
-    });
+  // Reset to page 1 when search term, sort field, or sort direction changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortField, sortDirection]);
 
-    // Sort - prioritize items with INCI name first
-    filtered.sort((a: any, b: any) => {
-      // First priority: items with INCI name come first
-      const aHasInci = a.inci_name && a.inci_name.trim() !== "" && a.inci_name !== "-";
-      const bHasInci = b.inci_name && b.inci_name.trim() !== "" && b.inci_name !== "-";
+  const handleSearch = () => {
+    setSearchTerm(searchInput);
+  };
 
-      if (aHasInci && !bHasInci) return -1;
-      if (!aHasInci && bHasInci) return 1;
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
 
-      // Second priority: sort by selected field
-      let aVal = a[sortField] || "";
-      let bVal = b[sortField] || "";
-
-      // Handle numeric fields
-      if (sortField === "price") {
-        aVal = parseFloat(aVal) || 0;
-        bVal = parseFloat(bVal) || 0;
-      } else {
-        aVal = aVal.toString().toLowerCase();
-        bVal = bVal.toString().toLowerCase();
-      }
-
-      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
-      return 0;
-    });
-
-    return filtered;
-  }, [products, searchTerm, sortField, sortDirection]);
-
-  // Paginate
-  const paginatedProducts = React.useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredAndSortedProducts.slice(startIndex, endIndex);
-  }, [filteredAndSortedProducts, currentPage]);
-
-  const totalPages = Math.ceil(filteredAndSortedProducts.length / itemsPerPage);
+  // No client-side filtering or sorting needed - server handles it
+  const filteredAndSortedProducts = products;
 
   if (isLoading || productsLoading) {
     return (
@@ -184,8 +198,8 @@ export default function AdminProductsPage() {
               <p className="text-gray-600 mb-4">
                 Only administrators can access this page.
               </p>
-              <Button onClick={() => router.push("/dashboard")}>
-                Go to Dashboard
+              <Button onClick={() => router.push("/ingredients")}>
+                ไปที่สารทั้งหมด
               </Button>
             </div>
           </CardContent>
@@ -194,10 +208,16 @@ export default function AdminProductsPage() {
     );
   }
 
+  const handleFormChange = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value });
+    if (isDuplicateMode && !hasChangedDuplicate) {
+      setHasChangedDuplicate(true);
+    }
+  };
+
   const handleEdit = (product: any) => {
     setEditingProduct(product);
     setFormData({
-      productCode: product.productCode,
       productName: product.productName,
       inciName: product.inci_name || "",
       description: product.description || "",
@@ -212,11 +232,17 @@ export default function AdminProductsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Check if in duplicate mode and no changes made
+    if (isDuplicateMode && !hasChangedDuplicate) {
+      alert("กรุณาแก้ไขข้อมูลก่อนบันทึก เพื่อหลีกเลี่ยงการสร้างสารที่ซ้ำกัน");
+      return;
+    }
+
     try {
       if (editingProduct) {
         await updateProduct.mutateAsync({
           id: editingProduct._id,
-          productCode: formData.productCode,
+          productCode: editingProduct.productCode, // Keep existing code for updates
           productName: formData.productName,
           inciName: formData.inciName,
           description: formData.description,
@@ -228,7 +254,6 @@ export default function AdminProductsPage() {
         alert("อัปเดตสารเรียบร้อยแล้ว!");
       } else {
         await createProduct.mutateAsync({
-          productCode: formData.productCode,
           productName: formData.productName,
           inciName: formData.inciName,
           description: formData.description,
@@ -262,11 +287,11 @@ export default function AdminProductsPage() {
         <div className="mb-6">
           <Button
             variant="ghost"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.back()}
             className="mb-4"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
+            ย้อนกลับ
           </Button>
 
           <div className="flex items-center justify-between">
@@ -287,15 +312,22 @@ export default function AdminProductsPage() {
             <Button
               onClick={() => {
                 setEditingProduct(null);
+                setIsDuplicateMode(false);
+                setHasChangedDuplicate(false);
+                router.replace("/admin/products");
                 setFormData({
-                  productCode: "",
                   productName: "",
+                  inciName: "",
                   description: "",
                   price: "",
                   supplier: "",
                   benefits: "",
                   details: "",
                 });
+                if (!showAddForm) {
+                  // Opening form - fetch next code
+                  refetchNextCode();
+                }
                 setShowAddForm(!showAddForm);
               }}
               className="bg-green-600 hover:bg-green-700"
@@ -310,25 +342,44 @@ export default function AdminProductsPage() {
         {showAddForm && (
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>{editingProduct ? "แก้ไขสาร" : "เพิ่มสารใหม่"}</CardTitle>
+              <CardTitle>
+                {isDuplicateMode ? "ทำซ้ำสาร" : editingProduct ? "แก้ไขสาร" : "เพิ่มสารใหม่"}
+              </CardTitle>
               <CardDescription>
-                {editingProduct ? "อัปเดตรายละเอียดสาร" : "กรอกรายละเอียดสารเพื่อเพิ่มเข้าคลัง"}
+                {isDuplicateMode
+                  ? "กรุณาแก้ไขข้อมูลก่อนบันทึก เพื่อหลีกเลี่ยงการสร้างสารที่ซ้ำกัน"
+                  : editingProduct
+                  ? "อัปเดตรายละเอียดสาร"
+                  : "กรอกรายละเอียดสารเพื่อเพิ่มเข้าคลัง"}
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {isDuplicateMode && (
+                <Alert className="mb-4 border-orange-200 bg-orange-50">
+                  <AlertCircle className="h-4 w-4 text-orange-600" />
+                  <AlertDescription className="text-orange-800">
+                    <strong>โหมดทำซ้ำสาร:</strong> คุณต้องแก้ไขข้อมูลอย่างน้อย 1 ฟิลด์ก่อนบันทึก
+                    {hasChangedDuplicate && (
+                      <span className="ml-2 text-green-600">✓ ตรวจพบการเปลี่ยนแปลง</span>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="productCode">รหัสสาร *</Label>
+                    <Label htmlFor="productCode">รหัสสาร (สร้างอัตโนมัติ)</Label>
                     <Input
                       id="productCode"
-                      placeholder="เช่น CHEM-001"
-                      value={formData.productCode}
-                      onChange={(e) =>
-                        setFormData({ ...formData, productCode: e.target.value })
-                      }
-                      required
+                      value={editingProduct ? editingProduct.productCode : nextCodeData?.nextCode || "กำลังโหลด..."}
+                      disabled
+                      className="bg-gray-100 cursor-not-allowed font-mono font-semibold"
                     />
+                    {!editingProduct && (
+                      <p className="text-xs text-gray-500">
+                        รหัสสารนี้จะถูกบันทึกเมื่อกดปุ่ม &quot;เพิ่มสาร&quot;
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -337,9 +388,7 @@ export default function AdminProductsPage() {
                       id="productName"
                       placeholder="กรอกชื่อสาร"
                       value={formData.productName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, productName: e.target.value })
-                      }
+                      onChange={(e) => handleFormChange("productName", e.target.value)}
                       required
                     />
                   </div>
@@ -351,9 +400,7 @@ export default function AdminProductsPage() {
                     id="inciName"
                     placeholder="INCI name (ไม่บังคับ)"
                     value={formData.inciName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, inciName: e.target.value })
-                    }
+                    onChange={(e) => handleFormChange("inciName", e.target.value)}
                     rows={2}
                   />
                 </div>
@@ -366,9 +413,7 @@ export default function AdminProductsPage() {
                       type="text"
                       placeholder="ชื่อผู้จัดหา"
                       value={formData.supplier}
-                      onChange={(e) =>
-                        setFormData({ ...formData, supplier: e.target.value })
-                      }
+                      onChange={(e) => handleFormChange("supplier", e.target.value)}
                     />
                   </div>
 
@@ -380,9 +425,7 @@ export default function AdminProductsPage() {
                       step="0.01"
                       placeholder="0.00"
                       value={formData.price}
-                      onChange={(e) =>
-                        setFormData({ ...formData, price: e.target.value })
-                      }
+                      onChange={(e) => handleFormChange("price", e.target.value)}
                     />
                   </div>
                 </div>
@@ -393,9 +436,7 @@ export default function AdminProductsPage() {
                     id="benefits"
                     placeholder="ประโยชน์ของสาร"
                     value={formData.benefits}
-                    onChange={(e) =>
-                      setFormData({ ...formData, benefits: e.target.value })
-                    }
+                    onChange={(e) => handleFormChange("benefits", e.target.value)}
                     rows={3}
                   />
                 </div>
@@ -406,9 +447,7 @@ export default function AdminProductsPage() {
                     id="details"
                     placeholder="รายละเอียดเพิ่มเติม"
                     value={formData.details}
-                    onChange={(e) =>
-                      setFormData({ ...formData, details: e.target.value })
-                    }
+                    onChange={(e) => handleFormChange("details", e.target.value)}
                     rows={3}
                   />
                 </div>
@@ -426,15 +465,21 @@ export default function AdminProductsPage() {
                     onClick={() => {
                       setShowAddForm(false);
                       setEditingProduct(null);
+                      setIsDuplicateMode(false);
+                      setHasChangedDuplicate(false);
                       setFormData({
-                        productCode: "",
                         productName: "",
+                        inciName: "",
                         description: "",
                         price: "",
                         supplier: "",
                         benefits: "",
                         details: "",
                       });
+                      // Clear URL params if in duplicate mode
+                      if (isDuplicateMode) {
+                        router.replace("/admin/products");
+                      }
                     }}
                   >
                     ยกเลิก
@@ -455,35 +500,41 @@ export default function AdminProductsPage() {
                   รายการวัตถุดิบ
                 </CardTitle>
                 <CardDescription>
-                  แสดง {paginatedProducts.length} จาก {filteredAndSortedProducts.length} รายการ (ทั้งหมด {products?.length || 0})
+                  แสดง {filteredAndSortedProducts.length} รายการในหน้านี้ (ทั้งหมด {totalCount.toLocaleString()} สาร)
                 </CardDescription>
               </div>
             </div>
 
             {/* Search and Sort Controls */}
             <div className="flex gap-4 mt-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="ค้นหา รหัสสาร, ชื่อสาร, INCI Name, Benefits..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setCurrentPage(1); // Reset to first page on search
-                  }}
-                  className="pl-9"
-                />
+              <div className="flex-1 flex gap-2">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="ค้นหา รหัสสาร, ชื่อสาร, INCI, Benefits, Use Cases..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="pl-9"
+                  />
+                </div>
+                <Button
+                  onClick={handleSearch}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
               </div>
               <div className="flex gap-2">
                 <select
                   value={sortField}
                   onChange={(e) => setSortField(e.target.value)}
-                  className="px-3 py-2 border rounded-md text-sm"
+                  className="px-3 py-2 border rounded-md text-sm bg-white"
                 >
                   <option value="productCode">รหัสสาร</option>
                   <option value="productName">ชื่อสาร</option>
-                  <option value="inci_name">INCI Name</option>
-                  <option value="benefits">Benefits</option>
+                  <option value="supplier">Supplier</option>
+                  <option value="price">ราคา</option>
                 </select>
                 <Button
                   variant="outline"
@@ -497,7 +548,7 @@ export default function AdminProductsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {paginatedProducts && paginatedProducts.length > 0 ? (
+            {filteredAndSortedProducts && filteredAndSortedProducts.length > 0 ? (
               <>
               <Table>
                 <TableHeader>
@@ -505,12 +556,15 @@ export default function AdminProductsPage() {
                     <TableHead>รหัสสาร</TableHead>
                     <TableHead>ชื่อสาร (Trade Name)</TableHead>
                     <TableHead>INCI Name</TableHead>
-                    <TableHead className="max-w-md">Benefits</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead>Price (฿)</TableHead>
+                    <TableHead className="max-w-xs">Benefits</TableHead>
+                    <TableHead className="max-w-xs">Use Cases</TableHead>
                     <TableHead>จัดการ</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedProducts.map((product: any) => (
+                  {filteredAndSortedProducts.map((product: any) => (
                     <TableRow key={product._id}>
                       <TableCell className="font-mono text-sm">
                         {product.productCode}
@@ -521,9 +575,44 @@ export default function AdminProductsPage() {
                       <TableCell className="text-sm text-gray-600">
                         {product.inci_name || "-"}
                       </TableCell>
-                      <TableCell className="max-w-md">
-                        <div className="text-sm text-gray-600 truncate" title={product.benefits || ""}>
-                          {product.benefits || "-"}
+                      <TableCell className="text-sm">
+                        {product.supplier || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm font-mono">
+                        {product.price > 0 ? product.price.toLocaleString() : "-"}
+                      </TableCell>
+                      <TableCell className="max-w-xs">
+                        <div className="flex flex-wrap gap-1">
+                          {Array.isArray(product.benefits) && product.benefits.length > 0 ? (
+                            product.benefits.map((benefit: string, idx: number) => (
+                              <Badge
+                                key={idx}
+                                variant="secondary"
+                                className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-200"
+                              >
+                                {benefit}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-gray-400">-</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-xs">
+                        <div className="flex flex-wrap gap-1">
+                          {Array.isArray(product.usecase) && product.usecase.length > 0 ? (
+                            product.usecase.map((usecase: string, idx: number) => (
+                              <Badge
+                                key={idx}
+                                variant="outline"
+                                className="text-xs bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
+                              >
+                                {usecase}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-gray-400">-</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -555,46 +644,29 @@ export default function AdminProductsPage() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4 pt-4 border-t">
                   <div className="text-sm text-gray-600">
-                    หน้า {currentPage} จาก {totalPages}
+                    แสดง {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, totalCount)} จากทั้งหมด {totalCount.toLocaleString()} สาร
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
                     >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
                       ก่อนหน้า
                     </Button>
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      let pageNum;
-                      if (totalPages <= 5) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 3) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNum = totalPages - 4 + i;
-                      } else {
-                        pageNum = currentPage - 2 + i;
-                      }
-                      return (
-                        <Button
-                          key={pageNum}
-                          variant={currentPage === pageNum ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(pageNum)}
-                        >
-                          {pageNum}
-                        </Button>
-                      );
-                    })}
+                    <div className="text-sm text-gray-600">
+                      หน้า {currentPage} / {totalPages}
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={!hasMore}
                     >
                       ถัดไป
+                      <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
                 </div>

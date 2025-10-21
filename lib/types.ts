@@ -60,6 +60,44 @@ export const ProductLogSchema = z.object({
 export type ProductLog = z.infer<typeof ProductLogSchema>;
 
 // ============================================
+// FORMULA SCHEMAS
+// ============================================
+
+// Formula Ingredient Schema
+export const FormulaIngredientSchema = z.object({
+  materialId: z.string(), // Reference to raw_meterials_console
+  rm_code: z.string(),
+  productName: z.string(),
+  inci_name: z.string().optional(),
+  amount: z.number().positive("Amount must be positive"), // Amount in grams/ml
+  percentage: z.number().min(0).max(100, "Percentage must be 0-100").optional(), // % in formula
+  notes: z.string().optional(),
+});
+
+export type FormulaIngredient = z.infer<typeof FormulaIngredientSchema>;
+
+// Formula Schema
+export const FormulaSchema = z.object({
+  _id: z.string().optional(),
+  organizationId: z.string(),
+  formulaCode: z.string().optional(), // Auto-generated: F000001, F000002, etc
+  formulaName: z.string().min(1, "Formula name is required"),
+  version: z.number().int().positive().default(1), // Attempt/version number
+  client: z.string().optional(), // Client name
+  targetBenefits: z.array(z.string()).optional(), // Benefits goal
+  ingredients: z.array(FormulaIngredientSchema).min(1, "At least one ingredient is required"),
+  totalAmount: z.number().positive("Total amount must be positive").optional(), // Total batch size
+  remarks: z.string().optional(),
+  status: z.enum(["draft", "testing", "approved", "rejected"]).default("draft"),
+  createdBy: z.string(),
+  createdAt: z.date().default(() => new Date()),
+  updatedAt: z.date().default(() => new Date()),
+});
+
+export type Formula = z.infer<typeof FormulaSchema>;
+export type FormulaStatusType = "draft" | "testing" | "approved" | "rejected";
+
+// ============================================
 // ORDER SCHEMAS
 // ============================================
 
@@ -148,6 +186,7 @@ export const OrganizationSchema = z.object({
   name: z.string().min(1, "Organization name is required"),
   credits: z.number().default(0),
   ownerId: z.string(),
+  favoriteIngredients: z.array(z.string()).optional().default([]), // Array of ingredient IDs
   isActive: z.boolean().default(true),
   createdAt: z.date().default(() => new Date()),
   updatedAt: z.date().default(() => new Date()),
