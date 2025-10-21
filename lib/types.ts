@@ -4,6 +4,23 @@ import { z } from "zod";
 // PRODUCT/INVENTORY SCHEMAS
 // ============================================
 
+// Raw Materials Schema (from rnd_ai.raw_materials collection)
+export const RawMaterialSchema = z.object({
+  _id: z.string().optional(),
+  id: z.number().optional(),
+  rm_code: z.string().min(1, "Material code is required"),
+  trade_name: z.string().min(1, "Trade name is required"),
+  inci_name: z.string().optional(),
+  supplier: z.string().optional(),
+  rm_cost: z.number().optional(),
+  company_name: z.string().optional(),
+  companies_id: z.number().optional(),
+  benefits: z.string().optional(),
+  details: z.string().optional(),
+});
+
+export type RawMaterial = z.infer<typeof RawMaterialSchema>;
+
 export const ProductSchema = z.object({
   _id: z.string().optional(),
   organizationId: z.string(),

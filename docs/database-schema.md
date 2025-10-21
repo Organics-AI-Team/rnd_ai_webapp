@@ -1,6 +1,6 @@
 # Database Schema Documentation
 
-This document provides comprehensive information about the MongoDB database schema used in the Supplement Management System.
+This document provides comprehensive information about the MongoDB database schema used in the R&D AI Management System.
 
 ## Table of Contents
 
@@ -21,7 +21,7 @@ This document provides comprehensive information about the MongoDB database sche
 
 ## Database Overview
 
-**Database Name**: `supplement_management`
+**Database Name**: `rnd_ai`
 
 **Type**: MongoDB (NoSQL)
 
@@ -733,10 +733,10 @@ Use `npm run seed-admin` to create:
 
 ```bash
 # Backup entire database
-mongodump --uri="mongodb://localhost:27017/supplement_management" --out=/backup
+mongodump --uri="mongodb://localhost:27017/rnd_ai" --out=/backup
 
 # Restore database
-mongorestore --uri="mongodb://localhost:27017/supplement_management" /backup/supplement_management
+mongorestore --uri="mongodb://localhost:27017/rnd_ai" /backup/rnd_ai
 ```
 
 ### Cleanup Old Sessions

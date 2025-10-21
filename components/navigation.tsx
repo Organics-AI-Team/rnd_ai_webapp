@@ -20,7 +20,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       links: [
         {
           href: "/admin/products",
-          label: "เพิ่มสินค้า",
+          label: "เพิ่มสารใหม่",
           icon: BoxIcon,
           adminOnly: true,
         },
@@ -71,7 +71,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2">
             <Package size={24} className="text-line" />
             <h1 className="text-base font-bold text-gray-900">
-              ระบบจัดการสินค้าเสริม
+              R&D AI
             </h1>
           </div>
           <button
@@ -104,7 +104,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3">
             <Package size={28} className="text-line" />
             <h1 className="text-lg font-bold text-gray-900">
-              ระบบจัดการสินค้าเสริม
+              R&D AI
             </h1>
           </div>
         </div>

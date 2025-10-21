@@ -1,6 +1,6 @@
 # Getting Started Guide
 
-This guide will help you set up and run the Supplement Management System on your local machine.
+This guide will help you set up and run the R&D AI Management System on your local machine.
 
 ## Table of Contents
 
@@ -82,7 +82,7 @@ mongod --version
 
 ```bash
 git clone <repository-url>
-cd supplement_management
+cd rnd_ai
 ```
 
 ### Step 2: Install Dependencies
@@ -118,10 +118,10 @@ Add the following configuration to `.env.local`:
 
 ```env
 # MongoDB Connection String
-MONGODB_URI=mongodb://localhost:27017/supplement_management
+MONGODB_URI=mongodb://localhost:27017/rnd_ai
 
 # Optional: MongoDB Atlas Connection String
-# MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/supplement_management?retryWrites=true&w=majority
+# MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/rnd_ai?retryWrites=true&w=majority
 ```
 
 ### Environment Variables Explained
@@ -173,7 +173,7 @@ MongoDB will automatically create the database on first use, but you can manuall
 
 ```bash
 mongosh
-use supplement_management
+use rnd_ai
 db.createCollection("users")
 exit
 ```
@@ -222,7 +222,7 @@ This script will create:
 
 ```bash
 mongosh
-use supplement_management
+use rnd_ai
 db.accounts.find()
 db.users.find()
 db.organizations.find()
@@ -283,7 +283,7 @@ npx tsx scripts/test-password.ts
 ## Project Structure
 
 ```
-supplement_management/
+rnd_ai/
 ├── app/                          # Next.js App Router
 │   ├── api/                     # API Routes
 │   │   ├── auth/               # Auth endpoints
@@ -428,7 +428,7 @@ To inspect the database during development:
 
 ```bash
 mongosh
-use supplement_management
+use rnd_ai
 
 # View all collections
 show collections

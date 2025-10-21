@@ -1,6 +1,6 @@
-# Supplement Management System - Documentation
+# R&D AI Management System - Documentation
 
-Welcome to the Supplement Management System documentation. This documentation provides comprehensive information about the system architecture, features, setup, and usage.
+Welcome to the R&D AI Management System documentation. This documentation provides comprehensive information about the system architecture, features, setup, and usage.
 
 ## Documentation Structure
 

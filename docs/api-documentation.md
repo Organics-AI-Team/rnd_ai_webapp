@@ -1,6 +1,6 @@
 # API Documentation
 
-This document provides comprehensive documentation for all tRPC API endpoints in the Supplement Management System.
+This document provides comprehensive documentation for all tRPC API endpoints in the R&D AI Management System.
 
 ## Table of Contents
 

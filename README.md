@@ -1,4 +1,4 @@
-# Supplement Management System
+# R&D AI Management System
 
 A comprehensive multi-tenant order and logistics management web application built with Next.js 15, TypeScript, MongoDB, and tRPC. Features user authentication, organization-based access control, credit system for shipping costs, and complete order lifecycle management.
 
@@ -73,7 +73,7 @@ npm install
 Create a `.env.local` file in the root directory:
 
 ```env
-MONGODB_URI=mongodb://localhost:27017/supplement_management
+MONGODB_URI=mongodb://localhost:27017/rnd_ai
 ```
 
 ### 3. Seed Admin Account (Optional)

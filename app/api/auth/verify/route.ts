@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest) {
   try {
     // Check for the session cookie
-    const sessionCookie = request.cookies.get('supplement-auth-session');
+    const sessionCookie = request.cookies.get('rnd-ai-auth-session');
 
     if (sessionCookie && sessionCookie.value === 'authenticated') {
       return NextResponse.json({

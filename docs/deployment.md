@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide provides comprehensive instructions for deploying the Supplement Management System to production.
+This guide provides comprehensive instructions for deploying the R&D AI Management System to production.
 
 ## Table of Contents
 
@@ -196,11 +196,11 @@ if (!config.mongodb.uri) {
 2. Choose "Connect your application"
 3. Copy connection string
 4. Replace `<password>` with your password
-5. Replace `<database>` with `supplement_management`
+5. Replace `<database>` with `rnd_ai`
 
 **Example**:
 ```
-mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/supplement_management?retryWrites=true&w=majority
+mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/rnd_ai?retryWrites=true&w=majority
 ```
 
 #### 4. Create Indexes
@@ -208,7 +208,7 @@ mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/supplement_management
 Connect to your database and run:
 
 ```javascript
-use supplement_management
+use rnd_ai
 
 // Accounts
 db.accounts.createIndex({ email: 1 }, { unique: true })
@@ -389,7 +389,7 @@ apt-get install -y nodejs
 
 # Clone repository
 git clone your-repo-url
-cd supplement_management
+cd rnd_ai
 
 # Install dependencies
 npm install

@@ -9,6 +9,15 @@ node_modules
 # reference files
 references_copytouse
 
+# raw data and migration files
+raws/
+
+# python
+*.pyc
+__pycache__/
+.ipynb_checkpoints/
+*.ipynb
+
 # testing
 /coverage
 

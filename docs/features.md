@@ -1,6 +1,6 @@
 # Features Documentation
 
-This document provides detailed information about all features in the Supplement Management System.
+This document provides detailed information about all features in the R&D AI Management System.
 
 ## Table of Contents
 

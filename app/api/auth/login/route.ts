@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Set a session cookie
-      response.cookies.set('supplement-auth-session', 'authenticated', {
+      response.cookies.set('rnd-ai-auth-session', 'authenticated', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',

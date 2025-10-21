@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Clear the session cookie
-    response.cookies.set('supplement-auth-session', '', {
+    response.cookies.set('rnd-ai-auth-session', '', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

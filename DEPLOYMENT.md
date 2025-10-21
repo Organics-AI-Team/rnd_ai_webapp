@@ -1,6 +1,6 @@
 # Railway Deployment Guide
 
-Complete guide for deploying the Supplement Management System to Railway with Docker.
+Complete guide for deploying the R&D AI Management System to Railway with Docker.
 
 ## Prerequisites
 
@@ -69,7 +69,7 @@ Added `output: 'standalone'` configuration.
 1. Create a free cluster at https://www.mongodb.com/cloud/atlas
 2. Create a database user with read/write permissions
 3. Get connection string from Atlas dashboard
-4. Format: `mongodb+srv://username:password@cluster.mongodb.net/supplement_management`
+4. Format: `mongodb+srv://username:password@cluster.mongodb.net/rnd_ai`
 
 ### Step 2: Configure Environment Variables in Railway
 
@@ -93,7 +93,7 @@ ADMIN_PASSWORD=admin
 1. **Connect Repository:**
    - Go to Railway dashboard
    - Click "New Project" → "Deploy from GitHub repo"
-   - Select your `supplement_management` repository
+   - Select your `rnd_ai` repository
    - Railway will auto-detect the configuration
 
 2. **Deploy:**
@@ -152,7 +152,7 @@ mongodb://username:password@host:port/database
 mongodb+srv://username:password@cluster.mongodb.net/database
 
 # Local development
-mongodb://localhost:27017/supplement_management
+mongodb://localhost:27017/rnd_ai
 ```
 
 ### `ADMIN_EMAIL` & `ADMIN_PASSWORD`

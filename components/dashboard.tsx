@@ -193,7 +193,7 @@ export function Dashboard() {
             Unable to connect to MongoDB. Please ensure MongoDB is running.
           </p>
           <p className="mt-2 text-sm text-gray-600">
-            Connection string: {process.env.MONGODB_URI || 'mongodb://localhost:27017/supplement_management'}
+            Connection string: {process.env.MONGODB_URI || 'mongodb://localhost:27017/rnd_ai'}
           </p>
           <p className="mt-2 text-sm text-gray-600">
             Error: {error?.message || statsError?.message}
