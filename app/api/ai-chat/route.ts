@@ -68,6 +68,8 @@ export async function POST(req: NextRequest) {
     console.log('💬 Starting direct generation...');
     console.log('🔮 Sending prompt to Gemini...');
 
+    let finalText = '';
+
     try {
       const result = await model.generateContent(fullPrompt);
       const responseInitTime = Date.now() - responseStartTime;
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
       console.log('📄 Response preview:', text.substring(0, 100) + '...');
 
       // Store the response for streaming simulation
-      let finalText = text;
+      finalText = text;
 
       // If still empty, try a simpler prompt
       if (!text || text.length === 0) {
@@ -94,7 +96,7 @@ export async function POST(req: NextRequest) {
 
     } catch (error) {
       console.error('❌ Error during Gemini call:', error);
-      throw error;
+      finalText = 'ขออภัย เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI กรุณาลองใหม่อีกครั่ง';
     }
 
     // Create a simulated streaming response from the complete text
