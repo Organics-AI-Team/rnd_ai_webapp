@@ -17,6 +17,7 @@ export const RawMaterialSchema = z.object({
   companies_id: z.number().optional(),
   benefits: z.string().optional(),
   details: z.string().optional(),
+  usecase: z.string().optional(),
 });
 
 export type RawMaterial = z.infer<typeof RawMaterialSchema>;

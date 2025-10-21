@@ -12,11 +12,6 @@ const notoSansThai = Noto_Sans_Thai({
 export const metadata: Metadata = {
   title: "R&D AI",
   description: "Research & Development AI",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5,
-  },
   icons: {
     icon: [
       {
@@ -25,6 +20,12 @@ export const metadata: Metadata = {
       },
     ],
   },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({
