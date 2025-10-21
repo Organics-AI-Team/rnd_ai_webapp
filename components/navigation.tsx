@@ -16,7 +16,12 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
 
   const navigationItems = [
-    // Admin items at top (admin only)
+    // Admin section
+    {
+      type: "section-title",
+      label: "ADDING",
+      adminOnly: true,
+    },
     {
       type: "link",
       href: "/admin/products",
@@ -37,7 +42,11 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     {
       type: "separator",
     },
-    // Main navigation items
+    // Dashboard section
+    {
+      type: "section-title",
+      label: "CONSOLE",
+    },
     {
       type: "link",
       href: "/ingredients",
@@ -57,7 +66,12 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       type: "separator",
       adminOnly: true,
     },
-    // Credit management at bottom (admin only)
+    // Settings section
+    {
+      type: "section-title",
+      label: "SETTINGS",
+      adminOnly: true,
+    },
     {
       type: "link",
       href: "/admin/credits",
@@ -136,11 +150,23 @@ export function Navigation({ children }: { children: React.ReactNode }) {
 
         {/* Navigation Links */}
         <nav className="flex-1 p-4 overflow-y-auto mt-16 lg:mt-0">
-          <div className="space-y-2">
+          <div className="space-y-1">
             {navigationItems.map((item: any, index: number) => {
               // Skip admin-only items if user is not admin
               if (item.adminOnly && user?.role !== "admin") {
                 return null;
+              }
+
+              // Section Title
+              if (item.type === "section-title") {
+                if (isSidebarCollapsed) return null; // Hide section titles when collapsed
+                return (
+                  <div key={`section-${index}`} className={`px-4 pb-2 ${index > 0 ? 'pt-4' : 'pt-0'}`}>
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      {item.label}
+                    </h3>
+                  </div>
+                );
               }
 
               // Separator
