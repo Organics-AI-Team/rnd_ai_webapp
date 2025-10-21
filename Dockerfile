@@ -66,7 +66,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Copy public assets (images, fonts, etc.) if they exist
 # Public folder is optional - Next.js works without it
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# Create empty public directory as fallback
+RUN mkdir -p ./public
+# Note: If you have a public folder with assets, uncomment the line below and comment out mkdir
+# COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Switch to non-root user
 USER nextjs
