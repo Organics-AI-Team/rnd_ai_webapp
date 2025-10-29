@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, ClipboardList, Truck, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Star, Eye, Plus } from "lucide-react";
+import { Package, ClipboardList, Truck, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Star, Eye, Plus, Bot, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -64,12 +64,28 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     // Separator
     {
       type: "separator",
+    },
+    // AI Assistant section
+    {
+      type: "section-title",
+      label: "ผู้ช่วย AI",
+    },
+    {
+      type: "link",
+      href: "/ai-chat",
+      label: "แชทกับ AI",
+      labelEn: "AI Chat",
+      icon: Bot,
+    },
+      // Separator
+    {
+      type: "separator",
       adminOnly: true,
     },
     // Settings section
     {
       type: "section-title",
-      label: "SETTINGS",
+      label: "การตั้งค่า",
       adminOnly: true,
     },
     {
@@ -277,13 +293,6 @@ export function Navigation({ children }: { children: React.ReactNode }) {
           <div className="p-4 border-t bg-gray-50">
             {!isSidebarCollapsed ? (
               <>
-                {/* Credits Card */}
-                <div className="mb-3 p-3 bg-gradient-to-r from-line to-line-dark rounded-lg text-white">
-                  <p className="text-xs opacity-90">Credits คงเหลือ</p>
-                  <p className="text-2xl font-bold">฿{organization.credits.toFixed(2)}</p>
-                  <p className="text-xs opacity-90 mt-1">{organization.name}</p>
-                </div>
-
                 {/* User Info */}
                 <div className="mb-3 p-3 bg-white rounded-lg border">
                   <div className="flex items-center gap-2 mb-1">

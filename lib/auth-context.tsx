@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 interface User {
   _id: string;
+  id: string; // Add id field for compatibility
   accountId: string;
   organizationId: string;
   email: string;
@@ -71,7 +72,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log("Auth Context - meData:", meData ? "exists" : "null", "token:", token ? "exists" : "null", "error:", meError ? "yes" : "no");
     if (meData) {
       console.log("Auth Context - Setting user:", meData.user);
-      setUser(meData.user);
+      const userWithId = { ...meData.user, id: meData.user._id };
+      setUser(userWithId);
       setOrganization(meData.organization);
       setIsLoading(false);
     } else if (token && meError) {
