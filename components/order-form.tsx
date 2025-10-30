@@ -45,7 +45,8 @@ export function OrderForm() {
   const createOrder = trpc.orders.create.useMutation();
 
   // Fetch products list
-  const { data: products, isLoading: productsLoading } = trpc.products.list.useQuery();
+  const { data: productsData, isLoading: productsLoading } = trpc.products.list.useQuery();
+  const products = productsData?.products || [];
 
   const getCurrentDate = () => {
     const now = new Date();

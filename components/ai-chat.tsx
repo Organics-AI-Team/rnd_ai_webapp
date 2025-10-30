@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { FeedbackCollector } from './feedback-collector';
 import { GeminiSimpleService } from '@/lib/gemini-simple-service';
 import { HybridConversationMemoryManager } from '@/lib/hybrid-conversation-memory';
+import { trpc } from '@/lib/trpc-client';
 
 interface Message {
   id: string;
@@ -31,19 +32,33 @@ export function AIChat({ userId, apiKey, onFeedbackSubmit }: AIChatProps) {
   const [aiService] = useState(() =>
     apiKey ? new GeminiSimpleService(apiKey) : null
   );
+  const utils = trpc.useUtils();
+  const saveMessage = trpc.conversations.saveMessage.useMutation();
+  const clearHistory = trpc.conversations.clearHistory.useMutation();
   const [memoryManager] = useState(() => new HybridConversationMemoryManager(userId));
 
   // Load conversation history on mount and sync with MongoDB
   useEffect(() => {
     if (userId) {
       memoryManager.setUserId(userId);
-      memoryManager.syncWithMongoDB().then(() => {
-        memoryManager.getConversationHistory(userId).then(history => {
-          setMessages(history);
-        });
+      // First try to load from MongoDB
+      utils.conversations.getHistory.fetch({ limit: 40 }).then(mongoHistory => {
+        if (mongoHistory && mongoHistory.length > 0) {
+          setMessages(mongoHistory);
+          memoryManager.setMessages(mongoHistory);
+        } else {
+          // Fallback to localStorage
+          const localHistory = memoryManager.getConversationHistory(userId);
+          setMessages(localHistory);
+        }
+      }).catch(error => {
+        console.error('Error fetching from MongoDB, using localStorage:', error);
+        // Fallback to localStorage
+        const localHistory = memoryManager.getConversationHistory(userId);
+        setMessages(localHistory);
       });
     }
-  }, [userId, memoryManager]);
+  }, [userId, memoryManager, utils]);
 
   const handleSendMessage = useCallback(async () => {
     if (!input.trim() || !aiService || isLoading) return;
@@ -56,13 +71,22 @@ export function AIChat({ userId, apiKey, onFeedbackSubmit }: AIChatProps) {
     };
 
     setMessages(prev => [...prev, userMessage]);
-    await memoryManager.addMessage(userId, userMessage);
+    memoryManager.addMessage(userId, userMessage);
+    // Save to MongoDB
+    saveMessage.mutate({
+      id: userMessage.id,
+      content: userMessage.content,
+      role: userMessage.role,
+      timestamp: userMessage.timestamp,
+      responseId: userMessage.responseId,
+      feedbackSubmitted: userMessage.feedbackSubmitted
+    });
     setInput('');
     setIsLoading(true);
 
     try {
       // Get conversation history for context (last 40 messages)
-      const recentMessages = await memoryManager.getFormattedHistory(userId, 40);
+      const recentMessages = memoryManager.getFormattedHistory(userId, 40);
 
       // Generate AI response
       const aiResponse = await aiService.generateResponse({
@@ -90,7 +114,16 @@ export function AIChat({ userId, apiKey, onFeedbackSubmit }: AIChatProps) {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-      await memoryManager.addMessage(userId, assistantMessage);
+      memoryManager.addMessage(userId, assistantMessage);
+      // Save to MongoDB
+      saveMessage.mutate({
+        id: assistantMessage.id,
+        content: assistantMessage.content,
+        role: assistantMessage.role,
+        timestamp: assistantMessage.timestamp,
+        responseId: assistantMessage.responseId,
+        feedbackSubmitted: assistantMessage.feedbackSubmitted
+      });
 
     } catch (error) {
       console.error('Error generating response:', error);
@@ -103,7 +136,16 @@ export function AIChat({ userId, apiKey, onFeedbackSubmit }: AIChatProps) {
       };
 
       setMessages(prev => [...prev, errorMessage]);
-      await memoryManager.addMessage(userId, errorMessage);
+      memoryManager.addMessage(userId, errorMessage);
+      // Save to MongoDB
+      saveMessage.mutate({
+        id: errorMessage.id,
+        content: errorMessage.content,
+        role: errorMessage.role,
+        timestamp: errorMessage.timestamp,
+        responseId: errorMessage.responseId,
+        feedbackSubmitted: errorMessage.feedbackSubmitted
+      });
     } finally {
       setIsLoading(false);
     }
@@ -152,10 +194,19 @@ export function AIChat({ userId, apiKey, onFeedbackSubmit }: AIChatProps) {
     }
   };
 
+  // Function to parse markdown-style bold text (**text**) to HTML
+  const parseBoldText = (text: string) => {
+    // Replace **text** with <strong>text</strong>
+    return text.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 600;">$1</strong>');
+  };
+
   const handleClearHistory = useCallback(async () => {
-    await memoryManager.clearConversationHistory(userId);
+    // Clear localStorage
+    memoryManager.clearConversationHistory(userId);
+    // Clear MongoDB
+    clearHistory.mutate();
     setMessages([]);
-  }, [userId, memoryManager]);
+  }, [userId, memoryManager, clearHistory]);
 
   // Get memory stats
   const memoryStats = memoryManager.getMemoryStats(userId);
@@ -246,7 +297,10 @@ export function AIChat({ userId, apiKey, onFeedbackSubmit }: AIChatProps) {
                     ? 'bg-blue-500 text-white'
                     : 'bg-gray-100 text-gray-900'
                 }`}>
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p
+                    className="text-sm whitespace-pre-wrap"
+                    dangerouslySetInnerHTML={{ __html: parseBoldText(message.content) }}
+                  />
                   <div className={`text-xs mt-1 ${
                     message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
                   }`}>
