@@ -1,5 +1,5 @@
-import { Feedback, FeedbackPatterns } from '../../types/feedback-types';
-import { UserPreferences } from '../../types/ai-types';
+import { Feedback } from '../../types/feedback-types';
+import { UserPreferences, FeedbackPatterns } from '../../types/ai-types';
 
 /**
  * Shared feedback analysis logic used across all AI services

@@ -54,19 +54,34 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
   // Initialize service if not provided
   useEffect(() => {
+    console.log('🔧 Initializing service:', {
+      hasService: !!service,
+      serviceName,
+      hasApiKey: !!apiKey,
+      provider,
+      userId
+    });
+
     if (!service && (serviceName || (apiKey && provider))) {
       const factory = getAIServiceFactory();
 
       if (serviceName) {
+        console.log('🔍 Looking for registered service:', serviceName);
         const registeredService = factory.getService(serviceName);
         if (registeredService) {
+          console.log('✅ Found registered service');
           setService(registeredService);
+        } else {
+          console.error('❌ Service not found:', serviceName);
         }
       } else if (apiKey && provider) {
+        console.log('🏗️ Creating new service:', { provider, hasApiKey: !!apiKey });
         try {
           const newService = factory.createService(provider, apiKey);
+          console.log('✅ Service created successfully');
           setService(newService);
         } catch (err) {
+          console.error('❌ Failed to create service:', err);
           setError(err as Error);
           onError?.(err as Error);
         }
@@ -106,7 +121,16 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   const sendMessage = useCallback(async (content: string) => {
-    if (!service || !content.trim()) return;
+    console.log('🚀 Sending message:', { content, hasService: !!service, userId });
+
+    if (!service || !content.trim()) {
+      console.error('❌ Cannot send message:', {
+        hasService: !!service,
+        contentTrimmed: content.trim(),
+        userId
+      });
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -119,7 +143,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       timestamp: new Date()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    console.log('📝 Adding user message to state:', userMessage);
+    setMessages(prev => {
+      const newMessages = [...prev, userMessage];
+      console.log('💬 Updated messages state:', newMessages);
+      return newMessages;
+    });
     onMessageSend?.(content);
 
     try {
@@ -162,6 +191,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
     } catch (err) {
       const error = err as Error;
+      console.error('🔥 Error in sendMessage:', error);
       setError(error);
       onError?.(error);
 
@@ -176,7 +206,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         }
       };
 
-      setMessages(prev => [...prev, errorMessage]);
+      console.log('❌ Adding error message:', errorMessage);
+      setMessages(prev => {
+        const newMessages = [...prev, errorMessage];
+        console.log('💬 Messages after error:', newMessages);
+        return newMessages;
+      });
     } finally {
       setIsLoading(false);
     }

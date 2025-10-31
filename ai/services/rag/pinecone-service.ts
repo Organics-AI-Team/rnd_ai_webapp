@@ -1,15 +1,13 @@
 import { Pinecone } from '@pinecone-database/pinecone';
-import { OpenAI } from 'openai';
+import { createEmbeddingService, UniversalEmbeddingService } from '../embeddings/universal-embedding-service';
 
 // Initialize Pinecone client
 const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY || ''
 });
 
-// Initialize OpenAI for embeddings
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Initialize universal embedding service
+const embeddingService = createEmbeddingService();
 
 const PINECONE_INDEX = process.env.PINECONE_INDEX || '002-rnd-ai';
 
@@ -43,8 +41,9 @@ export interface RAGConfig {
 export class PineconeRAGService {
   private index: any;
   private config: RAGConfig;
+  private embeddingService: UniversalEmbeddingService;
 
-  constructor(config?: Partial<RAGConfig>) {
+  constructor(config?: Partial<RAGConfig>, customEmbeddingService?: UniversalEmbeddingService) {
     this.index = pinecone.Index(PINECONE_INDEX);
     this.config = {
       topK: 5,
@@ -52,17 +51,13 @@ export class PineconeRAGService {
       includeMetadata: true,
       ...config
     };
+    this.embeddingService = customEmbeddingService || embeddingService;
   }
 
-  // Create embeddings for text using OpenAI
+  // Create embeddings using the configured embedding service
   async createEmbeddings(texts: string[]): Promise<number[][]> {
     try {
-      const response = await openai.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: texts
-      });
-
-      return response.data.map(embedding => embedding.embedding);
+      return await this.embeddingService.createEmbeddings(texts);
     } catch (error) {
       console.error('Error creating embeddings:', error);
       throw new Error('Failed to create embeddings');

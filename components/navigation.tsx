@@ -72,14 +72,14 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     },
     {
       type: "link",
-      href: "/ai-chat",
-      label: "แนะนำสารทั้งหมด",
-      labelEn: "General Materials AI",
+      href: "/ai/ai-chat",
+      label: "แนะนำสารทั่วไป",
+      labelEn: "General AI",
       icon: Bot,
     },
     {
       type: "link",
-      href: "/raw-materials-ai",
+      href: "/ai/raw-materials-ai",
       label: "แนะนำสารใน stock",
       labelEn: "Stock Materials AI",
       icon: Database,

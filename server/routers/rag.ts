@@ -20,10 +20,7 @@ export const ragRouter = router({
         // Search using vector similarity
         const matches = await pineconeService.searchSimilar(
           input.query,
-          input.topK,
-          {
-            source: 'raw_materials_real_stock'
-          }
+          { topK: input.topK }
         );
 
         return {
@@ -168,10 +165,7 @@ export const ragRouter = router({
         // Vector search
         const vectorMatches = await pineconeService.searchSimilar(
           input.query,
-          input.topK,
-          {
-            source: 'raw_materials_real_stock'
-          }
+          { topK: input.topK }
         );
 
         let keywordMatches = [];

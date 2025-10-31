@@ -154,7 +154,7 @@ export function AIChat({
       messageActions={renderMessageActions}
       placeholder="Ask me anything..."
       showTimestamp={true}
-      className="border border-slate-200 rounded-lg shadow-sm"
+      className="border border-gray-300 rounded-lg h-full flex flex-col"
       {...baseChatProps}
     />
   );

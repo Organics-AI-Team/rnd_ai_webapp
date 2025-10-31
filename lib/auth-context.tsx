@@ -91,7 +91,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await loginMutation.mutateAsync({ email, password });
       setToken(result.token);
-      setUser(result.user);
+      setUser({
+        ...result.user,
+        id: result.user._id
+      });
       localStorage.setItem("auth_token", result.token);
       // Set cookie for middleware
       document.cookie = `auth_token=${result.token}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
@@ -117,7 +120,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         organizationName,
       });
       setToken(result.token);
-      setUser(result.user);
+      setUser({
+        ...result.user,
+        id: result.user._id
+      });
       localStorage.setItem("auth_token", result.token);
       // Set cookie for middleware
       document.cookie = `auth_token=${result.token}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;

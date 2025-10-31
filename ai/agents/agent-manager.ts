@@ -105,7 +105,11 @@ export class AgentManager {
       agentConfig,
       ragResults,
       executionTime,
-      tokensUsed: response.metadata
+      tokensUsed: {
+        prompt: response.metadata?.promptTokens || 0,
+        completion: response.metadata?.completionTokens || 0,
+        total: response.metadata?.totalTokens || 0
+      }
     };
   }
 

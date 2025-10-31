@@ -1,5 +1,5 @@
-import { AIRequest, AIResponse, UserPreferences, AIModelConfig } from '../../types/ai-types';
-import { Feedback, FeedbackPatterns } from '../../types/feedback-types';
+import { AIRequest, AIResponse, UserPreferences, AIModelConfig, FeedbackPatterns } from '../../types/ai-types';
+import { Feedback } from '../../types/feedback-types';
 import { FeedbackAnalyzer } from './feedback-analyzer';
 
 /**
@@ -97,11 +97,19 @@ export abstract class BaseAIService {
       };
     }
 
-    return FeedbackAnalyzer.adjustParametersBasedOnFeedback(
+    const adjustedConfig = FeedbackAnalyzer.adjustParametersBasedOnFeedback(
       feedback,
       preferences,
       baseConfig
     );
+
+    return {
+      config: {
+        ...adjustedConfig,
+        model: baseConfig.model
+      },
+      feedbackPatterns: FeedbackAnalyzer.analyzeFeedbackPatterns(feedback)
+    };
   }
 
   /**

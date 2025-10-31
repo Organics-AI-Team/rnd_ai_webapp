@@ -108,7 +108,6 @@ export default function AdminProductsPage() {
       setShowAddForm(false);
       setEditingProduct(null);
       setFormData({
-        productCode: "",
         productName: "",
         inciName: "",
         description: "",

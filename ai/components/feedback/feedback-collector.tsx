@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { ThumbsUp, ThumbsDown, Send, CheckCircle } from 'lucide-react';
 import { Feedback, FeedbackType } from '../../types/feedback-types';
+import { z } from 'zod';
 
 export interface FeedbackCollectorProps {
   responseId: string;
@@ -19,7 +20,7 @@ export interface FeedbackCollectorProps {
   className?: string;
 }
 
-const feedbackOptions: { type: FeedbackType; label: string; icon: React.ReactNode }[] = [
+const feedbackOptions: { type: z.infer<typeof FeedbackType>; label: string; icon: React.ReactNode }[] = [
   {
     type: 'excellent',
     label: 'Excellent',
@@ -67,7 +68,7 @@ export function FeedbackCollector({
   showSubmitted = false,
   className = ''
 }: FeedbackCollectorProps) {
-  const [selectedType, setSelectedType] = useState<FeedbackType | null>(null);
+  const [selectedType, setSelectedType] = useState<z.infer<typeof FeedbackType> | null>(null);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(showSubmitted);
@@ -85,7 +86,7 @@ export function FeedbackCollector({
     return null;
   }
 
-  const handleSubmit = async (feedbackType: FeedbackType, score: number) => {
+  const handleSubmit = async (feedbackType: z.infer<typeof FeedbackType>, score: number) => {
     setIsSubmitting(true);
 
     try {
@@ -127,7 +128,7 @@ export function FeedbackCollector({
     return 'simple';
   };
 
-  const getScoreForType = (type: FeedbackType): number => {
+  const getScoreForType = (type: z.infer<typeof FeedbackType>): number => {
     switch (type) {
       case 'excellent': return 5;
       case 'helpful': return 4;

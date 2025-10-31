@@ -9,7 +9,7 @@ import { BaseChat, BaseChatProps } from './base-chat';
 import { useChat } from '../../hooks/use-chat';
 import { useFeedback } from '../../hooks/use-feedback';
 import { FeedbackCollector } from '../feedback/feedback-collector';
-import { PineconeRAGService } from '../../services/rag/pinecone-service';
+import { PineconeClientService } from '../../services/rag/pinecone-client';
 import { ConversationMessage } from '../../types/conversation-types';
 
 export interface RawMaterialsChatProps extends Omit<BaseChatProps, 'messages' | 'onSendMessage' | 'onClearHistory'> {
@@ -43,7 +43,7 @@ export function RawMaterialsChat({
   onFeedbackSubmit,
   ...baseChatProps
 }: RawMaterialsChatProps) {
-  const [ragService] = useState(() => enableRAG ? new PineconeRAGService(ragConfig) : null);
+  const [ragService] = useState(() => enableRAG ? new PineconeClientService(ragConfig) : null);
   const [isSearchingRAG, setIsSearchingRAG] = useState(false);
   const [lastRAGResults, setLastRAGResults] = useState<string>('');
 
@@ -226,7 +226,7 @@ export function RawMaterialsChat({
       messageActions={renderMessageActions}
       placeholder="Ask about raw materials, ingredients, formulations, or suppliers..."
       showTimestamp={true}
-      className="border border-blue-200 rounded-lg shadow-sm"
+      className="border border-gray-300 rounded-lg h-full flex flex-col"
       {...baseChatProps}
     />
   );

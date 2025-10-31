@@ -7,6 +7,18 @@ export interface ConversationMessage {
     model?: string;
     responseId?: string;
     category?: string;
+    agentId?: string;
+    agentName?: string;
+    ragUsed?: boolean;
+    ragSources?: string[];
+    executionTime?: number;
+    tokensUsed?: {
+      prompt: number;
+      completion: number;
+      total: number;
+    };
+    error?: boolean;
+    errorMessage?: string;
   };
 }
 

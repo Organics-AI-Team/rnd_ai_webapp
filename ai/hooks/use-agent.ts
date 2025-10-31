@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { AgentManager, AgentExecutionContext, AgentExecutionResult } from '../agents/agent-manager';
+import { ClientAgentManager, AgentExecutionContext, AgentExecutionResult } from '../agents/agent-manager-client';
 import { AgentConfig, getAgentConfig, getEnabledAgentConfigs } from '../agents/configs/agent-configs';
 import { IAIService } from '../services/core/ai-service-interface';
 import { useAIService } from './use-ai-service';
@@ -15,7 +15,7 @@ export interface UseAgentOptions {
 }
 
 export interface UseAgentReturn {
-  agentManager: AgentManager | null;
+  agentManager: ClientAgentManager | null;
   currentAgent: AgentConfig | null;
   availableAgents: AgentConfig[];
   isLoading: boolean;
@@ -23,7 +23,7 @@ export interface UseAgentReturn {
   lastResult: AgentExecutionResult | null;
   executeAgent: (request: string, options?: any) => Promise<AgentExecutionResult>;
   switchAgent: (agentId: string) => boolean;
-  searchAgents: (query: string) => AgentConfig[];
+  searchAgents: (query: string) => Promise<AgentConfig[]>;
   getAgentsByCategory: (category: string) => AgentConfig[];
   clearError: () => void;
 }
@@ -40,7 +40,7 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
     onError
   } = options;
 
-  const [agentManager, setAgentManager] = useState<AgentManager | null>(null);
+  const [agentManager, setAgentManager] = useState<ClientAgentManager | null>(null);
   const [currentAgent, setCurrentAgent] = useState<AgentConfig | null>(null);
   const [availableAgents, setAvailableAgents] = useState<AgentConfig[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,24 +55,30 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
     }
   });
 
-  // Initialize agent manager when AI service is available
+  // Initialize agent manager
   useEffect(() => {
-    const service = externalAiService || aiService.service;
-    if (service && !agentManager) {
-      const manager = new AgentManager(service);
+    if (!agentManager) {
+      const manager = new ClientAgentManager();
       setAgentManager(manager);
-      setAvailableAgents(manager.getAvailableAgents());
 
-      // Set initial agent if specified
-      if (initialAgentId) {
-        const agent = manager.getAgentConfig(initialAgentId);
-        if (agent) {
-          setCurrentAgent(agent);
-          onAgentChange?.(agent);
+      // Load available agents
+      manager.getAvailableAgents().then(agents => {
+        setAvailableAgents(agents);
+
+        // Set initial agent if specified
+        if (initialAgentId) {
+          const agent = agents.find(a => a.id === initialAgentId);
+          if (agent) {
+            setCurrentAgent(agent);
+            onAgentChange?.(agent);
+          }
         }
-      }
+      }).catch(err => {
+        console.error('Failed to load agents:', err);
+        setError(err as Error);
+      });
     }
-  }, [externalAiService, aiService.service, agentManager, initialAgentId, onAgentChange]);
+  }, [agentManager, initialAgentId, onAgentChange]);
 
   const executeAgent = useCallback(async (
     request: string,
@@ -102,12 +108,6 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
       const result = await agentManager.executeAgent(context);
       setLastResult(result);
 
-      // Update agent metrics
-      agentManager.updateAgentMetrics(currentAgent.id, {
-        usageCount: 1,
-        lastUsed: new Date()
-      });
-
       return result;
     } catch (err) {
       const error = err as Error;
@@ -120,26 +120,25 @@ export function useAgent(options: UseAgentOptions): UseAgentReturn {
   }, [agentManager, currentAgent, userId, onError]);
 
   const switchAgent = useCallback((agentId: string): boolean => {
-    if (!agentManager) return false;
-
-    const agent = agentManager.getAgentConfig(agentId);
+    const agent = getAgentConfig(agentId);
     if (agent) {
       setCurrentAgent(agent);
       onAgentChange?.(agent);
       return true;
     }
     return false;
-  }, [agentManager, onAgentChange]);
+  }, [onAgentChange]);
 
-  const searchAgents = useCallback((query: string): AgentConfig[] => {
+  const searchAgents = useCallback(async (query: string): Promise<AgentConfig[]> => {
     if (!agentManager) return [];
-    return agentManager.searchAgents(query);
+    return await agentManager.searchAgents(query);
   }, [agentManager]);
 
   const getAgentsByCategory = useCallback((category: string): AgentConfig[] => {
-    if (!agentManager) return [];
-    return agentManager.getAgentsByCategory(category);
-  }, [agentManager]);
+    // For now, filter the loaded agents by category
+    // This could be enhanced with server-side filtering if needed
+    return availableAgents.filter(agent => agent.category === category);
+  }, [availableAgents]);
 
   const clearError = useCallback(() => {
     setError(null);

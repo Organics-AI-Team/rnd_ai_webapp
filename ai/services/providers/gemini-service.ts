@@ -22,7 +22,7 @@ export class GeminiService extends BaseAIService {
 
     this.model = new ChatGoogleGenerativeAI({
       apiKey: apiKey,
-      modelName: defaultConfig.model,
+      model: defaultConfig.model,
       temperature: defaultConfig.temperature,
       maxOutputTokens: defaultConfig.maxTokens,
     });
@@ -62,7 +62,7 @@ export class GeminiService extends BaseAIService {
 
       // Create response object using base class method
       return this.createResponse(
-        response as string,
+        response.content as string,
         adjustedConfig.model,
         adjustedConfig,
         feedbackPatterns.totalFeedback > 0,

@@ -61,8 +61,17 @@ export function BaseChat({
     if (!input.trim() || isLoading) return;
 
     const message = input.trim();
+    console.log('🚫 BaseChat: Submitting message:', message);
     setInput('');
-    await onSendMessage(message);
+
+    try {
+      await onSendMessage(message);
+      console.log('✅ BaseChat: Message sent successfully');
+    } catch (error) {
+      console.error('❌ BaseChat: Error sending message:', error);
+      // Restore input if send failed
+      setInput(message);
+    }
   }, [input, isLoading, onSendMessage]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -132,7 +141,7 @@ export function BaseChat({
       )}
 
       {/* Messages Container */}
-      <div className={`flex-1 overflow-y-auto ${maxHeight}`} onScroll={handleScroll}>
+      <div className={`flex-1 overflow-y-auto ${maxHeight === 'h-96' ? 'h-full' : maxHeight}`} onScroll={handleScroll}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-500">
             <Bot className="w-12 h-12 mb-4 text-slate-300" />

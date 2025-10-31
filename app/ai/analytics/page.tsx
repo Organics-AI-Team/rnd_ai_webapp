@@ -86,270 +86,289 @@ export default function AIAnalyticsPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2 mb-2">
-            <Activity className="w-6 h-6 text-blue-500" />
-            <h1 className="text-2xl font-bold">AI Analytics Dashboard</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1">
-              {(['7d', '30d', '90d'] as const).map((range) => (
-                <Button
-                  key={range}
-                  variant={timeRange === range ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setTimeRange(range)}
-                >
-                  {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
-                </Button>
-              ))}
+    <div className="w-full max-w-7xl mx-auto">
+      <Card className="flex flex-col">
+        <CardHeader className="pb-4 border-b">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 mb-2">
+              <Activity className="w-6 h-6 text-blue-500" />
+              <h1 className="text-2xl font-bold">AI Analytics Dashboard</h1>
             </div>
-            <Button variant="outline" size="sm" onClick={refreshData} disabled={isLoading}>
-              <Filter className="w-4 h-4 mr-1" />
-              {isLoading ? 'Refreshing...' : 'Refresh'}
-            </Button>
-          </div>
-        </div>
-        <p className="text-gray-600">
-          ข้อมูลการใช้งานระบบ AI และประสิทธิภาพของ AI agents
-        </p>
-      </div>
-
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <MessageSquare className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Conversations</p>
-                <p className="text-2xl font-bold">1,022</p>
-                <p className="text-xs text-green-600">+12% from last period</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Users className="h-8 w-8 text-green-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Active Users</p>
-                <p className="text-2xl font-bold">89</p>
-                <p className="text-xs text-green-600">+8% from last period</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <ThumbsUp className="h-8 w-8 text-yellow-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Avg Satisfaction</p>
-                <p className="text-2xl font-bold">4.2/5</p>
-                <p className="text-xs text-green-600">+0.1 from last period</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Clock className="h-8 w-8 text-purple-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Avg Response Time</p>
-                <p className="text-2xl font-bold">1.3s</p>
-                <p className="text-xs text-green-600">-0.2s from last period</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="agents">Agents</TabsTrigger>
-          <TabsTrigger value="rag">Knowledge Base</TabsTrigger>
-          <TabsTrigger value="feedback">Feedback</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Usage Trend */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5" />
-                  Usage Trend
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={mockUsageData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="conversations" stroke="#3b82f6" strokeWidth={2} />
-                    <Line type="monotone" dataKey="users" stroke="#10b981" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Satisfaction Trend */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ThumbsUp className="w-5 h-5" />
-                  User Satisfaction
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={mockUsageData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis domain={[3, 5]} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="satisfaction" stroke="#f59e0b" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="agents" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bot className="w-5 h-5" />
-                Agent Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {mockAgentUsage.map((agent) => (
-                  <div key={agent.name} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: agent.color }} />
-                      <div>
-                        <h3 className="font-medium">{agent.name}</h3>
-                        <p className="text-sm text-gray-600">{agent.conversations} conversations</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <Badge variant="outline">{agent.satisfaction}/5.0</Badge>
-                      <p className="text-xs text-gray-600 mt-1">Avg rating</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Agent Usage Pie Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Agent Usage Distribution</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={mockAgentUsage}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="conversations"
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1">
+                {(['7d', '30d', '90d'] as const).map((range) => (
+                  <Button
+                    key={range}
+                    variant={timeRange === range ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setTimeRange(range)}
                   >
-                    {mockAgentUsage.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="rag" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="w-5 h-5" />
-                RAG Knowledge Base Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {mockRAGUsage.map((index) => (
-                  <div key={index.index} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <h3 className="font-medium">{index.index}</h3>
-                      <p className="text-sm text-gray-600">{index.queries} queries</p>
-                    </div>
-                    <div className="text-right space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-gray-500" />
-                        <span className="text-sm">{index.avgResponseTime}s</span>
-                      </div>
-                      <Badge variant={index.hitRate > 0.8 ? 'default' : 'secondary'}>
-                        {Math.round(index.hitRate * 100)}% hit rate
-                      </Badge>
-                    </div>
-                  </div>
+                    {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
+                  </Button>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+              <Button variant="outline" size="sm" onClick={refreshData} disabled={isLoading}>
+                <Filter className="w-4 h-4 mr-1" />
+                {isLoading ? 'Refreshing...' : 'Refresh'}
+              </Button>
+            </div>
+          </div>
+          <p className="text-gray-600">
+            ข้อมูลการใช้งานระบบ AI และประสิทธิภาพของ AI agents
+          </p>
+        </CardHeader>
+        <CardContent className="flex-1 p-0">
+          <Tabs defaultValue="overview" className="h-full flex flex-col">
+            <div className="px-6 pt-2">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="agents">Agents</TabsTrigger>
+                <TabsTrigger value="rag">Knowledge Base</TabsTrigger>
+                <TabsTrigger value="feedback">Feedback</TabsTrigger>
+              </TabsList>
+            </div>
 
-          {/* RAG Usage Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>RAG Query Volume</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={mockRAGUsage}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="index" angle={-45} textAnchor="end" height={80} />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="queries" fill="#3b82f6" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            {/* Key Metrics */}
+            <div className="px-6 py-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center">
+                      <MessageSquare className="h-8 w-8 text-blue-600" />
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Total Conversations</p>
+                        <p className="text-2xl font-bold">1,022</p>
+                        <p className="text-xs text-green-600">+12% from last period</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-        <TabsContent value="feedback" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Feedback Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-gray-600">Feedback analytics coming soon</p>
-                <p className="text-sm text-gray-500">Detailed feedback analysis and sentiment tracking</p>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center">
+                      <Users className="h-8 w-8 text-green-600" />
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Active Users</p>
+                        <p className="text-2xl font-bold">89</p>
+                        <p className="text-xs text-green-600">+8% from last period</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center">
+                      <ThumbsUp className="h-8 w-8 text-yellow-600" />
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Avg Satisfaction</p>
+                        <p className="text-2xl font-bold">4.2/5</p>
+                        <p className="text-xs text-green-600">+0.1 from last period</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center">
+                      <Clock className="h-8 w-8 text-purple-600" />
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Avg Response Time</p>
+                        <p className="text-2xl font-bold">1.3s</p>
+                        <p className="text-xs text-green-600">-0.2s from last period</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+
+        <TabsContent value="overview" className="flex-1 mt-0 overflow-y-auto">
+          <div className="p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Usage Trend */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Usage Trend
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={mockUsageData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="conversations" stroke="#3b82f6" strokeWidth={2} />
+                      <Line type="monotone" dataKey="users" stroke="#10b981" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Satisfaction Trend */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ThumbsUp className="w-5 h-5" />
+                    User Satisfaction
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={mockUsageData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis domain={[3, 5]} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="satisfaction" stroke="#f59e0b" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
-      </Tabs>
+
+        <TabsContent value="agents" className="flex-1 mt-0 overflow-y-auto">
+          <div className="p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Bot className="w-5 h-5" />
+                    Agent Performance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {mockAgentUsage.map((agent) => (
+                      <div key={agent.name} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: agent.color }} />
+                          <div>
+                            <h3 className="font-medium">{agent.name}</h3>
+                            <p className="text-sm text-gray-600">{agent.conversations} conversations</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="outline">{agent.satisfaction}/5.0</Badge>
+                          <p className="text-xs text-gray-600 mt-1">Avg rating</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Agent Usage Pie Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Agent Usage Distribution</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={mockAgentUsage}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${((percent as number) * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="conversations"
+                      >
+                        {mockAgentUsage.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="rag" className="flex-1 mt-0 overflow-y-auto">
+          <div className="p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="w-5 h-5" />
+                    RAG Knowledge Base Performance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {mockRAGUsage.map((index) => (
+                      <div key={index.index} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <h3 className="font-medium">{index.index}</h3>
+                          <p className="text-sm text-gray-600">{index.queries} queries</p>
+                        </div>
+                        <div className="text-right space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-gray-500" />
+                            <span className="text-sm">{index.avgResponseTime}s</span>
+                          </div>
+                          <Badge variant={index.hitRate > 0.8 ? 'default' : 'secondary'}>
+                            {Math.round(index.hitRate * 100)}% hit rate
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* RAG Usage Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>RAG Query Volume</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={mockRAGUsage}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="index" angle={-45} textAnchor="end" height={80} />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="queries" fill="#3b82f6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="feedback" className="flex-1 mt-0">
+          <div className="p-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Feedback Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-600">Feedback analytics coming soon</p>
+                  <p className="text-sm text-gray-500">Detailed feedback analysis and sentiment tracking</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
     </div>
   );
 }

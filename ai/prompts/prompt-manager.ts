@@ -193,7 +193,7 @@ Please take over this conversation and assist the user with their needs in your 
    */
   private processConditionals(template: string, variables: Record<string, any>): string {
     // Simple {{#if variable}}...{{/if}} processing
-    const ifRegex = /{{#if\s+(\w+)}}(.*?){{\/if}}/gs;
+    const ifRegex = /{{#if\s+(\w+)}}([\s\S]*?){{\/if}}/g;
     return template.replace(ifRegex, (match, variable, content) => {
       return variables[variable] ? content : '';
     });

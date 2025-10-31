@@ -1,5 +1,5 @@
-import { AIRequest, AIResponse } from '../../types/ai-types';
-import { Feedback, FeedbackPatterns } from '../../types/feedback-types';
+import { AIRequest, AIResponse, FeedbackPatterns } from '../../types/ai-types';
+import { Feedback } from '../../types/feedback-types';
 
 /**
  * Interface defining the contract for all AI services

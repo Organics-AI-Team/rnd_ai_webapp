@@ -62,7 +62,7 @@ export default function AIHubPage() {
   ];
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="w-full max-w-6xl mx-auto">
       <div className="mb-8">
         <div className="flex items-center space-x-2 mb-4">
           <Bot className="w-8 h-8 text-blue-500" />
