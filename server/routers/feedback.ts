@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../trpc";
 import clientPromise from "@/lib/mongodb";
-import { FeedbackSchema, AIResponseSchema } from "@/lib/feedback-types";
+import { FeedbackSchema, StoredAIResponseSchema } from "@/ai/types/feedback-types";
 import { ObjectId } from "mongodb";
 
 export const feedbackRouter = router({

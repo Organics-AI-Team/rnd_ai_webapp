@@ -153,7 +153,6 @@ export function OrderForm() {
 
     if (!user || !organization) {
       alert("กรุณาเข้าสู่ระบบก่อนทำรายการ");
-      console.log("User:", user, "Organization:", organization);
       return;
     }
 
@@ -161,19 +160,12 @@ export function OrderForm() {
     const invalidOrders = ordersList.filter(order => !order.channel || !order.productName);
     if (invalidOrders.length > 0) {
       alert("พบออเดอร์ที่ไม่มีข้อมูลครบถ้วน กรุณาตรวจสอบและลองใหม่");
-      console.log("Invalid orders:", invalidOrders);
       return;
     }
 
     setIsSubmitting(true);
     try {
       for (const order of ordersList) {
-        console.log("Submitting order:", {
-          productId: order.productId,
-          channel: order.channel,
-          productName: order.productName,
-          quantity: order.quantity,
-        });
         await createOrder.mutateAsync({
           organizationId: organization._id,
           createdBy: user._id,

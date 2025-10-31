@@ -188,7 +188,6 @@ export const authRouter = router({
   me: publicProcedure
     .input(z.object({ token: z.string() }))
     .query(async ({ input }) => {
-      console.log("auth.me - Called with token:", input.token ? "exists" : "empty");
       const client = await clientPromise;
       const db = client.db();
 
@@ -197,15 +196,12 @@ export const authRouter = router({
         token: input.token,
         expiresAt: { $gt: new Date() },
       });
-
-      console.log("auth.me - Session found:", session ? "yes" : "no");
       if (!session) {
         throw new Error("Invalid or expired session");
       }
 
       // Get user
       const user = await db.collection("users").findOne({ accountId: session.accountId });
-      console.log("auth.me - User found:", user ? "yes" : "no");
       if (!user) {
         throw new Error("User not found");
       }
@@ -214,7 +210,6 @@ export const authRouter = router({
       const organization = await db.collection("organizations").findOne({
         _id: new ObjectId(user.organizationId),
       });
-      console.log("auth.me - Organization found:", organization ? "yes" : "no");
 
       return {
         user: {

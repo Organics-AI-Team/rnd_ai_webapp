@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, ClipboardList, Truck, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Star, Eye, Plus, Bot, BarChart3 } from "lucide-react";
+import { Package, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Bot, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -73,9 +73,16 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     {
       type: "link",
       href: "/ai-chat",
-      label: "แชทกับ AI",
-      labelEn: "AI Chat",
+      label: "แนะนำสารทั้งหมด",
+      labelEn: "General Materials AI",
       icon: Bot,
+    },
+    {
+      type: "link",
+      href: "/raw-materials-ai",
+      label: "แนะนำสารใน stock",
+      labelEn: "Stock Materials AI",
+      icon: Database,
     },
       // Separator
     {
@@ -86,6 +93,14 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     {
       type: "section-title",
       label: "การตั้งค่า",
+      adminOnly: true,
+    },
+    {
+      type: "link",
+      href: "/admin/vector-indexing",
+      label: "จัดการ Vector",
+      labelEn: "Vector Indexing",
+      icon: Database,
       adminOnly: true,
     },
     {

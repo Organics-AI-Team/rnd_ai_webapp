@@ -33,7 +33,7 @@ export const FeedbackSchema = z.object({
 
 export type Feedback = z.infer<typeof FeedbackSchema>;
 
-export const AIResponseSchema = z.object({
+export const StoredAIResponseSchema = z.object({
   id: z.string(),
   userId: z.string(),
   prompt: z.string(),
@@ -47,4 +47,4 @@ export const AIResponseSchema = z.object({
   totalFeedback: z.number().default(0)
 });
 
-export type AIResponse = z.infer<typeof AIResponseSchema>;
+export type StoredAIResponse = z.infer<typeof StoredAIResponseSchema>;
