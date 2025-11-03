@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Bot, Database } from "lucide-react";
+import { Package, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Bot, Database, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,13 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       label: "แนะนำสารใน stock",
       labelEn: "Stock Materials AI",
       icon: Database,
+    },
+    {
+      type: "link",
+      href: "/ai/sales-rnd-ai",
+      label: "ช่วยสร้างสูตร (Sales)",
+      labelEn: "Sales Formulation AI",
+      icon: Sparkles,
     },
       // Separator
     {
