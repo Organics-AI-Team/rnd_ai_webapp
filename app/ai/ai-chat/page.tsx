@@ -49,6 +49,11 @@ export default function AIChatPage() {
     );
   }
 
+  console.log('🔑 Environment variables:', {
+  NEXT_PUBLIC_GEMINI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_API_KEY ? 'SET' : 'NOT_SET',
+  user: user
+});
+
   return (
     <AIChatLayout
       title="บทสนทนากับผู้ช่วย AI แนะนำสาร"

@@ -236,6 +236,12 @@ export abstract class BaseAIService {
    * Assess response complexity (can be overridden by subclasses)
    */
   protected assessComplexity(text: string): 'simple' | 'moderate' | 'complex' {
+    // Type guard to ensure text is a string
+    if (typeof text !== 'string') {
+      console.warn('assessComplexity received non-string value:', typeof text, text);
+      text = String(text || '');
+    }
+
     const sentences = text.split('.').filter(s => s.trim().length > 0);
     const avgSentenceLength = sentences.reduce((sum, sentence) =>
       sum + sentence.split(' ').length, 0) / sentences.length;

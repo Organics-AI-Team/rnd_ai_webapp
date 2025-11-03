@@ -1,13 +1,16 @@
 'use client';
 
-import React from 'react';
+// Version: 2.1 - Added RAG support for chemical queries
+import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Bot, Trash2, AlertCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Bot, Trash2, AlertCircle, Search } from 'lucide-react';
 import { BaseChat, BaseChatProps } from './base-chat';
 import { useChat } from '../../hooks/use-chat';
 import { useFeedback } from '../../hooks/use-feedback';
 import { FeedbackCollector } from '../feedback/feedback-collector';
+import { PineconeClientService } from '../../services/rag/pinecone-client';
 import { ConversationMessage } from '../../types/conversation-types';
 
 export interface AIChatProps extends Omit<BaseChatProps, 'messages' | 'onSendMessage' | 'onClearHistory'> {
@@ -35,6 +38,13 @@ export function AIChat({
   onFeedbackSubmit,
   ...baseChatProps
 }: AIChatProps) {
+  const [ragService] = useState(() => new PineconeClientService({
+    topK: 5,
+    similarityThreshold: 0.7
+  }));
+  const [isSearchingRAG, setIsSearchingRAG] = useState(false);
+  const [lastRAGResults, setLastRAGResults] = useState('');
+
   const chat = useChat({
     userId,
     apiKey,
@@ -42,7 +52,17 @@ export function AIChat({
     serviceName,
     onError,
     maxMessages: 50,
-    enablePersistence: true
+    enablePersistence: true,
+    onMessageSend: async (message) => {
+      // Perform RAG search if message seems related to raw materials/chemicals
+      if (ragService && isRawMaterialsQuery(message)) {
+        console.log('🚀 Triggering RAG search in background...');
+        // Don't await - let it run in background and not block the message
+        performRAGSearch(message).catch(error => {
+          console.error('❌ Background RAG search failed:', error);
+        });
+      }
+    }
   });
 
   const feedback = useFeedback({
@@ -51,8 +71,72 @@ export function AIChat({
     onFeedbackSubmit: onFeedbackSubmit
   });
 
+  const isRawMaterialsQuery = (message: string): boolean => {
+    console.log('🔍 Checking RAG query:', message);
+    const keywords = [
+      'raw material', 'ingredient', 'formula', 'composition',
+      'rm_code', 'inci', 'supplier', 'cost', 'benefit',
+      'trade name', 'chemical', 'extract', 'active',
+      '7-amino', 'benzothiazine', 'dihydro', 'compound', 'molecule'
+    ];
+    const isRAG = keywords.some(keyword =>
+      message.toLowerCase().includes(keyword.toLowerCase())
+    );
+    console.log('🧪 RAG query result:', isRAG);
+    return isRAG;
+  };
+
+  const performRAGSearch = useCallback(async (query: string) => {
+    if (!ragService) {
+      console.log('⚠️ No RAG service available');
+      return;
+    }
+
+    console.log('🔍 Starting RAG search for:', query);
+    setIsSearchingRAG(true);
+    try {
+      const results = await ragService.searchAndFormat(query, {
+        topK: 5,
+        similarityThreshold: 0.7
+      });
+      console.log('✅ RAG search results:', results);
+      setLastRAGResults(results);
+    } catch (error) {
+      console.error('❌ RAG search failed:', error);
+      console.error('❌ Error details:', error.message, error.stack);
+      // Don't set any results on failure - let the query proceed normally
+      setLastRAGResults('');
+    } finally {
+      setIsSearchingRAG(false);
+    }
+  }, [ragService]);
+
   const handleSendMessage = async (message: string) => {
-    await chat.sendMessage(message);
+    console.log('🎯 AIChat handleSendMessage called:', message);
+    console.log('🔧 Chat service status:', !!chat.getService());
+    console.log('🔑 API Key available:', !!apiKey);
+    console.log('🏷️ Provider:', provider);
+    console.log('👤 User ID:', userId);
+    console.log('🧪 Is RAG query:', isRawMaterialsQuery(message));
+
+    // Always send the original message first to ensure it works
+    try {
+      await chat.sendMessage(message);
+      console.log('✅ Message sent successfully');
+
+      // If there are RAG results, send a follow-up message with the enhanced context
+      if (lastRAGResults && isRawMaterialsQuery(message)) {
+        console.log('🔍 Sending follow-up with RAG results');
+        setTimeout(() => {
+          chat.sendMessage(`\n\n**Additional Information from Database:**\n${lastRAGResults}`)
+            .catch(error => console.error('❌ Failed to send RAG follow-up:', error));
+        }, 1000);
+      }
+
+      setLastRAGResults(''); // Clear RAG results after sending
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+    }
   };
 
   const handleClearHistory = async () => {
@@ -92,6 +176,12 @@ export function AIChat({
       <div className="flex items-center gap-2">
         <Bot className="w-5 h-5 text-green-600" />
         <span className="font-semibold text-slate-800">AI Assistant</span>
+        {ragService && (
+          <Badge variant="outline" className="text-xs">
+            <Search className="w-3 h-3 mr-1" />
+            RAG Ready
+          </Badge>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
@@ -120,24 +210,32 @@ export function AIChat({
   );
 
   const renderFooter = () => {
-    if (!chat.error) return null;
+    if (!chat.error && !isSearchingRAG) return null;
 
     return (
-      <Card className="m-4 p-3 border-red-200 bg-red-50">
-        <div className="flex items-center gap-2 text-red-800">
-          <AlertCircle className="w-4 h-4" />
-          <span className="text-sm">
-            Error: {chat.error.message}
-          </span>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={chat.retryLastMessage}
-          className="mt-2"
-        >
-          Retry Last Message
-        </Button>
+      <Card className="m-4 p-3 border-blue-200 bg-blue-50">
+        {isSearchingRAG ? (
+          <div className="flex items-center gap-2 text-blue-800">
+            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm">Searching knowledge base for chemical information...</span>
+          </div>
+        ) : chat.error ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-red-800">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm">
+                Error: {chat.error.message}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={chat.retryLastMessage}
+            >
+              Retry Last Message
+            </Button>
+          </div>
+        ) : null}
       </Card>
     );
   };
@@ -148,11 +246,11 @@ export function AIChat({
       messages={chat.messages}
       onSendMessage={handleSendMessage}
       onClearHistory={handleClearHistory}
-      isLoading={chat.isLoading}
+      isLoading={chat.isLoading || isSearchingRAG}
       header={renderHeader()}
       footer={renderFooter()}
       messageActions={renderMessageActions}
-      placeholder="Ask me anything..."
+      placeholder="Ask me anything... (Try asking about chemicals or raw materials!)"
       showTimestamp={true}
       className="border border-gray-300 rounded-lg h-full flex flex-col"
       {...baseChatProps}

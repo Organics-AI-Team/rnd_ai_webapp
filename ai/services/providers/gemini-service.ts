@@ -14,7 +14,7 @@ export class GeminiService extends BaseAIService {
     const defaultConfig: AIModelConfig = {
       model: 'gemini-2.5-flash',
       temperature: 0.7,
-      maxTokens: 500,
+      maxTokens: 9000,
       ...config
     };
 
@@ -31,6 +31,12 @@ export class GeminiService extends BaseAIService {
   async generateResponse(request: AIRequest): Promise<AIResponse> {
     const startTime = Date.now();
 
+    console.log('🤖 Gemini generateResponse called:', {
+      prompt: request.prompt,
+      userId: request.userId,
+      context: request.context
+    });
+
     try {
       // Get user preferences and adjust parameters
       const userPreferences = await this.getUserPreferences(request.userId);
@@ -39,6 +45,12 @@ export class GeminiService extends BaseAIService {
         this.defaultConfig
       );
 
+      console.log('⚙️ Service parameters:', {
+        originalConfig: this.defaultConfig,
+        adjustedConfig,
+        feedbackPatterns
+      });
+
       // Create enhanced prompt
       const enhancedPrompt = this.enhancePrompt(
         request.prompt,
@@ -46,8 +58,12 @@ export class GeminiService extends BaseAIService {
         feedbackPatterns
       );
 
+      console.log('✨ Enhanced prompt:', enhancedPrompt);
+
       // Generate response using Gemini
+      console.log('🔄 Calling Gemini model...');
       const response = await this.model.invoke(enhancedPrompt);
+      console.log('✅ Received response from Gemini:', response);
 
       const endTime = Date.now();
       const latency = endTime - startTime;
@@ -60,9 +76,24 @@ export class GeminiService extends BaseAIService {
         this.model.maxOutputTokens = adjustedConfig.maxTokens;
       }
 
+      // Extract response content safely
+      let responseText = '';
+      if (response && response.content) {
+        if (typeof response.content === 'string') {
+          responseText = response.content;
+        } else if (response.content.text) {
+          responseText = response.content.text;
+        } else {
+          // Try to convert to string directly
+          responseText = String(response.content);
+        }
+      } else {
+        responseText = 'No response generated';
+      }
+
       // Create response object using base class method
       return this.createResponse(
-        response.content as string,
+        responseText,
         adjustedConfig.model,
         adjustedConfig,
         feedbackPatterns.totalFeedback > 0,
@@ -71,7 +102,18 @@ export class GeminiService extends BaseAIService {
       );
 
     } catch (error) {
-      console.error('Gemini Service Error:', error);
+      console.error('🔥 Gemini Service Error:', error);
+      console.error('🔥 Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+
+      // Check if this is the original split error
+      if (error.message && error.message.includes('split')) {
+        console.error('🚨 This is the split error - response extraction issue');
+      }
+
       throw new Error('Failed to generate AI response');
     }
   }

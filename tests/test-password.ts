@@ -10,9 +10,11 @@ const passwordToTest = process.env.ADMIN_PASSWORD || "admin";
 
 async function verifyPassword() {
   const result = await compare(passwordToTest, storedHash);
-  console.log("Testing password:", passwordToTest);
-  console.log("Against hash:", storedHash);
-  console.log("Match:", result);
+  if (result) {
+    console.log("✅ Password verification successful");
+  } else {
+    console.log("❌ Password verification failed");
+  }
 }
 
 verifyPassword();

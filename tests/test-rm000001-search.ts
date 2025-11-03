@@ -11,17 +11,11 @@ import { PineconeRAGService } from './ai/services/rag/pinecone-service';
 config({ path: '.env.local' });
 
 async function checkExistingData() {
-  console.log('🔍 Checking existing data in Pinecone...');
-
   try {
     const ragService = new PineconeRAGService();
     const stats = await ragService.getIndexStats();
 
-    console.log('📊 Index Statistics:');
-    console.log(`  Total Records: ${stats.totalRecordCount}`);
-    console.log(`  Dimensions: ${stats.dimension}`);
-    console.log(`  Index Fullness: ${(stats.indexFullness * 100).toFixed(2)}%`);
-
+    console.log(`📊 Pinecone Index: ${stats.totalRecordCount} records, ${stats.dimension}D`);
     return stats;
   } catch (error: any) {
     console.log('❌ Failed to get index stats:', error.message);
