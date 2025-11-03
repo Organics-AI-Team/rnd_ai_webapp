@@ -200,12 +200,25 @@ export class AgentManager {
     const serviceKey = `${indexConfig.pineconeIndex}-${indexConfig.namespace || 'default'}`;
 
     if (!this.ragServices.has(serviceKey)) {
-      const ragService = new PineconeRAGService({
-        topK: indexConfig.topK,
-        similarityThreshold: indexConfig.similarityThreshold,
-        includeMetadata: true,
-        filter: indexConfig.metadataFilters
-      });
+      // Map index category to RAG service name
+      // Default to rawMaterialsAllAI for general queries
+      let serviceName: 'rawMaterialsAllAI' | 'rawMaterialsAI' = 'rawMaterialsAllAI';
+
+      // Use rawMaterialsAI for specific stock/chemical database queries
+      if (indexConfig.category === 'raw-materials' && indexConfig.namespace === 'raw-materials') {
+        serviceName = 'rawMaterialsAI';
+      }
+
+      // PineconeRAGService constructor signature: (serviceName, config, embeddingService)
+      const ragService = new PineconeRAGService(
+        serviceName,
+        {
+          topK: indexConfig.topK,
+          similarityThreshold: indexConfig.similarityThreshold,
+          includeMetadata: true,
+          filter: indexConfig.metadataFilters
+        }
+      );
       this.ragServices.set(serviceKey, ragService);
     }
 

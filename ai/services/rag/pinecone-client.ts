@@ -2,6 +2,7 @@
  * Client-side Pinecone RAG service interface
  * This is a client-safe version that imports the actual Pinecone service only when needed
  */
+import { RAGServicesConfig } from '../../config/rag-config';
 
 export interface RawMaterialDocument {
   id: string;
@@ -38,8 +39,10 @@ export interface SearchResult {
  */
 export class PineconeClientService {
   private config: RAGConfig;
+  private serviceName: keyof RAGServicesConfig;
 
-  constructor(config?: Partial<RAGConfig>) {
+  constructor(serviceName: keyof RAGServicesConfig = 'rawMaterialsAllAI', config?: Partial<RAGConfig>) {
+    this.serviceName = serviceName;
     this.config = {
       topK: 5,
       similarityThreshold: 0.7,
@@ -67,6 +70,7 @@ export class PineconeClientService {
           query,
           topK: searchConfig.topK,
           similarityThreshold: searchConfig.similarityThreshold,
+          serviceName: this.serviceName,
         }),
       });
 
@@ -138,6 +142,6 @@ export class PineconeClientService {
 /**
  * Create a new client-side Pinecone service
  */
-export function createPineconeClientService(config?: Partial<RAGConfig>): PineconeClientService {
-  return new PineconeClientService(config);
+export function createPineconeClientService(serviceName?: keyof RAGServicesConfig, config?: Partial<RAGConfig>): PineconeClientService {
+  return new PineconeClientService(serviceName, config);
 }

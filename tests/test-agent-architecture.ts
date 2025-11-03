@@ -5,10 +5,10 @@
  */
 
 import { config } from 'dotenv';
-import { AgentManager } from './ai/agents/agent-manager';
-import { GeminiService } from './ai/services/providers/gemini-service';
-import { createEmbeddingService } from './ai/services/embeddings/universal-embedding-service';
-import { getEnabledAgentConfigs } from './ai/agents/configs/agent-configs';
+import { AgentManager } from '../ai/agents/agent-manager';
+import { GeminiService } from '../ai/services/providers/gemini-service';
+import { createEmbeddingService } from '../ai/services/embeddings/universal-embedding-service';
+import { getEnabledAgentConfigs } from '../ai/agents/configs/agent-configs';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -86,7 +86,7 @@ async function testRAGIntegration() {
 
   try {
     const embeddingService = createEmbeddingService();
-    const ragService = new (await import('./ai/services/rag/pinecone-service')).PineconeRAGService({}, embeddingService);
+    const ragService = new (await import('../ai/services/rag/pinecone-service')).PineconeRAGService('rawMaterialsAllAI', {}, embeddingService);
 
     // Test queries that agents would typically handle
     const agentQueries = [
@@ -136,7 +136,7 @@ async function testAgentManager() {
     const geminiService = new GeminiService(process.env.GEMINI_API_KEY!);
 
     // Create agent manager
-    const agentManager = new (await import('./ai/agents/agent-manager')).AgentManager(geminiService as any);
+    const agentManager = new (await import('../ai/agents/agent-manager')).AgentManager(geminiService as any);
 
     console.log('✅ Agent manager initialized with Gemini service');
 
@@ -211,7 +211,7 @@ async function testDirectAgentServices() {
   // Test OpenAI (if API key is valid)
   if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here') {
     try {
-      const openaiService = new (await import('./ai/services/providers/openai-service')).OpenAIService(process.env.OPENAI_API_KEY);
+      const openaiService = new (await import('../ai/services/providers/openai-service')).OpenAIService(process.env.OPENAI_API_KEY);
 
       const openaiResponse = await openaiService.generateResponse({
         prompt: 'What is RM000001 and its cosmetic applications?',

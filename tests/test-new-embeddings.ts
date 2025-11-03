@@ -5,9 +5,9 @@
  */
 
 import { config } from 'dotenv';
-import { GeminiEmbeddingService, createGeminiEmbeddingService } from './ai/services/embeddings/gemini-embedding-service';
-import { UniversalEmbeddingService, createEmbeddingService } from './ai/services/embeddings/universal-embedding-service';
-import { PineconeRAGService } from './ai/services/rag/pinecone-service';
+import { GeminiEmbeddingService, createGeminiEmbeddingService } from '../ai/services/embeddings/gemini-embedding-service';
+import { UniversalEmbeddingService, createEmbeddingService } from '../ai/services/embeddings/universal-embedding-service';
+import { PineconeRAGService } from '../ai/services/rag/pinecone-service';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -172,7 +172,7 @@ async function testRAGWithMultipleProviders() {
       await service.test();
 
       // Test with Pinecone
-      const ragService = new PineconeRAGService({}, service);
+      const ragService = new PineconeRAGService('rawMaterialsAllAI', {}, service);
       const query = "RM000001 test chemical";
       const results = await ragService.searchSimilar(query, { topK: 2, similarityThreshold: 0.1 });
 

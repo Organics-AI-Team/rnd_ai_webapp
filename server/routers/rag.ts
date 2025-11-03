@@ -3,6 +3,7 @@ import { router, protectedProcedure } from "../trpc";
 import rawMaterialsClientPromise from "@/lib/raw-materials-mongodb";
 import { PineconeRAGService, RawMaterialDocument } from "@/ai/services/rag/pinecone-service";
 import { ObjectId } from "mongodb";
+import { getRAGConfig, RAGServicesConfig } from "@/ai/config/rag-config";
 
 export const ragRouter = router({
   // Search raw materials using vector similarity
@@ -10,12 +11,15 @@ export const ragRouter = router({
     .input(
       z.object({
         query: z.string().min(1),
-        topK: z.number().min(1).max(20).default(5)
+        topK: z.number().min(1).max(20).default(5),
+        serviceName: z.enum(['rawMaterialsAllAI', 'rawMaterialsAI']).default('rawMaterialsAllAI')
       })
     )
     .query(async ({ ctx, input }) => {
       try {
-        const pineconeService = new PineconeRAGService();
+        const pineconeService = new PineconeRAGService(input.serviceName, {
+          topK: input.topK
+        });
 
         // Search using vector similarity
         const matches = await pineconeService.searchSimilar(

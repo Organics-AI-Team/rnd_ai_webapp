@@ -5,8 +5,8 @@
  */
 
 import { config } from 'dotenv';
-import { PineconeRAGService } from './ai/services/rag/pinecone-service';
-import rawMaterialsClientPromise from './lib/raw-materials-mongodb';
+import { PineconeRAGService } from '../ai/services/rag/pinecone-service';
+import rawMaterialsClientPromise from '../lib/raw-materials-mongodb';
 import { ObjectId } from 'mongodb';
 
 // Load environment variables
@@ -28,49 +28,36 @@ const sampleRM000001 = {
 };
 
 async function checkMongoDBData() {
-  console.log('🔍 Checking MongoDB data...');
-
   try {
     const client = await rawMaterialsClientPromise;
     const db = client.db();
 
     const count = await db.collection("raw_materials_real_stock").countDocuments();
-    console.log(`📊 MongoDB has ${count} raw materials`);
+    console.log(`MongoDB has ${count} raw materials`);
 
     if (count > 0) {
-      // Get a sample of actual data
-      const sample = await db.collection("raw_materials_real_stock").findOne({});
-
-      console.log('📄 Sample MongoDB document structure:');
-      console.log(JSON.stringify(sample, null, 2));
-
       // Look for RM000001 specifically
       const rm000001 = await db.collection("raw_materials_real_stock").findOne({
         rm_code: 'RM000001'
       });
 
       if (rm000001) {
-        console.log('✅ Found RM000001 in MongoDB!');
-        console.log(`  Trade Name: ${rm000001.trade_name}`);
-        console.log(`  INCI Name: ${rm000001.inci_name}`);
-        console.log(`  Supplier: ${rm000001.supplier}`);
+        console.log('Found RM000001:', rm000001.trade_name);
         return { found: true, data: rm000001 };
       } else {
-        console.log('⚠️  RM000001 not found in MongoDB');
-        return { found: false, sample };
+        console.log('RM000001 not found in MongoDB');
+        return { found: false };
       }
     }
 
     return { found: false, count };
   } catch (error: any) {
-    console.log('❌ MongoDB connection failed:', error.message);
+    console.error('MongoDB connection failed:', error.message);
     return null;
   }
 }
 
 async function indexSampleData() {
-  console.log('\n📝 Indexing sample data...');
-
   try {
     const ragService = new PineconeRAGService();
 
@@ -79,22 +66,19 @@ async function indexSampleData() {
       PineconeRAGService.prepareRawMaterialDocument(sampleRM000001)
     ];
 
-    console.log('📄 Sample document to index:');
-    console.log(JSON.stringify(documents[0], null, 2));
-
     // Index the documents
     await ragService.upsertDocuments(documents);
-    console.log('✅ Sample RM000001 data indexed successfully!');
+    console.log('Sample RM000001 data indexed successfully');
 
     return true;
   } catch (error: any) {
-    console.log('❌ Failed to index sample data:', error.message);
+    console.error('Failed to index sample data:', error.message);
     return false;
   }
 }
 
 async function indexRealData(batchSize: number = 10) {
-  console.log(`\n📚 Indexing real data (batch size: ${batchSize})...`);
+  console.log(`Indexing real data (batch size: ${batchSize})`);
 
   try {
     const client = await rawMaterialsClientPromise;
@@ -108,7 +92,7 @@ async function indexRealData(batchSize: number = 10) {
       .toArray();
 
     if (materials.length === 0) {
-      console.log('⚠️  No materials found in MongoDB');
+      console.log('No materials found in MongoDB');
       return false;
     }
 
@@ -221,7 +205,7 @@ async function main() {
   console.log('\n' + '='.repeat(50));
   console.log('STEP 2: Indexing Real MongoDB Data');
   console.log('='.repeat(50));
-  if (mongoData && (mongoData.count > 0 || mongoData.sample)) {
+  if (mongoData && (('count' in mongoData && mongoData.count > 0) || mongoData.found)) {
     await indexRealData(20); // Index up to 20 real materials
   } else {
     console.log('⚠️  No real data available in MongoDB');

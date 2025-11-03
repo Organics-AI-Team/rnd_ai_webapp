@@ -5,7 +5,7 @@
  */
 
 import { config } from 'dotenv';
-import { GeminiService } from './ai/services/providers/gemini-service';
+import { GeminiService } from '../ai/services/providers/gemini-service';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -30,7 +30,7 @@ async function testGeminiModel() {
     });
 
     console.log('✅ Response 1:', response1.response);
-    console.log('📊 Latency:', response1.latency, 'ms');
+    console.log('📊 Latency:', response1.metadata?.latency, 'ms');
     console.log('🏷️ Model:', response1.model);
 
     // Test 2: Chemical question (without RAG)
@@ -41,7 +41,7 @@ async function testGeminiModel() {
     });
 
     console.log('✅ Response 2:', response2.response);
-    console.log('📊 Latency:', response2.latency, 'ms');
+    console.log('📊 Latency:', response2.metadata?.latency, 'ms');
 
     // Test 3: Thai language
     console.log('\n🇹🇭 Test 3: Thai language');
@@ -51,7 +51,7 @@ async function testGeminiModel() {
     });
 
     console.log('✅ Response 3:', response3.response);
-    console.log('📊 Latency:', response3.latency, 'ms');
+    console.log('📊 Latency:', response3.metadata?.latency, 'ms');
 
     return true;
 

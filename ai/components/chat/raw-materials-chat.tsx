@@ -43,7 +43,7 @@ export function RawMaterialsChat({
   onFeedbackSubmit,
   ...baseChatProps
 }: RawMaterialsChatProps) {
-  const [ragService] = useState(() => enableRAG ? new PineconeClientService(ragConfig) : null);
+  const [ragService] = useState(() => enableRAG ? new PineconeClientService('rawMaterialsAI', ragConfig) : null);
   const [isSearchingRAG, setIsSearchingRAG] = useState(false);
   const [lastRAGResults, setLastRAGResults] = useState<string>('');
 

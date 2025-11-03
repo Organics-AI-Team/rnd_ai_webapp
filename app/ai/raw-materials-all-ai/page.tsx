@@ -7,7 +7,7 @@ import { Bot, MessageSquare, Zap, Shield } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { AIChatLayout } from '@/components/ai-chat-layout';
 
-export default function AIChatPage() {
+export default function RawMaterialsAllAIPage() {
   const { user } = useAuth();
   const feedbackSubmitMutation = trpc.feedback.submit.useMutation();
 
@@ -21,13 +21,13 @@ export default function AIChatPage() {
 
   const features = [
     {
-      title: 'General Knowledge',
-      description: 'Access to broad knowledge base covering various topics',
+      title: 'Raw Materials Knowledge',
+      description: 'AI-powered assistance for all raw materials inquiries and general knowledge',
       icon: <MessageSquare className="w-5 h-5 text-blue-500" />
     },
     {
       title: 'Fast Response',
-      description: 'Quick and accurate answers to your questions',
+      description: 'Quick and accurate answers to your raw materials questions',
       icon: <Zap className="w-5 h-5 text-yellow-500" />
     },
     {
@@ -42,24 +42,20 @@ export default function AIChatPage() {
       <div className="container mx-auto p-6">
         <div className="text-center">
           <Bot className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-          <h2 className="text-xl font-semibold mb-2">กรุณาเข้าสู่ระบบเพื่อใช้ผู้ช่วย AI แนะนำสาร</h2>
-          <p className="text-gray-600">คุณต้องได้รับการยืนยันตัวตนเพื่อเข้าถึงผู้ช่วย AI ที่มีความรู้ครอบคลุมด้านวัตถุดิบ</p>
+          <h2 className="text-xl font-semibold mb-2">กรุณาเข้าสู่ระบบเพื่อใช้ผู้ช่วย AI สำหรับวัตถุดิบทั้งหมด</h2>
+          <p className="text-gray-600">คุณต้องได้รับการยืนยันตัวตนเพื่อเข้าถึงผู้ช่วย AI ที่มีความรู้ครอบคลุมด้านวัตถุดิบและความรู้ทั่วไป</p>
         </div>
       </div>
     );
   }
 
-  console.log('🔑 Environment variables:', {
-  NEXT_PUBLIC_GEMINI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_API_KEY ? 'SET' : 'NOT_SET',
-  user: user
-});
-
+  
   return (
     <AIChatLayout
-      title="บทสนทนากับผู้ช่วย AI แนะนำสาร"
-      description="ถามคำถามเกี่ยวกับวัตถุดิบและผลิตภัณฑ์ความงามได้ทั่วไป"
+      title="บทสนทนากับผู้ช่วย AI สำหรับวัตถุดิบทั้งหมด"
+      description="ถามคำถามเกี่ยวกับวัตถุดิบ ความรู้ทั่วไป และข้อมูลสารเคมีได้ทั่วไป"
       icon={<Bot className="w-6 h-6" />}
-      badge="General AI"
+      badge="Raw Materials All AI"
       features={features}
       showHeader={false}
     >

@@ -1,15 +1,20 @@
 import { Pinecone } from '@pinecone-database/pinecone';
 import { createEmbeddingService, UniversalEmbeddingService } from '../embeddings/universal-embedding-service';
+import { getRAGConfig, PINECONE_API_CONFIG, validateEnvironment, RAGServicesConfig } from '../../config/rag-config';
+
+// Validate environment variables
+const envValidation = validateEnvironment();
+if (!envValidation.isValid) {
+  console.error('❌ Missing required environment variables:', envValidation.missing);
+}
 
 // Initialize Pinecone client
 const pinecone = new Pinecone({
-  apiKey: process.env.PINECONE_API_KEY || ''
+  apiKey: PINECONE_API_CONFIG.apiKey || ''
 });
 
 // Initialize universal embedding service
 const embeddingService = createEmbeddingService();
-
-const PINECONE_INDEX = process.env.PINECONE_INDEX || '002-rnd-ai';
 
 export interface RawMaterialDocument {
   id: string;
@@ -43,15 +48,20 @@ export class PineconeRAGService {
   private config: RAGConfig;
   private embeddingService: UniversalEmbeddingService;
 
-  constructor(config?: Partial<RAGConfig>, customEmbeddingService?: UniversalEmbeddingService) {
-    this.index = pinecone.Index(PINECONE_INDEX);
+  constructor(serviceName?: keyof RAGServicesConfig, config?: Partial<RAGConfig>, customEmbeddingService?: UniversalEmbeddingService) {
+    // Get service configuration
+    const serviceConfig = serviceName ? getRAGConfig(serviceName) : getRAGConfig('rawMaterialsAllAI');
+
+    this.index = pinecone.Index(serviceConfig.pineconeIndex);
     this.config = {
-      topK: 5,
-      similarityThreshold: 0.7,
-      includeMetadata: true,
+      topK: serviceConfig.topK,
+      similarityThreshold: serviceConfig.similarityThreshold,
+      includeMetadata: serviceConfig.includeMetadata,
       ...config
     };
     this.embeddingService = customEmbeddingService || embeddingService;
+
+    console.log(`🔧 Initialized RAG service: ${serviceName || 'rawMaterialsAllAI'} → index: ${serviceConfig.pineconeIndex}`);
   }
 
   // Create embeddings using the configured embedding service

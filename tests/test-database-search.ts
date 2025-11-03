@@ -7,7 +7,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.local' });
 
-import rawMaterialsClientPromise from './lib/raw-materials-mongodb';
+import rawMaterialsClientPromise from '../lib/raw-materials-mongodb';
 
 async function checkDatabaseForRM000011() {
   console.log('🔍 Checking database for RM000011...');

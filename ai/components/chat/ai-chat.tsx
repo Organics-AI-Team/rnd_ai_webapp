@@ -38,7 +38,7 @@ export function AIChat({
   onFeedbackSubmit,
   ...baseChatProps
 }: AIChatProps) {
-  const [ragService] = useState(() => new PineconeClientService({
+  const [ragService] = useState(() => new PineconeClientService('rawMaterialsAllAI', {
     topK: 5,
     similarityThreshold: 0.7
   }));

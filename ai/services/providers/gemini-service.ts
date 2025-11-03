@@ -81,8 +81,14 @@ export class GeminiService extends BaseAIService {
       if (response && response.content) {
         if (typeof response.content === 'string') {
           responseText = response.content;
-        } else if (response.content.text) {
-          responseText = response.content.text;
+        } else if (Array.isArray(response.content)) {
+          // Handle array of content blocks
+          const textBlock = response.content.find((block: any) =>
+            block && typeof block === 'object' && 'text' in block
+          ) as any;
+          responseText = (textBlock?.text as string) || String(response.content);
+        } else if ((response.content as any).text) {
+          responseText = (response.content as any).text;
         } else {
           // Try to convert to string directly
           responseText = String(response.content);
