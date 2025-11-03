@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { ConversationMessage } from '../../types/conversation-types';
+import { MarkdownRenderer } from './markdown-renderer';
 
 export interface BaseChatProps {
   userId: string;
@@ -118,9 +119,13 @@ export function BaseChat({
           )}
         </div>
 
-        <div className="text-slate-800 whitespace-pre-wrap break-words">
-          {message.content}
-        </div>
+        {message.role === 'assistant' ? (
+          <MarkdownRenderer content={message.content} />
+        ) : (
+          <div className="text-slate-800 whitespace-pre-wrap break-words">
+            {message.content}
+          </div>
+        )}
 
         {messageActions && (
           <div className="mt-2">
