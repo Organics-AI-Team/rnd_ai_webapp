@@ -33,13 +33,19 @@ export interface IAIService {
     currentPreferences: any;
     recommendations: string[];
   };
+
+  /**
+   * Load feedback history from database for persistent learning
+   * Each service loads only its own feedback based on serviceName
+   */
+  load_feedback_from_database?(userId: string): Promise<void>;
 }
 
 /**
  * Factory interface for creating AI services
  */
 export interface IAIServiceFactory {
-  createService(provider: string, apiKey: string, config?: any): IAIService;
+  createService(provider: string, apiKey: string, config?: any, serviceName?: string): IAIService;
   getSupportedProviders(): string[];
 }
 

@@ -54,7 +54,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
   // Initialize service if not provided
   useEffect(() => {
-    console.log('🔧 Initializing service:', {
+    console.log('🔧 [use-chat] Initializing service:', {
       hasService: !!service,
       serviceName,
       hasApiKey: !!apiKey,
@@ -65,58 +65,98 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     if (!service && (serviceName || (apiKey && provider))) {
       const factory = getAIServiceFactory();
 
+      // Try to get registered service by name first
       if (serviceName) {
-        console.log('🔍 Looking for registered service:', serviceName);
+        console.log('🔍 [use-chat] Looking for registered service:', serviceName);
         const registeredService = factory.getService(serviceName);
         if (registeredService) {
-          console.log('✅ Found registered service');
+          console.log('✅ [use-chat] Found registered service:', serviceName);
           setService(registeredService);
+          return; // Early return when registered service is found
         } else {
-          console.error('❌ Service not found:', serviceName);
+          console.warn('⚠️ [use-chat] Service not found in registry:', serviceName);
+          console.log('🔄 [use-chat] Falling back to creating new service...');
         }
-      } else if (apiKey && provider) {
-        console.log('🏗️ Creating new service:', { provider, hasApiKey: !!apiKey });
+      }
+
+      // Fallback: Create new service if we have apiKey and provider
+      // This handles both: serviceName not found, OR no serviceName at all
+      if (apiKey && provider) {
+        console.log('🏗️ [use-chat] Creating new service:', { provider, hasApiKey: !!apiKey, forServiceName: serviceName || 'anonymous' });
         try {
-          const newService = factory.createService(provider, apiKey);
-          console.log('✅ Service created successfully');
+          // Pass serviceName to enable isolated learning for this specific AI service
+          const newService = factory.createService(provider, apiKey, undefined, serviceName);
+          console.log('✅ [use-chat] Service created successfully with serviceName:', serviceName);
           setService(newService);
+
+          // Optionally register the newly created service if serviceName was provided
+          if (serviceName) {
+            console.log('📝 [use-chat] Registering service with name:', serviceName);
+            factory.registerService(serviceName, newService);
+          }
+
+          // Load feedback history from database for this service
+          if (userId && serviceName) {
+            console.log('📥 [use-chat] Loading feedback history for service:', serviceName);
+            newService.load_feedback_from_database?.(userId).catch((err: Error) => {
+              console.warn('⚠️ [use-chat] Failed to load feedback history:', err);
+            });
+          }
         } catch (err) {
-          console.error('❌ Failed to create service:', err);
+          console.error('❌ [use-chat] Failed to create service:', err);
           setError(err as Error);
           onError?.(err as Error);
         }
+      } else {
+        console.error('❌ [use-chat] Cannot initialize service: No apiKey or provider provided');
       }
     }
-  }, [service, serviceName, apiKey, provider, onError]);
+  }, [service, serviceName, apiKey, provider, userId, onError]);
+
+  // Generate unique storage key for chat history
+  // Scoped by userId and serviceName to isolate chat history per AI service
+  const getStorageKey = () => {
+    const baseKey = `chat_messages_${userId}`;
+    return serviceName ? `${baseKey}_${serviceName}` : baseKey;
+  };
 
   // Load messages from localStorage if persistence is enabled
   useEffect(() => {
     if (enablePersistence && userId) {
       try {
-        const stored = localStorage.getItem(`chat_messages_${userId}`);
+        const storageKey = getStorageKey();
+        const stored = localStorage.getItem(storageKey);
+        console.log('📂 [use-chat] Loading messages from:', storageKey);
         if (stored) {
           const parsedMessages = JSON.parse(stored).map((msg: any) => ({
             ...msg,
             timestamp: new Date(msg.timestamp)
           }));
+          console.log('✅ [use-chat] Loaded', parsedMessages.length, 'messages');
           setMessages(parsedMessages.slice(-maxMessages));
+        } else {
+          console.log('📭 [use-chat] No stored messages found');
+          setMessages([]); // Reset to empty when no messages found
         }
       } catch (err) {
-        console.warn('Failed to load messages from localStorage:', err);
+        console.warn('⚠️ [use-chat] Failed to load messages from localStorage:', err);
+        setMessages([]); // Reset on error
       }
     }
-  }, [userId, enablePersistence, maxMessages]);
+  }, [userId, serviceName, enablePersistence, maxMessages]);
 
   // Save messages to localStorage if persistence is enabled
   useEffect(() => {
     if (enablePersistence && userId && messages.length > 0) {
       try {
-        localStorage.setItem(`chat_messages_${userId}`, JSON.stringify(messages));
+        const storageKey = getStorageKey();
+        localStorage.setItem(storageKey, JSON.stringify(messages));
+        console.log('💾 [use-chat] Saved', messages.length, 'messages to:', storageKey);
       } catch (err) {
-        console.warn('Failed to save messages to localStorage:', err);
+        console.warn('⚠️ [use-chat] Failed to save messages to localStorage:', err);
       }
     }
-  }, [messages, userId, enablePersistence]);
+  }, [messages, userId, serviceName, enablePersistence]);
 
   const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -218,11 +258,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   }, [service, userId, messages, maxMessages, onMessageSend, onMessageReceive, onError]);
 
   const clearHistory = useCallback(() => {
+    console.log('🗑️ [use-chat] Clearing chat history');
     setMessages([]);
     if (enablePersistence && userId) {
-      localStorage.removeItem(`chat_messages_${userId}`);
+      const storageKey = getStorageKey();
+      localStorage.removeItem(storageKey);
+      console.log('✅ [use-chat] Cleared history from:', storageKey);
     }
-  }, [enablePersistence, userId]);
+  }, [enablePersistence, userId, serviceName]);
 
   const retryLastMessage = useCallback(async () => {
     const lastUserMessage = messages.slice().reverse().find(msg => msg.role === 'user');

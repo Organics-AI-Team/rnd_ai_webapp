@@ -10,6 +10,7 @@ export const feedbackRouter = router({
     .input(
       z.object({
         responseId: z.string(),
+        service_name: z.string().optional(), // AI service/agent name for isolated learning
         type: z.enum([
           'too_long',
           'too_short',
@@ -30,6 +31,13 @@ export const feedbackRouter = router({
     .mutation(async ({ ctx, input }) => {
       const client = await clientPromise;
       const db = client.db();
+
+      console.log('📝 [feedback.submit] Submitting feedback:', {
+        userId: ctx.user.id,
+        serviceName: input.service_name,
+        type: input.type,
+        score: input.score
+      });
 
       const feedback = {
         ...input,
@@ -313,24 +321,45 @@ export const feedbackRouter = router({
       }));
     }),
 
-  // Get user's feedback history
+  // Get user's feedback history (optionally filtered by serviceName for isolated learning)
   getUserHistory: protectedProcedure
     .input(
       z.object({
+        userId: z.string().optional(),
+        serviceName: z.string().optional(), // Filter by service for isolated learning
         limit: z.number().min(1).max(100).default(20),
         offset: z.number().min(0).default(0)
-      })
+      }).optional()
     )
     .query(async ({ ctx, input }) => {
       const client = await clientPromise;
       const db = client.db();
 
+      // Build filter - use userId from input or context
+      const filter: any = {
+        userId: input?.userId || ctx.user.id
+      };
+
+      // Filter by serviceName if provided (for isolated learning per AI service)
+      if (input?.serviceName) {
+        filter.service_name = input.serviceName;
+        console.log('📂 [feedback.getUserHistory] Filtering by serviceName:', input.serviceName);
+      }
+
+      console.log('📥 [feedback.getUserHistory] Fetching feedback:', filter);
+
       const feedback = await db.collection("feedback")
-        .find({ userId: ctx.user.id })
+        .find(filter)
         .sort({ timestamp: -1 })
-        .skip(input.offset)
-        .limit(input.limit)
+        .skip(input?.offset || 0)
+        .limit(input?.limit || 20)
         .toArray();
+
+      console.log('✅ [feedback.getUserHistory] Found feedback:', {
+        count: feedback.length,
+        userId: filter.userId,
+        serviceName: input?.serviceName
+      });
 
       return feedback.map(item => ({
         ...item,

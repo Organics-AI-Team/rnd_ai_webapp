@@ -26,15 +26,21 @@ export class AIServiceFactory implements IAIServiceFactory {
 
   /**
    * Create a new AI service instance
+   * @param provider - AI provider name (openai, gemini, langchain)
+   * @param apiKey - API key for the provider
+   * @param config - Optional configuration
+   * @param serviceName - Optional service name for isolated learning
    */
-  createService(provider: string, apiKey: string, config?: any): IAIService {
+  createService(provider: string, apiKey: string, config?: any, serviceName?: string): IAIService {
+    console.log('🏭 [AIServiceFactory] Creating service:', { provider, serviceName });
+
     switch (provider.toLowerCase()) {
       case 'openai':
-        return new OpenAIService(apiKey, config);
+        return new OpenAIService(apiKey, config, serviceName);
       case 'gemini':
-        return new GeminiService(apiKey, config);
+        return new GeminiService(apiKey, config, serviceName);
       case 'langchain':
-        return new LangChainService(apiKey, config);
+        return new LangChainService(apiKey, config, serviceName);
       default:
         throw new Error(`Unsupported AI provider: ${provider}`);
     }
@@ -42,10 +48,12 @@ export class AIServiceFactory implements IAIServiceFactory {
 
   /**
    * Create and register a service with a custom name
+   * The service name is used for isolated learning - each service maintains separate feedback history
    */
   createAndRegisterService(name: string, config: AIServiceConfig): IAIService {
-    const service = this.createService(config.provider, config.apiKey, config.defaultConfig);
+    const service = this.createService(config.provider, config.apiKey, config.defaultConfig, name);
     this.registerService(name, service);
+    console.log('📝 [AIServiceFactory] Service created and registered:', name);
     return service;
   }
 

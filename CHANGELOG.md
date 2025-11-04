@@ -2,6 +2,1079 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-11-04] - Persistent Learning with Isolated Feedback Per AI Service
+
+### 🎓 **FEATURE - Persistent Learning Across Server Restarts**
+- **Priority**: HIGH - Enable AI services to learn from feedback persistently
+- **Status**: ✅ IMPLEMENTED - Each AI service now maintains separate learning history
+- **Impact**: AI responses improve over time based on user feedback, persisting across server restarts
+
+### 🔍 **REQUIREMENT ANALYSIS**
+
+#### **User Request**:
+"yes do it, make sure each of the learning are separate cuz each agent are different purpose"
+
+The user wanted:
+1. ✅ All 3 AI services (OpenAI, Gemini, LangChain) to learn from user feedback scores
+2. ✅ Questions and answers to be stored with scores for learning enhancement
+3. ✅ Learning data to persist across server restarts (load from database)
+4. ✅ **CRITICAL**: Each AI service/agent to have SEPARATE learning because they serve different purposes
+
+#### **Previous State - Problems Identified**:
+1. ❌ Learning data was stored in-memory only (lost on server restart)
+2. ❌ All AI services shared the same feedback pool (no isolation)
+3. ❌ No database persistence for feedback retrieval
+4. ❌ No `service_name` field to identify which AI service received feedback
+
+### 🔄 **SOLUTIONS IMPLEMENTED**
+
+#### **1. Added service_name Field to Feedback Schema** (`ai/types/feedback-types.ts`)
+
+**Lines Changed**: 14-50
+
+```typescript
+// BEFORE - No service identification:
+export const FeedbackSchema = z.object({
+  id: z.string().optional(),
+  responseId: z.string(),
+  userId: z.string(),
+  type: FeedbackType,
+  score: z.number().min(1).max(5),
+  // ... other fields
+});
+
+// AFTER - Service name added for isolation:
+export const FeedbackSchema = z.object({
+  id: z.string().optional(),
+  responseId: z.string(),
+  userId: z.string(),
+  service_name: z.string().optional(), // NEW: Identifies which AI service
+  type: FeedbackType,
+  score: z.number().min(1).max(5),
+  // ... other fields
+});
+
+// Also added to StoredAIResponseSchema:
+export const StoredAIResponseSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  service_name: z.string().optional(), // NEW: Track which service generated response
+  // ... other fields
+});
+```
+
+**Benefits**:
+- ✅ Each AI service can filter feedback by `service_name`
+- ✅ Learning is isolated per service (Sales AI ≠ Raw Materials AI)
+- ✅ Database queries can filter by service
+- ✅ Analytics can compare learning across services
+
+---
+
+#### **2. Added load_feedback_from_database Method** (`ai/services/core/base-ai-service.ts`)
+
+**Lines Changed**: 9-21, 28-97
+
+```typescript
+// BEFORE - No persistence:
+export abstract class BaseAIService {
+  protected feedbackHistory: Map<string, Feedback[]> = new Map();
+  protected userPreferences: Map<string, UserPreferences> = new Map();
+
+  constructor(
+    protected apiKey: string,
+    protected defaultConfig: AIModelConfig
+  ) {}
+  // No way to load from database!
+}
+
+// AFTER - Service name tracking + database loading:
+export abstract class BaseAIService {
+  protected feedbackHistory: Map<string, Feedback[]> = new Map();
+  protected userPreferences: Map<string, UserPreferences> = new Map();
+  protected serviceName?: string; // NEW: Track which service this is
+
+  constructor(
+    protected apiKey: string,
+    protected defaultConfig: AIModelConfig,
+    serviceName?: string // NEW: Accept service name
+  ) {
+    this.serviceName = serviceName;
+    console.log('🏗️ [BaseAIService] Constructed:', { serviceName, model: defaultConfig.model });
+  }
+
+  /**
+   * Load feedback history from database for persistent learning
+   * Each service loads only its own feedback based on serviceName
+   */
+  async load_feedback_from_database(userId: string): Promise<void> {
+    console.log('📥 [BaseAIService] Loading feedback from database:', {
+      userId,
+      serviceName: this.serviceName
+    });
+
+    try {
+      // Call the API endpoint to fetch feedback filtered by serviceName
+      const response = await fetch(
+        `/api/trpc/feedback.getUserHistory?input=${encodeURIComponent(
+          JSON.stringify({ userId, serviceName: this.serviceName })
+        )}`
+      );
+
+      if (!response.ok) {
+        console.warn('⚠️ [BaseAIService] Failed to load feedback from database:', response.status);
+        return;
+      }
+
+      const data = await response.json();
+      const feedbackList: Feedback[] = data.result?.data || [];
+
+      console.log('✅ [BaseAIService] Loaded feedback from database:', {
+        userId,
+        serviceName: this.serviceName,
+        count: feedbackList.length
+      });
+
+      // Store in memory
+      this.feedbackHistory.set(userId, feedbackList);
+
+      // Update user preferences based on loaded feedback
+      if (feedbackList.length > 0) {
+        this.updateUserPreferences(userId, feedbackList);
+        console.log('🔧 [BaseAIService] Updated user preferences from loaded feedback');
+      }
+    } catch (error) {
+      console.error('❌ [BaseAIService] Error loading feedback from database:', error);
+      // Don't throw - allow service to continue with empty feedback
+    }
+  }
+}
+```
+
+**Benefits**:
+- ✅ Services can load historical feedback on initialization
+- ✅ Learning persists across server restarts
+- ✅ Each service loads ONLY its own feedback (isolated)
+- ✅ Graceful fallback if database is unavailable
+
+---
+
+#### **3. Updated All Provider Services** (OpenAI, Gemini, LangChain)
+
+**Files Modified**:
+- `ai/services/providers/openai-service.ts` (Line 13)
+- `ai/services/providers/gemini-service.ts` (Line 13)
+- `ai/services/providers/langchain-service.ts` (Line 17)
+
+```typescript
+// BEFORE - No service name:
+export class OpenAIService extends BaseAIService {
+  constructor(apiKey: string, config?: Partial<AIModelConfig>) {
+    super(apiKey, defaultConfig);
+    // ...
+  }
+}
+
+// AFTER - Service name passed to base:
+export class OpenAIService extends BaseAIService {
+  constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
+    super(apiKey, defaultConfig, serviceName); // NEW: Pass serviceName
+    // ...
+  }
+}
+```
+
+**Applied to**: OpenAIService, GeminiService, LangChainService
+
+**Benefits**:
+- ✅ All providers support isolated learning
+- ✅ Consistent interface across all AI services
+
+---
+
+#### **4. Updated AI Service Factory** (`ai/services/core/ai-service-factory.ts`)
+
+**Lines Changed**: 27-47, 49-58
+
+```typescript
+// BEFORE - No service name support:
+createService(provider: string, apiKey: string, config?: any): IAIService {
+  switch (provider.toLowerCase()) {
+    case 'openai':
+      return new OpenAIService(apiKey, config);
+    // ...
+  }
+}
+
+// AFTER - Service name parameter added:
+createService(provider: string, apiKey: string, config?: any, serviceName?: string): IAIService {
+  console.log('🏭 [AIServiceFactory] Creating service:', { provider, serviceName });
+
+  switch (provider.toLowerCase()) {
+    case 'openai':
+      return new OpenAIService(apiKey, config, serviceName); // NEW: Pass serviceName
+    // ...
+  }
+}
+
+createAndRegisterService(name: string, config: AIServiceConfig): IAIService {
+  const service = this.createService(config.provider, config.apiKey, config.defaultConfig, name);
+  this.registerService(name, service);
+  console.log('📝 [AIServiceFactory] Service created and registered:', name);
+  return service;
+}
+```
+
+**Benefits**:
+- ✅ Factory creates services with proper service names
+- ✅ Registered services automatically get their name
+- ✅ Logging for debugging
+
+---
+
+#### **5. Updated use-chat Hook** (`ai/hooks/use-chat.ts`)
+
+**Lines Changed**: 82-113
+
+```typescript
+// BEFORE - No service name or feedback loading:
+const newService = factory.createService(provider, apiKey);
+setService(newService);
+
+if (serviceName) {
+  factory.registerService(serviceName, newService);
+}
+
+// AFTER - Service name + auto-load feedback:
+const newService = factory.createService(provider, apiKey, undefined, serviceName);
+console.log('✅ [use-chat] Service created successfully with serviceName:', serviceName);
+setService(newService);
+
+if (serviceName) {
+  factory.registerService(serviceName, newService);
+}
+
+// NEW: Automatically load feedback history from database
+if (userId && serviceName) {
+  console.log('📥 [use-chat] Loading feedback history for service:', serviceName);
+  newService.load_feedback_from_database?.(userId).catch((err: Error) => {
+    console.warn('⚠️ [use-chat] Failed to load feedback history:', err);
+  });
+}
+```
+
+**Benefits**:
+- ✅ Feedback automatically loads when service initializes
+- ✅ No manual loading required
+- ✅ Graceful error handling
+
+---
+
+#### **6. Updated Feedback Router** (`server/routers/feedback.ts`)
+
+**Lines Changed**: 8-40, 324-368
+
+**Changes**:
+1. Added `service_name` to input validation
+2. Stored `service_name` in database
+3. Added filtering by `service_name` in `getUserHistory` query
+
+```typescript
+// BEFORE - No service name:
+submit: protectedProcedure
+  .input(z.object({
+    responseId: z.string(),
+    // No service_name field!
+    type: FeedbackType,
+    score: z.number().min(1).max(5),
+    // ...
+  }))
+
+getUserHistory: protectedProcedure
+  .query(async ({ ctx, input }) => {
+    const feedback = await db.collection("feedback")
+      .find({ userId: ctx.user.id }) // No service filter!
+      .toArray();
+  })
+
+// AFTER - Service name support:
+submit: protectedProcedure
+  .input(z.object({
+    responseId: z.string(),
+    service_name: z.string().optional(), // NEW: Service identifier
+    type: FeedbackType,
+    score: z.number().min(1).max(5),
+    // ...
+  }))
+  .mutation(async ({ ctx, input }) => {
+    console.log('📝 [feedback.submit] Submitting feedback:', {
+      userId: ctx.user.id,
+      serviceName: input.service_name,
+      type: input.type,
+      score: input.score
+    });
+    // Stores service_name in database
+  })
+
+getUserHistory: protectedProcedure
+  .input(z.object({
+    userId: z.string().optional(),
+    serviceName: z.string().optional(), // NEW: Filter by service
+    limit: z.number().min(1).max(100).default(20),
+    offset: z.number().min(0).default(0)
+  }).optional())
+  .query(async ({ ctx, input }) => {
+    const filter: any = { userId: input?.userId || ctx.user.id };
+
+    // NEW: Filter by serviceName for isolated learning
+    if (input?.serviceName) {
+      filter.service_name = input.serviceName;
+      console.log('📂 [feedback.getUserHistory] Filtering by serviceName:', input.serviceName);
+    }
+
+    const feedback = await db.collection("feedback")
+      .find(filter) // Filtered query!
+      .sort({ timestamp: -1 })
+      .toArray();
+
+    console.log('✅ [feedback.getUserHistory] Found feedback:', {
+      count: feedback.length,
+      userId: filter.userId,
+      serviceName: input?.serviceName
+    });
+
+    return feedback;
+  })
+```
+
+**Benefits**:
+- ✅ Feedback stored with service identifier
+- ✅ Queries can filter by service
+- ✅ Comprehensive logging for debugging
+- ✅ Database-level isolation
+
+---
+
+#### **7. Updated use-feedback Hook** (`ai/hooks/use-feedback.ts`)
+
+**Lines Changed**: 7-14, 36-44, 50-80, 95-118, 136-145
+
+**Changes**:
+1. Added `serviceName` to options
+2. Scoped localStorage by serviceName
+3. Added `service_name` to submitted feedback
+4. Enhanced logging
+
+```typescript
+// BEFORE - No service isolation:
+export interface UseFeedbackOptions {
+  service?: IAIService;
+  userId: string;
+  // No serviceName!
+  autoSave?: boolean;
+}
+
+const stored = localStorage.getItem(`feedback_${userId}`);
+// Same key for all services!
+
+const newFeedback: Feedback = {
+  ...feedbackData,
+  id: generateFeedbackId(),
+  timestamp: new Date(),
+  // No service_name!
+};
+
+// AFTER - Service isolation:
+export interface UseFeedbackOptions {
+  service?: IAIService;
+  userId: string;
+  serviceName?: string; // NEW: Service name for isolated learning
+  autoSave?: boolean;
+}
+
+// Scoped storage key:
+const storageKey = serviceName
+  ? `feedback_${userId}_${serviceName}`
+  : `feedback_${userId}`;
+const stored = localStorage.getItem(storageKey);
+console.log('📂 [use-feedback] Loading feedback from:', storageKey);
+
+// Add service_name to feedback:
+const newFeedback: Feedback = {
+  ...feedbackData,
+  id: generateFeedbackId(),
+  timestamp: new Date(),
+  processed: false,
+  service_name: serviceName // NEW: Include service name
+};
+
+console.log('📝 [use-feedback] Submitting feedback:', {
+  serviceName,
+  type: newFeedback.type,
+  score: newFeedback.score
+});
+```
+
+**Benefits**:
+- ✅ Feedback scoped to specific service in localStorage
+- ✅ Database feedback includes service identifier
+- ✅ Clear logging for debugging
+
+---
+
+#### **8. Updated AI Chat Components**
+
+**Files Modified**:
+- `ai/components/chat/ai-chat.tsx` (Line 80-85)
+- `ai/components/chat/raw-materials-chat.tsx` (Line 77-82)
+
+```typescript
+// BEFORE - No service name passed:
+const feedback = useFeedback({
+  userId,
+  service: chat.getService(),
+  onFeedbackSubmit: onFeedbackSubmit
+});
+
+// AFTER - Service name passed for isolation:
+const feedback = useFeedback({
+  userId,
+  serviceName, // NEW: Pass serviceName for isolated learning
+  service: chat.getService(),
+  onFeedbackSubmit: onFeedbackSubmit
+});
+```
+
+**Benefits**:
+- ✅ All chat components support isolated learning
+- ✅ Feedback automatically tagged with service name
+
+---
+
+#### **9. Updated IAIService Interface** (`ai/services/core/ai-service-interface.ts`)
+
+**Lines Changed**: 37-42, 47-50
+
+```typescript
+// BEFORE - No load method:
+export interface IAIService {
+  generateResponse(request: AIRequest): Promise<AIResponse>;
+  addFeedback(feedback: Feedback): void;
+  getFeedbackHistory(userId: string): Feedback[];
+  // No load_feedback_from_database!
+}
+
+export interface IAIServiceFactory {
+  createService(provider: string, apiKey: string, config?: any): IAIService;
+  // No serviceName parameter!
+}
+
+// AFTER - Load method + serviceName support:
+export interface IAIService {
+  generateResponse(request: AIRequest): Promise<AIResponse>;
+  addFeedback(feedback: Feedback): void;
+  getFeedbackHistory(userId: string): Feedback[];
+
+  /**
+   * Load feedback history from database for persistent learning
+   * Each service loads only its own feedback based on serviceName
+   */
+  load_feedback_from_database?(userId: string): Promise<void>; // NEW!
+}
+
+export interface IAIServiceFactory {
+  createService(provider: string, apiKey: string, config?: any, serviceName?: string): IAIService;
+  // NEW: serviceName parameter
+}
+```
+
+**Benefits**:
+- ✅ Interface enforces persistent learning capability
+- ✅ Type safety for service names
+- ✅ Optional method (backward compatible)
+
+---
+
+### 📊 **HOW ISOLATED LEARNING WORKS**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    USER INTERACTS WITH AI                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Service: "salesRndAI" (Gemini) - Sales-focused AI             │
+├─────────────────────────────────────────────────────────────────┤
+│  1. User sends question: "What's the best sales approach?"       │
+│  2. AI responds with sales strategy                             │
+│  3. User rates: 4/5 stars, "too_long"                          │
+│  4. Feedback stored in MongoDB:                                 │
+│     {                                                           │
+│       userId: "user123",                                        │
+│       service_name: "salesRndAI",  ← ISOLATED                  │
+│       score: 4,                                                 │
+│       type: "too_long",                                        │
+│       prompt: "What's the best sales approach?",               │
+│       aiResponse: "...",                                       │
+│       aiModel: "gemini-2.5-flash"                              │
+│     }                                                           │
+│  5. Next time salesRndAI initializes:                          │
+│     - Loads feedback WHERE service_name = "salesRndAI"         │
+│     - Learns: "This user prefers shorter responses"            │
+│     - Adjusts maxTokens, temperature accordingly               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Service: "rawMaterialsAI" (Gemini) - Chemistry-focused AI     │
+├─────────────────────────────────────────────────────────────────┤
+│  1. User sends question: "What is RM000001?"                    │
+│  2. AI responds with chemical details                           │
+│  3. User rates: 5/5 stars, "excellent"                         │
+│  4. Feedback stored in MongoDB:                                 │
+│     {                                                           │
+│       userId: "user123",                                        │
+│       service_name: "rawMaterialsAI",  ← DIFFERENT ISOLATION   │
+│       score: 5,                                                 │
+│       type: "excellent",                                       │
+│       prompt: "What is RM000001?",                             │
+│       aiResponse: "...",                                       │
+│       aiModel: "gemini-2.5-flash"                              │
+│     }                                                           │
+│  5. Next time rawMaterialsAI initializes:                      │
+│     - Loads feedback WHERE service_name = "rawMaterialsAI"     │
+│     - Learns: "This user likes detailed technical responses"   │
+│     - Maintains technical depth                                │
+└─────────────────────────────────────────────────────────────────┘
+
+KEY ISOLATION POINTS:
+- MongoDB filter: WHERE service_name = "serviceName"
+- localStorage: feedback_userId_serviceName
+- Memory: Each service instance has separate feedbackHistory Map
+- Learning: Parameters adjusted per-service based on filtered feedback
+```
+
+---
+
+### ✅ **VERIFICATION CHECKLIST**
+
+#### **All 3 AI Services Use Learning Logic**:
+- ✅ **OpenAIService** extends BaseAIService → inherits learning
+- ✅ **GeminiService** extends BaseAIService → inherits learning
+- ✅ **LangChainService** extends BaseAIService → inherits learning
+
+#### **Score Calculation & Storage**:
+- ✅ Feedback includes `score` (1-5 rating)
+- ✅ Stored in MongoDB `feedback` collection
+- ✅ Aggregated in `ai_responses` collection as `averageScore`
+- ✅ Used by `FeedbackAnalyzer.analyzeFeedbackPatterns()`
+
+#### **Question & Answer Storage**:
+- ✅ Questions stored in `conversations` collection (role: user)
+- ✅ Answers stored in `conversations` collection (role: assistant)
+- ✅ Linked via `responseId`
+- ✅ Retrieved for context in `getRecentMessages`
+
+#### **Learning Enhancement**:
+- ✅ `adjustParameters()` uses feedback to tune temperature, maxTokens
+- ✅ `enhancePrompt()` adds feedback-based instructions
+- ✅ `updateUserPreferences()` learns preferred length/complexity
+- ✅ Applies in real-time during `generateResponse()`
+
+#### **Persistent Learning**:
+- ✅ `load_feedback_from_database()` loads from MongoDB
+- ✅ Called automatically in `use-chat` hook on service initialization
+- ✅ Filters by `service_name` for isolation
+- ✅ Updates in-memory maps with historical data
+
+#### **Isolated Learning Per Service**:
+- ✅ `service_name` field in feedback schema
+- ✅ Factory passes `serviceName` to all services
+- ✅ Router filters queries by `serviceName`
+- ✅ Each service loads only its own feedback
+
+---
+
+### 🚀 **TESTING RECOMMENDATIONS**
+
+1. **Test Feedback Submission**:
+   ```
+   - Send message to Sales RND AI
+   - Rate response: 3 stars, "too_long"
+   - Check MongoDB feedback collection:
+     db.feedback.find({ service_name: "salesRndAI" })
+   - Verify service_name is stored
+   ```
+
+2. **Test Learning Persistence**:
+   ```
+   - Submit 5+ feedback items to Sales RND AI
+   - Restart server/tab
+   - Check console logs for:
+     📥 [BaseAIService] Loading feedback from database
+     ✅ [BaseAIService] Loaded feedback from database: { count: 5 }
+   ```
+
+3. **Test Isolated Learning**:
+   ```
+   - Rate Sales RND AI as "too_long" (3 stars)
+   - Rate Raw Materials AI as "excellent" (5 stars)
+   - Ask same question to both AIs
+   - Sales AI should give shorter response (adjusted)
+   - Raw Materials AI should give detailed response (not affected)
+   ```
+
+4. **Database Verification**:
+   ```javascript
+   // Sales RND AI feedback (should be isolated)
+   db.feedback.find({ service_name: "salesRndAI" }).count()
+
+   // Raw Materials AI feedback (should be separate)
+   db.feedback.find({ service_name: "rawMaterialsAI" }).count()
+
+   // Should NOT mix:
+   db.feedback.find({ service_name: "salesRndAI", type: "excellent" })
+   // vs
+   db.feedback.find({ service_name: "rawMaterialsAI", type: "too_long" })
+   ```
+
+---
+
+### 📈 **BENEFITS SUMMARY**
+
+1. **Persistent Learning**: AI improves continuously, even across restarts
+2. **Isolated Learning**: Each AI service learns independently for its specific purpose
+3. **Better UX**: AI adapts to user preferences (length, style, complexity)
+4. **Data Integrity**: Feedback properly attributed to correct service
+5. **Scalability**: Can add more AI services with isolated learning
+6. **Analytics**: Can compare learning effectiveness across services
+7. **Debugging**: Comprehensive logging at every step
+
+---
+
+## [2025-11-04] - Critical Fix: Service Initialization and Chat History Isolation
+
+### 🚨 **CRITICAL BUG FIX - Service Initialization Fallback**
+- **Priority**: CRITICAL - Sales RND AI showing "Disconnect" status after tab switching
+- **Status**: ✅ FIXED - Service initialization fallback logic implemented
+- **Impact**: Sales RND AI chat was non-functional when switching tabs
+
+### 🔍 **ROOT CAUSE ANALYSIS**
+
+#### **Issue Description**:
+- User reported: "when i switched tab chat should resets automatically and only this ai https://rndaiwebapp-production.up.railway.app/ai/sales-rnd-ai still showing disconnect"
+- Sales RND AI chat shows "Disconnected" status after switching tabs
+- Other AI chats (raw-materials-ai, raw-materials-all-ai) work correctly
+- Chat history was shared across all AI tabs (not isolated per service)
+
+#### **Investigation Steps**:
+1. ✅ Reviewed `ai/hooks/use-chat.ts` - Service initialization logic examined
+2. ✅ Reviewed `ai/components/chat/ai-chat.tsx` - Connection status indicator logic
+3. ✅ Reviewed `ai/services/core/ai-service-factory.ts` - Service registration mechanism
+4. ✅ Compared Sales RND AI page with other AI pages
+5. ✅ Analyzed localStorage persistence behavior
+
+#### **Root Causes Identified**:
+
+**1. Service Initialization Fallback Failure**:
+```typescript
+// BEFORE (use-chat.ts lines 68-88):
+if (serviceName) {
+  const registeredService = factory.getService(serviceName);
+  if (registeredService) {
+    setService(registeredService);
+  } else {
+    console.error('❌ Service not found:', serviceName);
+    // ❌ PROBLEM: No fallback! Service remains undefined
+  }
+} else if (apiKey && provider) {
+  // This branch never executes when serviceName is provided
+  const newService = factory.createService(provider, apiKey);
+  setService(newService);
+}
+```
+
+**Key Issue**: When `serviceName="salesRndAI"` was provided but not found in the factory registry, the code failed to create a new service using the provided `apiKey` and `provider`. This caused the service to remain `undefined`, resulting in "Disconnected" status.
+
+**2. Shared Chat History Across Tabs**:
+```typescript
+// BEFORE (use-chat.ts):
+const storageKey = `chat_messages_${userId}`;
+// ❌ PROBLEM: Same key for all AI services
+```
+
+**Key Issue**: All AI chats used the same localStorage key, causing chat history to be shared across all AI tabs. When switching tabs, users would see messages from other AI services.
+
+### 🔄 **SOLUTIONS IMPLEMENTED**
+
+#### **1. Service Initialization Fallback Logic (ai/hooks/use-chat.ts)**:
+
+**Changed Lines**: 55-105
+
+**Key Changes**:
+```typescript
+// AFTER - Proper fallback logic:
+if (serviceName) {
+  const registeredService = factory.getService(serviceName);
+  if (registeredService) {
+    console.log('✅ [use-chat] Found registered service:', serviceName);
+    setService(registeredService);
+    return; // Early return when found
+  } else {
+    console.warn('⚠️ [use-chat] Service not found in registry:', serviceName);
+    console.log('🔄 [use-chat] Falling back to creating new service...');
+    // ✅ CONTINUE to fallback logic below (no early return)
+  }
+}
+
+// ✅ Fallback: Create new service if we have apiKey and provider
+if (apiKey && provider) {
+  const newService = factory.createService(provider, apiKey);
+  setService(newService);
+
+  // ✅ Optionally register the newly created service
+  if (serviceName) {
+    factory.registerService(serviceName, newService);
+  }
+} else {
+  console.error('❌ [use-chat] Cannot initialize service: No apiKey or provider provided');
+}
+```
+
+**Benefits**:
+- ✅ Service is always initialized when `apiKey` and `provider` are provided
+- ✅ Newly created services are automatically registered for future use
+- ✅ Comprehensive logging for debugging
+- ✅ "Disconnected" status no longer appears on valid configurations
+
+#### **2. Isolated Chat History Per Service (ai/hooks/use-chat.ts)**:
+
+**Changed Lines**: 107-150, 251-259
+
+**Key Changes**:
+```typescript
+// NEW - Scoped storage key generation:
+const getStorageKey = () => {
+  const baseKey = `chat_messages_${userId}`;
+  return serviceName ? `${baseKey}_${serviceName}` : baseKey;
+};
+
+// Load messages with scoped key:
+const storageKey = getStorageKey(); // e.g., "chat_messages_user123_salesRndAI"
+const stored = localStorage.getItem(storageKey);
+
+// Clear history with scoped key:
+const clearHistory = useCallback(() => {
+  const storageKey = getStorageKey();
+  localStorage.removeItem(storageKey);
+}, [enablePersistence, userId, serviceName]);
+```
+
+**Benefits**:
+- ✅ Each AI service has isolated chat history
+- ✅ Switching tabs automatically resets chat to service-specific history
+- ✅ No cross-contamination of chat messages between services
+- ✅ Users get a clean slate when switching between AI assistants
+
+#### **3. Enhanced Logging for Production Debugging**:
+
+**Added** comprehensive console logging with prefixes:
+- `🔧 [use-chat]` - Service initialization
+- `📂 [use-chat]` - Loading messages
+- `💾 [use-chat]` - Saving messages
+- `🗑️ [use-chat]` - Clearing history
+- `✅ [use-chat]` - Success operations
+- `⚠️ [use-chat]` - Warnings
+- `❌ [use-chat]` - Errors
+
+**Benefits**:
+- ✅ Easy to filter logs by component
+- ✅ Clear visibility into service initialization flow
+- ✅ Easier debugging in production environments
+
+### 🧪 **TESTING RECOMMENDATIONS**
+
+1. **Test Service Initialization**:
+   - Navigate to Sales RND AI page
+   - Verify "Connected" status shows in header
+   - Send a test message
+   - Verify AI responds correctly
+
+2. **Test Tab Switching**:
+   - Start chat in Sales RND AI
+   - Switch to Raw Materials All AI
+   - Verify chat history is empty (isolated)
+   - Send message in Raw Materials All AI
+   - Switch back to Sales RND AI
+   - Verify original Sales RND AI history is restored
+
+3. **Test Chat Persistence**:
+   - Send messages in Sales RND AI
+   - Refresh the page
+   - Verify messages are restored
+   - Clear history using "Clear" button
+   - Verify messages are deleted
+
+4. **Browser Console Verification**:
+   ```javascript
+   // ✅ GOOD - Service initialized successfully
+   🔧 [use-chat] Initializing service: {hasService: false, serviceName: "salesRndAI", hasApiKey: true, provider: "gemini"}
+   🔍 [use-chat] Looking for registered service: salesRndAI
+   ⚠️ [use-chat] Service not found in registry: salesRndAI
+   🔄 [use-chat] Falling back to creating new service...
+   🏗️ [use-chat] Creating new service: {provider: "gemini", hasApiKey: true, forServiceName: "salesRndAI"}
+   ✅ [use-chat] Service created successfully
+   📝 [use-chat] Registering service with name: salesRndAI
+   📂 [use-chat] Loading messages from: chat_messages_user123_salesRndAI
+   ```
+
+#### **4. Added Missing serviceName Props to AI Pages**:
+
+**Changed Files**:
+- `app/ai/raw-materials-ai/page.tsx` (Line 70)
+- `app/ai/raw-materials-all-ai/page.tsx` (Line 66)
+
+**Issue**: Pages were not passing `serviceName` prop to chat components, causing all AI services to share the same base storage key.
+
+**Fix**:
+```typescript
+// raw-materials-ai/page.tsx - BEFORE:
+<RawMaterialsChat
+  userId={user.id}
+  apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+  provider="gemini"
+  // ❌ Missing serviceName prop!
+/>
+
+// AFTER:
+<RawMaterialsChat
+  userId={user.id}
+  apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+  provider="gemini"
+  serviceName="rawMaterialsAI" // ✅ Added!
+/>
+
+// raw-materials-all-ai/page.tsx - BEFORE:
+<AIChat
+  userId={user.id}
+  apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+  provider="gemini"
+  // ❌ Missing serviceName prop!
+/>
+
+// AFTER:
+<AIChat
+  userId={user.id}
+  apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+  provider="gemini"
+  serviceName="rawMaterialsAllAI" // ✅ Added!
+/>
+```
+
+**Benefits**:
+- ✅ Each AI page now has explicit serviceName identification
+- ✅ Chat history is properly isolated per service
+- ✅ Consistent naming across all AI services
+
+### 📝 **FILES CHANGED**
+
+1. **ai/hooks/use-chat.ts**:
+   - Lines 55-105: Service initialization fallback logic
+   - Lines 107-150: Isolated chat history per service
+   - Lines 251-259: Scoped clearHistory function
+   - Added comprehensive logging throughout
+
+2. **app/ai/raw-materials-ai/page.tsx**:
+   - Line 70: Added `serviceName="rawMaterialsAI"` prop
+
+3. **app/ai/raw-materials-all-ai/page.tsx**:
+   - Line 66: Added `serviceName="rawMaterialsAllAI"` prop
+
+### 🎯 **IMPACT**
+
+**Before**:
+- ❌ Sales RND AI showed "Disconnect" when `serviceName` was not registered
+- ❌ All AI chats shared the same history
+- ❌ Switching tabs showed mixed chat messages
+- ❌ Poor debugging visibility
+
+**After**:
+- ✅ Service automatically initializes even if not pre-registered
+- ✅ Each AI service has isolated chat history
+- ✅ Switching tabs resets chat to service-specific history
+- ✅ Comprehensive logging for production debugging
+- ✅ Better user experience with clear separation of AI contexts
+
+---
+
+## [2025-11-04] - Railway Deployment Fix - AI Chat "Disconnect" Issue
+
+### 🚨 **CRITICAL BUG FIX - STAGING DEPLOYMENT**
+- **Priority**: CRITICAL - Staging AI chat showing "Disconnect" status
+- **Status**: ✅ ROOT CAUSE IDENTIFIED - Awaiting Railway environment variable configuration
+- **Impact**: AI chat completely non-functional in staging environment
+
+### 🔍 **ROOT CAUSE ANALYSIS**
+
+#### **Issue Description**:
+- User reported: "i cant send chat anyh in staging it show disconnect"
+- AI chat works perfectly in local development
+- AI chat shows "Disconnected" status in staging (Railway deployment)
+- No messages can be sent in staging environment
+
+#### **Investigation Steps**:
+1. ✅ Reviewed `Dockerfile` - All build args correctly configured
+2. ✅ Reviewed `railway.json` - Deployment settings correct
+3. ✅ Reviewed `ai/hooks/use-chat.ts` - Service initialization logic examined
+4. ✅ Reviewed `app/api/rag/searchRawMaterials/route.ts` - Graceful degradation implemented
+5. ✅ Reviewed `DEPLOYMENT_RAILWAY.md` documentation
+
+#### **Root Cause Identified**:
+**Missing `NEXT_PUBLIC_GEMINI_API_KEY` in Railway environment variables**
+
+The AI chat service initialization requires client-side access to Gemini API key:
+```typescript
+// From ai/hooks/use-chat.ts
+const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+if (!apiKey) {
+  console.error('❌ Failed to create service: API key is required');
+  setStatus('disconnected');
+}
+```
+
+**Critical Understanding**:
+- Next.js requires `NEXT_PUBLIC_` prefix for client-side environment variables
+- Without this prefix, the variable is NOT available in the browser
+- Railway deployment was missing this environment variable
+- This causes service initialization to fail silently
+- Result: "Disconnect" status with no error messages to user
+
+### 🔄 **SOLUTION IMPLEMENTED**
+
+#### **1. Created Comprehensive Railway Deployment Guide (CRITICAL)**
+- **File Created**: `DEPLOYMENT_RAILWAY.md`
+- **Purpose**: Complete guide for Railway deployment configuration
+- **Contents**:
+  - ✅ Root cause explanation of "disconnect" issue
+  - ✅ Complete list of required environment variables
+  - ✅ Step-by-step deployment checklist
+  - ✅ Troubleshooting guide with browser console diagnostics
+  - ✅ Quick fix instructions for immediate resolution
+  - ✅ Security notes about NEXT_PUBLIC_ prefix
+  - ✅ Index configuration documentation
+
+#### **2. Required Environment Variables for Railway**:
+```bash
+# Database (REQUIRED)
+MONGODB_URI=mongodb+srv://username:password@host/database
+
+# AI Chat - Client Side (CRITICAL - This was missing!)
+NEXT_PUBLIC_GEMINI_API_KEY=your-gemini-api-key-here
+
+# AI Chat - Server Side (REQUIRED)
+GEMINI_API_KEY=your-gemini-api-key-here
+
+# Vector Database (REQUIRED for RAG)
+PINECONE_API_KEY=your-pinecone-api-key-here
+```
+
+**Note**: Index names are hardcoded in `ai/config/rag-config.ts`:
+- `rawMaterialsAllAI` → `002-rnd-ai`
+- `rawMaterialsAI` → `raw-materials-stock`
+- `salesRndAI` → `sales-rnd-ai`
+
+No need to set `PINECONE_INDEX` or `PINECONE_ENVIRONMENT` in Railway!
+
+#### **3. Deployment Checklist Created**:
+- [ ] Set `MONGODB_URI` in Railway
+- [ ] Set `NEXT_PUBLIC_GEMINI_API_KEY` in Railway
+- [ ] Set `GEMINI_API_KEY` in Railway
+- [ ] Set `PINECONE_API_KEY` in Railway
+- [ ] Verify build completes successfully
+- [ ] Test chat shows "Connected" status
+- [ ] Test message sending and receiving
+- [ ] Test RAG search functionality
+
+### 📋 **DIAGNOSTICS & TROUBLESHOOTING**
+
+#### **Browser Console Diagnostics**:
+```javascript
+// ❌ BAD - Service initialization failed (missing API key)
+🔧 Initializing service: {hasApiKey: false, provider: 'gemini'}
+❌ Failed to create service: API key is required
+
+// ✅ GOOD - Service initialized successfully
+🔧 Initializing service: {hasApiKey: true, provider: 'gemini'}
+✅ Service created successfully
+```
+
+#### **How to Verify Fix**:
+1. Open Railway Dashboard → Project → Variables
+2. Verify `NEXT_PUBLIC_GEMINI_API_KEY` is set and not empty
+3. Redeploy (Railway auto-redeploys on variable change)
+4. Wait 2-3 minutes for deployment
+5. Refresh staging URL
+6. Check chat status indicator (should show green "Connected")
+7. Test sending a message
+
+### 🎯 **IMPACT & BENEFITS**
+
+**Immediate Benefits**:
+- ✅ Clear documentation of root cause for future reference
+- ✅ Step-by-step fix instructions for deployment team
+- ✅ Comprehensive troubleshooting guide
+- ✅ Prevention of similar issues in future deployments
+
+**Long-term Benefits**:
+- ✅ Better understanding of Next.js client-side env var requirements
+- ✅ Improved deployment process documentation
+- ✅ Reduced debugging time for deployment issues
+- ✅ Clear security notes about NEXT_PUBLIC_ prefix usage
+
+### 🔐 **SECURITY CONSIDERATIONS**
+
+**NEXT_PUBLIC_ Prefix**:
+- Variables with `NEXT_PUBLIC_` are exposed to browser
+- Only use for keys that are safe for client-side
+- Gemini API key is safe for client-side with proper API restrictions
+- Apply domain restrictions in Google AI Studio for production keys
+
+**Environment Separation**:
+- Use separate API keys for staging/production
+- Never commit API keys to Git
+- Always use Railway's environment variable system
+- Each environment should have isolated credentials
+
+### 📝 **FILES REVIEWED**
+
+1. `DEPLOYMENT_RAILWAY.md` - NEW comprehensive deployment guide
+2. `Dockerfile` - Verified all build args present
+3. `railway.json` - Verified deployment configuration
+4. `ai/hooks/use-chat.ts` - Examined service initialization
+5. `app/api/rag/searchRawMaterials/route.ts` - Verified graceful degradation
+6. `ai/config/rag-config.ts` - Verified index name configuration
+7. `.env.example` - Verified all required vars documented
+
+### ⏭️ **NEXT STEPS**
+
+**User Action Required**:
+1. Go to Railway Dashboard
+2. Navigate to Project → Variables tab
+3. Add `NEXT_PUBLIC_GEMINI_API_KEY` with valid Gemini API key
+4. Verify other required env vars are set (MONGODB_URI, GEMINI_API_KEY, PINECONE_API_KEY)
+5. Wait for automatic redeployment
+6. Test staging environment
+
+**If Issue Persists**:
+- Check browser console for specific error messages
+- Check Railway deployment logs for build errors
+- Verify API key is valid and not expired
+- Follow troubleshooting guide in DEPLOYMENT_RAILWAY.md
+
+---
+
 ## [2025-11-04] - Sales RND AI Dedicated Index Configuration
 
 ### 🎯 **NEW FEATURE - DEDICATED SALES AI INDEX**

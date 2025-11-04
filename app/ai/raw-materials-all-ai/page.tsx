@@ -63,6 +63,7 @@ export default function RawMaterialsAllAIPage() {
         userId={user.id}
         apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
         provider="gemini"
+        serviceName="rawMaterialsAllAI"
         onFeedbackSubmit={handleFeedbackSubmit}
       />
     </AIChatLayout>

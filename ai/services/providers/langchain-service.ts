@@ -14,7 +14,7 @@ import { FeedbackAnalyzer } from '../core/feedback-analyzer';
 export class LangChainService extends BaseAIService {
   private model: ChatOpenAI;
 
-  constructor(apiKey: string, config?: Partial<AIModelConfig>) {
+  constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
     const defaultConfig: AIModelConfig = {
       model: 'gpt-4',
       temperature: 0.7,
@@ -22,7 +22,7 @@ export class LangChainService extends BaseAIService {
       ...config
     };
 
-    super(apiKey, defaultConfig);
+    super(apiKey, defaultConfig, serviceName);
 
     this.model = new ChatOpenAI({
       openAIApiKey: apiKey,

@@ -10,7 +10,7 @@ import { FeedbackAnalyzer } from '../core/feedback-analyzer';
 export class GeminiService extends BaseAIService {
   private model: ChatGoogleGenerativeAI;
 
-  constructor(apiKey: string, config?: Partial<AIModelConfig>) {
+  constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
     const defaultConfig: AIModelConfig = {
       model: 'gemini-2.5-flash',
       temperature: 0.7,
@@ -18,7 +18,7 @@ export class GeminiService extends BaseAIService {
       ...config
     };
 
-    super(apiKey, defaultConfig);
+    super(apiKey, defaultConfig, serviceName);
 
     this.model = new ChatGoogleGenerativeAI({
       apiKey: apiKey,

@@ -15,6 +15,7 @@ export const FeedbackSchema = z.object({
   id: z.string().optional(),
   responseId: z.string(),
   userId: z.string(),
+  service_name: z.string().optional(), // which AI service/agent (e.g., "salesRndAI", "rawMaterialsAI")
   type: FeedbackType,
   score: z.number().min(1).max(5), // 1-5 rating
   comment: z.string().optional(),
@@ -36,6 +37,7 @@ export type Feedback = z.infer<typeof FeedbackSchema>;
 export const StoredAIResponseSchema = z.object({
   id: z.string(),
   userId: z.string(),
+  service_name: z.string().optional(), // which AI service/agent generated this response
   prompt: z.string(),
   response: z.string(),
   model: z.string(),
