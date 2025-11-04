@@ -2,6 +2,428 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-11-04] - Critical Fix: Service Initialization and Chat History Isolation
+
+### 🚨 **CRITICAL BUG FIX - Service Initialization Fallback**
+- **Priority**: CRITICAL - Sales RND AI showing "Disconnect" status after tab switching
+- **Status**: ✅ FIXED - Service initialization fallback logic implemented
+- **Impact**: Sales RND AI chat was non-functional when switching tabs
+
+### 🔍 **ROOT CAUSE ANALYSIS**
+
+#### **Issue Description**:
+- User reported: "when i switched tab chat should resets automatically and only this ai https://rndaiwebapp-production.up.railway.app/ai/sales-rnd-ai still showing disconnect"
+- Sales RND AI chat shows "Disconnected" status after switching tabs
+- Other AI chats (raw-materials-ai, raw-materials-all-ai) work correctly
+- Chat history was shared across all AI tabs (not isolated per service)
+
+#### **Investigation Steps**:
+1. ✅ Reviewed `ai/hooks/use-chat.ts` - Service initialization logic examined
+2. ✅ Reviewed `ai/components/chat/ai-chat.tsx` - Connection status indicator logic
+3. ✅ Reviewed `ai/services/core/ai-service-factory.ts` - Service registration mechanism
+4. ✅ Compared Sales RND AI page with other AI pages
+5. ✅ Analyzed localStorage persistence behavior
+
+#### **Root Causes Identified**:
+
+**1. Service Initialization Fallback Failure**:
+```typescript
+// BEFORE (use-chat.ts lines 68-88):
+if (serviceName) {
+  const registeredService = factory.getService(serviceName);
+  if (registeredService) {
+    setService(registeredService);
+  } else {
+    console.error('❌ Service not found:', serviceName);
+    // ❌ PROBLEM: No fallback! Service remains undefined
+  }
+} else if (apiKey && provider) {
+  // This branch never executes when serviceName is provided
+  const newService = factory.createService(provider, apiKey);
+  setService(newService);
+}
+```
+
+**Key Issue**: When `serviceName="salesRndAI"` was provided but not found in the factory registry, the code failed to create a new service using the provided `apiKey` and `provider`. This caused the service to remain `undefined`, resulting in "Disconnected" status.
+
+**2. Shared Chat History Across Tabs**:
+```typescript
+// BEFORE (use-chat.ts):
+const storageKey = `chat_messages_${userId}`;
+// ❌ PROBLEM: Same key for all AI services
+```
+
+**Key Issue**: All AI chats used the same localStorage key, causing chat history to be shared across all AI tabs. When switching tabs, users would see messages from other AI services.
+
+### 🔄 **SOLUTIONS IMPLEMENTED**
+
+#### **1. Service Initialization Fallback Logic (ai/hooks/use-chat.ts)**:
+
+**Changed Lines**: 55-105
+
+**Key Changes**:
+```typescript
+// AFTER - Proper fallback logic:
+if (serviceName) {
+  const registeredService = factory.getService(serviceName);
+  if (registeredService) {
+    console.log('✅ [use-chat] Found registered service:', serviceName);
+    setService(registeredService);
+    return; // Early return when found
+  } else {
+    console.warn('⚠️ [use-chat] Service not found in registry:', serviceName);
+    console.log('🔄 [use-chat] Falling back to creating new service...');
+    // ✅ CONTINUE to fallback logic below (no early return)
+  }
+}
+
+// ✅ Fallback: Create new service if we have apiKey and provider
+if (apiKey && provider) {
+  const newService = factory.createService(provider, apiKey);
+  setService(newService);
+
+  // ✅ Optionally register the newly created service
+  if (serviceName) {
+    factory.registerService(serviceName, newService);
+  }
+} else {
+  console.error('❌ [use-chat] Cannot initialize service: No apiKey or provider provided');
+}
+```
+
+**Benefits**:
+- ✅ Service is always initialized when `apiKey` and `provider` are provided
+- ✅ Newly created services are automatically registered for future use
+- ✅ Comprehensive logging for debugging
+- ✅ "Disconnected" status no longer appears on valid configurations
+
+#### **2. Isolated Chat History Per Service (ai/hooks/use-chat.ts)**:
+
+**Changed Lines**: 107-150, 251-259
+
+**Key Changes**:
+```typescript
+// NEW - Scoped storage key generation:
+const getStorageKey = () => {
+  const baseKey = `chat_messages_${userId}`;
+  return serviceName ? `${baseKey}_${serviceName}` : baseKey;
+};
+
+// Load messages with scoped key:
+const storageKey = getStorageKey(); // e.g., "chat_messages_user123_salesRndAI"
+const stored = localStorage.getItem(storageKey);
+
+// Clear history with scoped key:
+const clearHistory = useCallback(() => {
+  const storageKey = getStorageKey();
+  localStorage.removeItem(storageKey);
+}, [enablePersistence, userId, serviceName]);
+```
+
+**Benefits**:
+- ✅ Each AI service has isolated chat history
+- ✅ Switching tabs automatically resets chat to service-specific history
+- ✅ No cross-contamination of chat messages between services
+- ✅ Users get a clean slate when switching between AI assistants
+
+#### **3. Enhanced Logging for Production Debugging**:
+
+**Added** comprehensive console logging with prefixes:
+- `🔧 [use-chat]` - Service initialization
+- `📂 [use-chat]` - Loading messages
+- `💾 [use-chat]` - Saving messages
+- `🗑️ [use-chat]` - Clearing history
+- `✅ [use-chat]` - Success operations
+- `⚠️ [use-chat]` - Warnings
+- `❌ [use-chat]` - Errors
+
+**Benefits**:
+- ✅ Easy to filter logs by component
+- ✅ Clear visibility into service initialization flow
+- ✅ Easier debugging in production environments
+
+### 🧪 **TESTING RECOMMENDATIONS**
+
+1. **Test Service Initialization**:
+   - Navigate to Sales RND AI page
+   - Verify "Connected" status shows in header
+   - Send a test message
+   - Verify AI responds correctly
+
+2. **Test Tab Switching**:
+   - Start chat in Sales RND AI
+   - Switch to Raw Materials All AI
+   - Verify chat history is empty (isolated)
+   - Send message in Raw Materials All AI
+   - Switch back to Sales RND AI
+   - Verify original Sales RND AI history is restored
+
+3. **Test Chat Persistence**:
+   - Send messages in Sales RND AI
+   - Refresh the page
+   - Verify messages are restored
+   - Clear history using "Clear" button
+   - Verify messages are deleted
+
+4. **Browser Console Verification**:
+   ```javascript
+   // ✅ GOOD - Service initialized successfully
+   🔧 [use-chat] Initializing service: {hasService: false, serviceName: "salesRndAI", hasApiKey: true, provider: "gemini"}
+   🔍 [use-chat] Looking for registered service: salesRndAI
+   ⚠️ [use-chat] Service not found in registry: salesRndAI
+   🔄 [use-chat] Falling back to creating new service...
+   🏗️ [use-chat] Creating new service: {provider: "gemini", hasApiKey: true, forServiceName: "salesRndAI"}
+   ✅ [use-chat] Service created successfully
+   📝 [use-chat] Registering service with name: salesRndAI
+   📂 [use-chat] Loading messages from: chat_messages_user123_salesRndAI
+   ```
+
+#### **4. Added Missing serviceName Props to AI Pages**:
+
+**Changed Files**:
+- `app/ai/raw-materials-ai/page.tsx` (Line 70)
+- `app/ai/raw-materials-all-ai/page.tsx` (Line 66)
+
+**Issue**: Pages were not passing `serviceName` prop to chat components, causing all AI services to share the same base storage key.
+
+**Fix**:
+```typescript
+// raw-materials-ai/page.tsx - BEFORE:
+<RawMaterialsChat
+  userId={user.id}
+  apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+  provider="gemini"
+  // ❌ Missing serviceName prop!
+/>
+
+// AFTER:
+<RawMaterialsChat
+  userId={user.id}
+  apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+  provider="gemini"
+  serviceName="rawMaterialsAI" // ✅ Added!
+/>
+
+// raw-materials-all-ai/page.tsx - BEFORE:
+<AIChat
+  userId={user.id}
+  apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+  provider="gemini"
+  // ❌ Missing serviceName prop!
+/>
+
+// AFTER:
+<AIChat
+  userId={user.id}
+  apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+  provider="gemini"
+  serviceName="rawMaterialsAllAI" // ✅ Added!
+/>
+```
+
+**Benefits**:
+- ✅ Each AI page now has explicit serviceName identification
+- ✅ Chat history is properly isolated per service
+- ✅ Consistent naming across all AI services
+
+### 📝 **FILES CHANGED**
+
+1. **ai/hooks/use-chat.ts**:
+   - Lines 55-105: Service initialization fallback logic
+   - Lines 107-150: Isolated chat history per service
+   - Lines 251-259: Scoped clearHistory function
+   - Added comprehensive logging throughout
+
+2. **app/ai/raw-materials-ai/page.tsx**:
+   - Line 70: Added `serviceName="rawMaterialsAI"` prop
+
+3. **app/ai/raw-materials-all-ai/page.tsx**:
+   - Line 66: Added `serviceName="rawMaterialsAllAI"` prop
+
+### 🎯 **IMPACT**
+
+**Before**:
+- ❌ Sales RND AI showed "Disconnect" when `serviceName` was not registered
+- ❌ All AI chats shared the same history
+- ❌ Switching tabs showed mixed chat messages
+- ❌ Poor debugging visibility
+
+**After**:
+- ✅ Service automatically initializes even if not pre-registered
+- ✅ Each AI service has isolated chat history
+- ✅ Switching tabs resets chat to service-specific history
+- ✅ Comprehensive logging for production debugging
+- ✅ Better user experience with clear separation of AI contexts
+
+---
+
+## [2025-11-04] - Railway Deployment Fix - AI Chat "Disconnect" Issue
+
+### 🚨 **CRITICAL BUG FIX - STAGING DEPLOYMENT**
+- **Priority**: CRITICAL - Staging AI chat showing "Disconnect" status
+- **Status**: ✅ ROOT CAUSE IDENTIFIED - Awaiting Railway environment variable configuration
+- **Impact**: AI chat completely non-functional in staging environment
+
+### 🔍 **ROOT CAUSE ANALYSIS**
+
+#### **Issue Description**:
+- User reported: "i cant send chat anyh in staging it show disconnect"
+- AI chat works perfectly in local development
+- AI chat shows "Disconnected" status in staging (Railway deployment)
+- No messages can be sent in staging environment
+
+#### **Investigation Steps**:
+1. ✅ Reviewed `Dockerfile` - All build args correctly configured
+2. ✅ Reviewed `railway.json` - Deployment settings correct
+3. ✅ Reviewed `ai/hooks/use-chat.ts` - Service initialization logic examined
+4. ✅ Reviewed `app/api/rag/searchRawMaterials/route.ts` - Graceful degradation implemented
+5. ✅ Reviewed `DEPLOYMENT_RAILWAY.md` documentation
+
+#### **Root Cause Identified**:
+**Missing `NEXT_PUBLIC_GEMINI_API_KEY` in Railway environment variables**
+
+The AI chat service initialization requires client-side access to Gemini API key:
+```typescript
+// From ai/hooks/use-chat.ts
+const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+if (!apiKey) {
+  console.error('❌ Failed to create service: API key is required');
+  setStatus('disconnected');
+}
+```
+
+**Critical Understanding**:
+- Next.js requires `NEXT_PUBLIC_` prefix for client-side environment variables
+- Without this prefix, the variable is NOT available in the browser
+- Railway deployment was missing this environment variable
+- This causes service initialization to fail silently
+- Result: "Disconnect" status with no error messages to user
+
+### 🔄 **SOLUTION IMPLEMENTED**
+
+#### **1. Created Comprehensive Railway Deployment Guide (CRITICAL)**
+- **File Created**: `DEPLOYMENT_RAILWAY.md`
+- **Purpose**: Complete guide for Railway deployment configuration
+- **Contents**:
+  - ✅ Root cause explanation of "disconnect" issue
+  - ✅ Complete list of required environment variables
+  - ✅ Step-by-step deployment checklist
+  - ✅ Troubleshooting guide with browser console diagnostics
+  - ✅ Quick fix instructions for immediate resolution
+  - ✅ Security notes about NEXT_PUBLIC_ prefix
+  - ✅ Index configuration documentation
+
+#### **2. Required Environment Variables for Railway**:
+```bash
+# Database (REQUIRED)
+MONGODB_URI=mongodb+srv://username:password@host/database
+
+# AI Chat - Client Side (CRITICAL - This was missing!)
+NEXT_PUBLIC_GEMINI_API_KEY=your-gemini-api-key-here
+
+# AI Chat - Server Side (REQUIRED)
+GEMINI_API_KEY=your-gemini-api-key-here
+
+# Vector Database (REQUIRED for RAG)
+PINECONE_API_KEY=your-pinecone-api-key-here
+```
+
+**Note**: Index names are hardcoded in `ai/config/rag-config.ts`:
+- `rawMaterialsAllAI` → `002-rnd-ai`
+- `rawMaterialsAI` → `raw-materials-stock`
+- `salesRndAI` → `sales-rnd-ai`
+
+No need to set `PINECONE_INDEX` or `PINECONE_ENVIRONMENT` in Railway!
+
+#### **3. Deployment Checklist Created**:
+- [ ] Set `MONGODB_URI` in Railway
+- [ ] Set `NEXT_PUBLIC_GEMINI_API_KEY` in Railway
+- [ ] Set `GEMINI_API_KEY` in Railway
+- [ ] Set `PINECONE_API_KEY` in Railway
+- [ ] Verify build completes successfully
+- [ ] Test chat shows "Connected" status
+- [ ] Test message sending and receiving
+- [ ] Test RAG search functionality
+
+### 📋 **DIAGNOSTICS & TROUBLESHOOTING**
+
+#### **Browser Console Diagnostics**:
+```javascript
+// ❌ BAD - Service initialization failed (missing API key)
+🔧 Initializing service: {hasApiKey: false, provider: 'gemini'}
+❌ Failed to create service: API key is required
+
+// ✅ GOOD - Service initialized successfully
+🔧 Initializing service: {hasApiKey: true, provider: 'gemini'}
+✅ Service created successfully
+```
+
+#### **How to Verify Fix**:
+1. Open Railway Dashboard → Project → Variables
+2. Verify `NEXT_PUBLIC_GEMINI_API_KEY` is set and not empty
+3. Redeploy (Railway auto-redeploys on variable change)
+4. Wait 2-3 minutes for deployment
+5. Refresh staging URL
+6. Check chat status indicator (should show green "Connected")
+7. Test sending a message
+
+### 🎯 **IMPACT & BENEFITS**
+
+**Immediate Benefits**:
+- ✅ Clear documentation of root cause for future reference
+- ✅ Step-by-step fix instructions for deployment team
+- ✅ Comprehensive troubleshooting guide
+- ✅ Prevention of similar issues in future deployments
+
+**Long-term Benefits**:
+- ✅ Better understanding of Next.js client-side env var requirements
+- ✅ Improved deployment process documentation
+- ✅ Reduced debugging time for deployment issues
+- ✅ Clear security notes about NEXT_PUBLIC_ prefix usage
+
+### 🔐 **SECURITY CONSIDERATIONS**
+
+**NEXT_PUBLIC_ Prefix**:
+- Variables with `NEXT_PUBLIC_` are exposed to browser
+- Only use for keys that are safe for client-side
+- Gemini API key is safe for client-side with proper API restrictions
+- Apply domain restrictions in Google AI Studio for production keys
+
+**Environment Separation**:
+- Use separate API keys for staging/production
+- Never commit API keys to Git
+- Always use Railway's environment variable system
+- Each environment should have isolated credentials
+
+### 📝 **FILES REVIEWED**
+
+1. `DEPLOYMENT_RAILWAY.md` - NEW comprehensive deployment guide
+2. `Dockerfile` - Verified all build args present
+3. `railway.json` - Verified deployment configuration
+4. `ai/hooks/use-chat.ts` - Examined service initialization
+5. `app/api/rag/searchRawMaterials/route.ts` - Verified graceful degradation
+6. `ai/config/rag-config.ts` - Verified index name configuration
+7. `.env.example` - Verified all required vars documented
+
+### ⏭️ **NEXT STEPS**
+
+**User Action Required**:
+1. Go to Railway Dashboard
+2. Navigate to Project → Variables tab
+3. Add `NEXT_PUBLIC_GEMINI_API_KEY` with valid Gemini API key
+4. Verify other required env vars are set (MONGODB_URI, GEMINI_API_KEY, PINECONE_API_KEY)
+5. Wait for automatic redeployment
+6. Test staging environment
+
+**If Issue Persists**:
+- Check browser console for specific error messages
+- Check Railway deployment logs for build errors
+- Verify API key is valid and not expired
+- Follow troubleshooting guide in DEPLOYMENT_RAILWAY.md
+
+---
+
 ## [2025-11-04] - Sales RND AI Dedicated Index Configuration
 
 ### 🎯 **NEW FEATURE - DEDICATED SALES AI INDEX**
