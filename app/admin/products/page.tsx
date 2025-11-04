@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-function AdminProductsPageContent() {
+function AdminProductsContent() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -40,7 +40,6 @@ function AdminProductsPageContent() {
   const itemsPerPage = 50;
 
   const [formData, setFormData] = useState({
-    productCode: "",
     productName: "",
     inciName: "",
     description: "",
@@ -67,7 +66,6 @@ function AdminProductsPageContent() {
         setIsDuplicateMode(true);
         setShowAddForm(true);
         setFormData({
-          productCode: "",
           productName: data.productName || "",
           inciName: data.inci_name || "",
           description: data.description || "",
@@ -93,7 +91,6 @@ function AdminProductsPageContent() {
       // Clear URL params
       router.replace("/admin/products");
       setFormData({
-        productCode: "",
         productName: "",
         inciName: "",
         description: "",
@@ -111,7 +108,6 @@ function AdminProductsPageContent() {
       setShowAddForm(false);
       setEditingProduct(null);
       setFormData({
-        productCode: "",
         productName: "",
         inciName: "",
         description: "",
@@ -221,7 +217,6 @@ function AdminProductsPageContent() {
   const handleEdit = (product: any) => {
     setEditingProduct(product);
     setFormData({
-      productCode: product.productCode || "",
       productName: product.productName,
       inciName: product.inci_name || "",
       description: product.description || "",
@@ -320,7 +315,6 @@ function AdminProductsPageContent() {
                 setHasChangedDuplicate(false);
                 router.replace("/admin/products");
                 setFormData({
-                  productCode: "",
                   productName: "",
                   inciName: "",
                   description: "",
@@ -473,7 +467,6 @@ function AdminProductsPageContent() {
                       setIsDuplicateMode(false);
                       setHasChangedDuplicate(false);
                       setFormData({
-                        productCode: "",
                         productName: "",
                         inciName: "",
                         description: "",
@@ -696,8 +689,15 @@ function AdminProductsPageContent() {
 
 export default function AdminProductsPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
-      <AdminProductsPageContent />
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <AdminProductsContent />
     </Suspense>
   );
 }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 interface User {
   _id: string;
+  id: string; // Add id field for compatibility
   accountId: string;
   organizationId: string;
   email: string;
@@ -56,7 +57,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Load token from localStorage on mount and sync with cookie
   useEffect(() => {
     const storedToken = localStorage.getItem("auth_token");
-    console.log("Auth Context - Stored token:", storedToken ? "exists" : "null");
     if (storedToken) {
       setToken(storedToken);
       // Ensure cookie is set
@@ -68,15 +68,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Update user when meData changes
   useEffect(() => {
-    console.log("Auth Context - meData:", meData ? "exists" : "null", "token:", token ? "exists" : "null", "error:", meError ? "yes" : "no");
     if (meData) {
-      console.log("Auth Context - Setting user:", meData.user);
-      setUser(meData.user);
+      const userWithId = { ...meData.user, id: meData.user._id };
+      setUser(userWithId);
       setOrganization(meData.organization);
       setIsLoading(false);
     } else if (token && meError) {
       // Token exists but meData failed with error (invalid session)
-      console.log("Auth Context - Token exists but meData failed, clearing session");
       setUser(null);
       setOrganization(null);
       setToken(null);
@@ -91,19 +89,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      console.log("Login - Starting login process");
       const result = await loginMutation.mutateAsync({ email, password });
-      console.log("Login - Received result:", result ? "success" : "failed", "token:", result?.token ? "exists" : "missing");
       setToken(result.token);
-      setUser(result.user);
+      setUser({
+        ...result.user,
+        id: result.user._id
+      });
       localStorage.setItem("auth_token", result.token);
-      console.log("Login - Token saved to localStorage");
       // Set cookie for middleware
       document.cookie = `auth_token=${result.token}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
-      console.log("Login - Cookie set");
       await refetchMe();
-      console.log("Login - Refetched user data");
-      router.push("/ingredients");
+      router.push("/dashboard");
     } catch (error: any) {
       console.error("Login - Error:", error);
       throw new Error(error.message || "Login failed");
@@ -124,12 +120,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         organizationName,
       });
       setToken(result.token);
-      setUser(result.user);
+      setUser({
+        ...result.user,
+        id: result.user._id
+      });
       localStorage.setItem("auth_token", result.token);
       // Set cookie for middleware
       document.cookie = `auth_token=${result.token}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
       await refetchMe();
-      router.push("/ingredients");
+      router.push("/dashboard");
     } catch (error: any) {
       throw new Error(error.message || "Signup failed");
     }

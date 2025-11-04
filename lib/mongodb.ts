@@ -1,42 +1,28 @@
-import { MongoClient } from "mongodb";
+/**
+ * Main MongoDB Database Connection
+ *
+ * Provides a cached MongoDB client connection for the main application database.
+ * Uses the create_mongodb_client factory to eliminate code duplication.
+ *
+ * Environment Variables Required:
+ * - MONGODB_URI: MongoDB connection string for main database
+ *
+ * @module mongodb
+ */
 
-// Get MongoDB URI with fallback for build time
-// During build, MONGODB_URI might not be set yet (it's injected at runtime)
-const uri = process.env.MONGODB_URI;
+import { create_mongodb_client } from './create-mongodb-client';
 
-// Only throw error at runtime when actually trying to connect
-// This allows the build to succeed without MONGODB_URI
-if (!uri) {
-  console.warn('Warning: MONGODB_URI is not set. Database connections will fail.');
-}
+/**
+ * MongoDB client promise for main database
+ *
+ * In development: Connection is cached globally
+ * In production: New connection created for each serverless invocation
+ */
+const client_promise = create_mongodb_client({
+  uri: process.env.MONGODB_URI,
+  global_cache_key: '_mongoClientPromise',
+  error_message: 'MONGODB_URI environment variable is not set',
+  warn_message: 'Warning: MONGODB_URI is not set. Database connections will fail.'
+});
 
-const options = {};
-
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
-
-// Only create connection if URI is available
-if (uri) {
-  if (process.env.NODE_ENV === "development") {
-    let globalWithMongo = global as typeof globalThis & {
-      _mongoClientPromise?: Promise<MongoClient>;
-    };
-
-    if (!globalWithMongo._mongoClientPromise) {
-      client = new MongoClient(uri, options);
-      globalWithMongo._mongoClientPromise = client.connect();
-    }
-    clientPromise = globalWithMongo._mongoClientPromise;
-  } else {
-    client = new MongoClient(uri, options);
-    clientPromise = client.connect();
-  }
-} else {
-  // Create a rejected promise that will fail if actually used
-  // This allows build to complete but will error at runtime if DB is accessed
-  clientPromise = Promise.reject(
-    new Error('MONGODB_URI environment variable is not set')
-  );
-}
-
-export default clientPromise;
+export default client_promise;

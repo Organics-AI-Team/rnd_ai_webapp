@@ -12,9 +12,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check against hardcoded credentials from environment
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@admin.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+    // Check against credentials from environment variables
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    // Ensure environment variables are set
+    if (!adminEmail || !adminPassword) {
+      console.error('ADMIN_EMAIL and ADMIN_PASSWORD must be set in environment variables');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
 
     if (email === adminEmail && password === adminPassword) {
       const response = NextResponse.json({

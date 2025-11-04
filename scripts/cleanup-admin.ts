@@ -1,6 +1,12 @@
 import { MongoClient } from "mongodb";
 
-const uri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/ewms";
+const uri = process.env.MONGODB_URI;
+
+if (!uri) {
+  console.error('❌ Error: MONGODB_URI environment variable is not set');
+  console.error('Please set MONGODB_URI in your .env.local file');
+  process.exit(1);
+}
 
 async function cleanupAdmin() {
   const client = new MongoClient(uri);

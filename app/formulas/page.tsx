@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
 import { Beaker, ArrowLeft, Search, Plus, Edit, Trash2, Eye } from "lucide-react";
 import { useState } from "react";
-import React from "react";
 import {
   Table,
   TableBody,

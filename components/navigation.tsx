@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, ClipboardList, Truck, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Star, Eye, Plus, Bot } from "lucide-react";
+import { Package, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Bot, Database, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -61,14 +61,37 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       labelEn: "Formulas",
       icon: Beaker,
     },
+    // Separator
+    {
+      type: "separator",
+    },
+    // AI Assistant section
+    {
+      type: "section-title",
+      label: "ผู้ช่วย AI",
+    },
     {
       type: "link",
-      href: "/ai-chat",
-      label: "AI Assistant",
-      labelEn: "AI Assistant",
+      href: "/ai/ai-chat",
+      label: "แนะนำสารทั่วไป",
+      labelEn: "General AI",
       icon: Bot,
     },
-    // Separator
+    {
+      type: "link",
+      href: "/ai/raw-materials-ai",
+      label: "แนะนำสารใน stock",
+      labelEn: "Stock Materials AI",
+      icon: Database,
+    },
+    {
+      type: "link",
+      href: "/ai/sales-rnd-ai",
+      label: "ช่วยสร้างสูตร (Sales)",
+      labelEn: "Sales Formulation AI",
+      icon: Sparkles,
+    },
+      // Separator
     {
       type: "separator",
       adminOnly: true,
@@ -76,15 +99,15 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     // Settings section
     {
       type: "section-title",
-      label: "SETTINGS",
+      label: "การตั้งค่า",
       adminOnly: true,
     },
     {
       type: "link",
-      href: "/admin/ai-indexing",
-      label: "จัดการ AI",
-      labelEn: "AI Management",
-      icon: Bot,
+      href: "/admin/vector-indexing",
+      label: "จัดการ Vector",
+      labelEn: "Vector Indexing",
+      icon: Database,
       adminOnly: true,
     },
     {

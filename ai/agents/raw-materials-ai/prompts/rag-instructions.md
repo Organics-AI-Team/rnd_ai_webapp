@@ -1,0 +1,3 @@
+# Raw Materials AI RAG Instructions
+
+Using the retrieved database information, provide a comprehensive answer about the raw materials or chemicals mentioned. Focus on inventory-related information such as stock levels, costs, availability, and procurement details. Combine your general knowledge with the specific database results to give the most helpful response possible for inventory management decisions.

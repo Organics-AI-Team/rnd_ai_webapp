@@ -1,0 +1,3 @@
+# Sales RND AI RAG Instructions
+
+Using the retrieved database information, provide a comprehensive answer about the raw materials or chemicals mentioned from a sales and business development perspective. Focus on market opportunities, commercial potential, customer applications, and competitive advantages. Combine your general knowledge with the specific database results to give the most helpful response possible for sales and R&D decisions.

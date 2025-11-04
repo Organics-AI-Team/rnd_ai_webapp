@@ -5,6 +5,7 @@ import { ProductSchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
 import { logProductActivity } from "@/lib/productLog";
+import { parseArrayField } from "@/lib/array-utils";
 
 export const productsRouter = router({
   // Get all products for organization (from raw_meterials_console collection)
@@ -73,33 +74,6 @@ export const productsRouter = router({
 
     // Map raw_meterials_console fields to product fields for frontend compatibility
     const products = rawMaterials.map((material: any, index: number) => {
-      // Helper function to parse array fields into actual arrays
-      const parseArrayField = (field: any): string[] => {
-        if (!field) return [];
-        if (Array.isArray(field)) {
-          // Filter out empty items
-          return field.filter(item => item && item.trim() !== '');
-        }
-        if (typeof field === 'string') {
-          // Handle string representation of array like "['item1', 'item2']"
-          try {
-            // Remove outer brackets and split by comma
-            const cleaned = field.replace(/^\[\'|'\]$/g, '').trim();
-            if (!cleaned) return [];
-
-            // Split by ', ' and clean up each item
-            const items = cleaned.split(/\'\s*,\s*\'/).map(item =>
-              item.replace(/^\'|\'$/g, '').trim()
-            ).filter(item => item !== '');
-
-            return items;
-          } catch {
-            // If parsing fails, return the original string as single item
-            return [field];
-          }
-        }
-        return [String(field)];
-      };
 
       // Prioritize trade_name, fallback to INCI_name
       const tradeName = material.trade_name || "";
@@ -148,29 +122,6 @@ export const productsRouter = router({
       if (!material) {
         throw new Error("Material not found");
       }
-
-      // Helper function to parse array fields into actual arrays
-      const parseArrayField = (field: any): string[] => {
-        if (!field) return [];
-        if (Array.isArray(field)) {
-          return field.filter(item => item && item.trim() !== '');
-        }
-        if (typeof field === 'string') {
-          try {
-            const cleaned = field.replace(/^\[\'|'\]$/g, '').trim();
-            if (!cleaned) return [];
-
-            const items = cleaned.split(/\'\s*,\s*\'/).map(item =>
-              item.replace(/^\'|\'$/g, '').trim()
-            ).filter(item => item !== '');
-
-            return items;
-          } catch {
-            return [field];
-          }
-        }
-        return [String(field)];
-      };
 
       const tradeName = material.trade_name || "";
       const inciName = material.INCI_name || material.inci_name || "";
@@ -501,7 +452,7 @@ export const productsRouter = router({
         // Add to favorites
         await db.collection("organizations").updateOne(
           { _id: new ObjectId(ctx.user.organizationId) },
-          { $addToSet: { favoriteIngredients: input.ingredientId } }
+          { $addToSet: { favoriteIngredients: input.ingredientId } } as any
         );
       }
 
@@ -555,29 +506,6 @@ export const productsRouter = router({
       }
 
       const newRmCode = `RM${String(maxNumber + 1).padStart(6, '0')}`;
-
-      // Helper function to parse array fields into actual arrays
-      const parseArrayField = (field: any): string[] => {
-        if (!field) return [];
-        if (Array.isArray(field)) {
-          return field.filter(item => item && item.trim() !== '');
-        }
-        if (typeof field === 'string') {
-          try {
-            const cleaned = field.replace(/^\[\'|'\]$/g, '').trim();
-            if (!cleaned) return [];
-
-            const items = cleaned.split(/\'\s*,\s*\'/).map(item =>
-              item.replace(/^\'|\'$/g, '').trim()
-            ).filter(item => item !== '');
-
-            return items;
-          } catch {
-            return [field];
-          }
-        }
-        return [String(field)];
-      };
 
       const tradeName = originalMaterial.trade_name || "";
       const inciName = originalMaterial.INCI_name || originalMaterial.inci_name || "";
