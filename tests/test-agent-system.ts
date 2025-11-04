@@ -13,7 +13,7 @@ import {
   getRawMaterialsAIAgent,
   AgentRegistrySimple,
   createCustomAgent
-} from './ai/agents/core/agent-usage-example';
+} from '../ai/agents/core/agent-usage-example';
 
 async function testPlugAndPlaySystem() {
   console.log('🚀 Testing Plug and Play Agent System\n');

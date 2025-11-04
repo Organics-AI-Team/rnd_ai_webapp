@@ -7,9 +7,9 @@
 import { config } from 'dotenv';
 config({ path: '.env.local' });
 
-import { UniversalAgentSystem } from './ai/agents/core/agent-system';
-import { RAW_MATERIALS_ALL_AI_CONFIG } from './ai/agents/raw-materials-all-ai/config/agent-config';
-import { RAW_MATERIALS_AI_CONFIG } from './ai/agents/raw-materials-ai/config/agent-config';
+import { UniversalAgentSystem } from '../ai/agents/core/agent-system';
+import { RAW_MATERIALS_ALL_AI_CONFIG } from '../ai/agents/raw-materials-all-ai/config/agent-config';
+import { RAW_MATERIALS_AI_CONFIG } from '../ai/agents/raw-materials-ai/config/agent-config';
 
 async function testSimpleSystem() {
   console.log('🚀 Testing Simple Plug and Play Agent System\n');

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+  <!-- Root Persona Element -->
+  <xs:element name="Persona">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Identity" type="IdentityType"/>
+        <xs:element name="Mandate" type="MandateType"/>
+        <xs:element name="KnowledgeScope" type="KnowledgeScopeType"/>
+        <xs:element name="OperatingPrinciples" type="OperatingPrinciplesType"/>
+        <xs:element name="Methodology" type="MethodologyType"/>
+        <xs:element name="EvaluationCriteria" type="EvaluationCriteriaType"/>
+        <xs:element name="Heuristics" type="HeuristicsType"/>
+        <xs:element name="SafetyAndCompliance" type="SafetyAndComplianceType"/>
+        <xs:element name="InteractionStyle" type="InteractionStyleType"/>
+        <xs:element name="OutputSchemas" type="OutputSchemasType"/>
+        <xs:element name="FewShotExamples" type="FewShotExamplesType"/>
+        <xs:element name="PromptUse" type="PromptUseType"/>
+        <xs:element name="Constraints" type="ConstraintsType"/>
+      </xs:sequence>
+      <xs:attribute name="version" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- Identity Type -->
+  <xs:complexType name="IdentityType">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element name="Age" type="xs:positiveInteger"/>
+      <xs:element name="Role" type="xs:string"/>
+      <xs:element name="Experience" type="xs:string"/>
+      <xs:element name="Credentials" type="CredentialsType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="CredentialsType">
+    <xs:sequence>
+      <xs:element name="Degree" type="xs:string"/>
+      <xs:element name="Background" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Mandate Type -->
+  <xs:complexType name="MandateType">
+    <xs:sequence>
+      <xs:element name="PrimaryGoals" type="PrimaryGoalsType"/>
+      <xs:element name="SuccessMetrics" type="SuccessMetricsType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PrimaryGoalsType">
+    <xs:sequence>
+      <xs:element name="Goal" type="xs:string" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="SuccessMetricsType">
+    <xs:sequence>
+      <xs:element name="Metric" type="xs:string" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- KnowledgeScope Type -->
+  <xs:complexType name="KnowledgeScopeType">
+    <xs:sequence>
+      <xs:element name="DomainKnowledge" type="DomainKnowledgeType"/>
+      <xs:element name="RegulatoryStandards" type="RegulatoryStandardsType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DomainKnowledgeType">
+    <xs:sequence>
+      <xs:element name="Area" type="xs:string" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="RegulatoryStandardsType">
+    <xs:sequence>
+      <xs:element name="Standard" type="xs:string" maxOccurs="unbounded"/>
+      <xs:element name="Note" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- OperatingPrinciples Type -->
+  <xs:complexType name="OperatingPrinciplesType">
+    <xs:sequence>
+      <xs:element name="Tone" type="xs:string"/>
+      <xs:element name="Evidence" type="xs:string"/>
+      <xs:element name="RiskManagement" type="xs:string"/>
+      <xs:element name="COGS" type="xs:string"/>
+      <xs:element name="Sustainability" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Methodology Type -->
+  <xs:complexType name="MethodologyType">
+    <xs:sequence>
+      <xs:element name="Step" type="StepType" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="StepType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="index" type="xs:positiveInteger" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- EvaluationCriteria Type -->
+  <xs:complexType name="EvaluationCriteriaType">
+    <xs:sequence>
+      <xs:element name="Criterion" type="xs:string" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Heuristics Type (flexible to accommodate different agent types) -->
+  <xs:complexType name="HeuristicsType">
+    <xs:sequence>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- SafetyAndCompliance Type (flexible to accommodate different agent types) -->
+  <xs:complexType name="SafetyAndComplianceType">
+    <xs:sequence>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- InteractionStyle Type -->
+  <xs:complexType name="InteractionStyleType">
+    <xs:sequence>
+      <xs:element name="InputsRequired" type="InputsRequiredType"/>
+      <xs:element name="OutputExpectations" type="OutputExpectationsType"/>
+      <xs:element name="DoDont" type="DoDontType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="InputsRequiredType">
+    <xs:sequence>
+      <xs:element name="Field" type="xs:string" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="OutputExpectationsType">
+    <xs:sequence>
+      <xs:element name="Format" type="xs:string"/>
+      <xs:element name="Include" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DoDontType">
+    <xs:sequence>
+      <xs:element name="Do" type="xs:string" maxOccurs="unbounded"/>
+      <xs:element name="Dont" type="xs:string" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- OutputSchemas Type (flexible to accommodate different agent schemas) -->
+  <xs:complexType name="OutputSchemasType">
+    <xs:sequence>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- FewShotExamples Type (flexible to accommodate different examples) -->
+  <xs:complexType name="FewShotExamplesType">
+    <xs:sequence>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- PromptUse Type -->
+  <xs:complexType name="PromptUseType">
+    <xs:sequence>
+      <xs:element name="Instruction" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Constraints Type -->
+  <xs:complexType name="ConstraintsType">
+    <xs:sequence>
+      <xs:element name="Ethics" type="xs:string"/>
+      <xs:element name="Compliance" type="xs:string"/>
+      <xs:element name="DataQuality" type="xs:string"/>
+      <xs:element name="OutputFormat" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+</xs:schema>

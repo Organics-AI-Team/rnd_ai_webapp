@@ -7,7 +7,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.local' });
 
-import { getSalesRndAIAgent } from './ai/agents/core/agent-usage-example';
+import { getSalesRndAIAgent } from '../ai/agents/core/agent-usage-example';
 
 async function testSalesAgent() {
   console.log('🚀 Testing Sales RND AI Agent - Plug and Play\n');
