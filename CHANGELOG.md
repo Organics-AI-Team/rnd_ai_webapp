@@ -2,6 +2,657 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-11-04] - Persistent Learning with Isolated Feedback Per AI Service
+
+### 🎓 **FEATURE - Persistent Learning Across Server Restarts**
+- **Priority**: HIGH - Enable AI services to learn from feedback persistently
+- **Status**: ✅ IMPLEMENTED - Each AI service now maintains separate learning history
+- **Impact**: AI responses improve over time based on user feedback, persisting across server restarts
+
+### 🔍 **REQUIREMENT ANALYSIS**
+
+#### **User Request**:
+"yes do it, make sure each of the learning are separate cuz each agent are different purpose"
+
+The user wanted:
+1. ✅ All 3 AI services (OpenAI, Gemini, LangChain) to learn from user feedback scores
+2. ✅ Questions and answers to be stored with scores for learning enhancement
+3. ✅ Learning data to persist across server restarts (load from database)
+4. ✅ **CRITICAL**: Each AI service/agent to have SEPARATE learning because they serve different purposes
+
+#### **Previous State - Problems Identified**:
+1. ❌ Learning data was stored in-memory only (lost on server restart)
+2. ❌ All AI services shared the same feedback pool (no isolation)
+3. ❌ No database persistence for feedback retrieval
+4. ❌ No `service_name` field to identify which AI service received feedback
+
+### 🔄 **SOLUTIONS IMPLEMENTED**
+
+#### **1. Added service_name Field to Feedback Schema** (`ai/types/feedback-types.ts`)
+
+**Lines Changed**: 14-50
+
+```typescript
+// BEFORE - No service identification:
+export const FeedbackSchema = z.object({
+  id: z.string().optional(),
+  responseId: z.string(),
+  userId: z.string(),
+  type: FeedbackType,
+  score: z.number().min(1).max(5),
+  // ... other fields
+});
+
+// AFTER - Service name added for isolation:
+export const FeedbackSchema = z.object({
+  id: z.string().optional(),
+  responseId: z.string(),
+  userId: z.string(),
+  service_name: z.string().optional(), // NEW: Identifies which AI service
+  type: FeedbackType,
+  score: z.number().min(1).max(5),
+  // ... other fields
+});
+
+// Also added to StoredAIResponseSchema:
+export const StoredAIResponseSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  service_name: z.string().optional(), // NEW: Track which service generated response
+  // ... other fields
+});
+```
+
+**Benefits**:
+- ✅ Each AI service can filter feedback by `service_name`
+- ✅ Learning is isolated per service (Sales AI ≠ Raw Materials AI)
+- ✅ Database queries can filter by service
+- ✅ Analytics can compare learning across services
+
+---
+
+#### **2. Added load_feedback_from_database Method** (`ai/services/core/base-ai-service.ts`)
+
+**Lines Changed**: 9-21, 28-97
+
+```typescript
+// BEFORE - No persistence:
+export abstract class BaseAIService {
+  protected feedbackHistory: Map<string, Feedback[]> = new Map();
+  protected userPreferences: Map<string, UserPreferences> = new Map();
+
+  constructor(
+    protected apiKey: string,
+    protected defaultConfig: AIModelConfig
+  ) {}
+  // No way to load from database!
+}
+
+// AFTER - Service name tracking + database loading:
+export abstract class BaseAIService {
+  protected feedbackHistory: Map<string, Feedback[]> = new Map();
+  protected userPreferences: Map<string, UserPreferences> = new Map();
+  protected serviceName?: string; // NEW: Track which service this is
+
+  constructor(
+    protected apiKey: string,
+    protected defaultConfig: AIModelConfig,
+    serviceName?: string // NEW: Accept service name
+  ) {
+    this.serviceName = serviceName;
+    console.log('🏗️ [BaseAIService] Constructed:', { serviceName, model: defaultConfig.model });
+  }
+
+  /**
+   * Load feedback history from database for persistent learning
+   * Each service loads only its own feedback based on serviceName
+   */
+  async load_feedback_from_database(userId: string): Promise<void> {
+    console.log('📥 [BaseAIService] Loading feedback from database:', {
+      userId,
+      serviceName: this.serviceName
+    });
+
+    try {
+      // Call the API endpoint to fetch feedback filtered by serviceName
+      const response = await fetch(
+        `/api/trpc/feedback.getUserHistory?input=${encodeURIComponent(
+          JSON.stringify({ userId, serviceName: this.serviceName })
+        )}`
+      );
+
+      if (!response.ok) {
+        console.warn('⚠️ [BaseAIService] Failed to load feedback from database:', response.status);
+        return;
+      }
+
+      const data = await response.json();
+      const feedbackList: Feedback[] = data.result?.data || [];
+
+      console.log('✅ [BaseAIService] Loaded feedback from database:', {
+        userId,
+        serviceName: this.serviceName,
+        count: feedbackList.length
+      });
+
+      // Store in memory
+      this.feedbackHistory.set(userId, feedbackList);
+
+      // Update user preferences based on loaded feedback
+      if (feedbackList.length > 0) {
+        this.updateUserPreferences(userId, feedbackList);
+        console.log('🔧 [BaseAIService] Updated user preferences from loaded feedback');
+      }
+    } catch (error) {
+      console.error('❌ [BaseAIService] Error loading feedback from database:', error);
+      // Don't throw - allow service to continue with empty feedback
+    }
+  }
+}
+```
+
+**Benefits**:
+- ✅ Services can load historical feedback on initialization
+- ✅ Learning persists across server restarts
+- ✅ Each service loads ONLY its own feedback (isolated)
+- ✅ Graceful fallback if database is unavailable
+
+---
+
+#### **3. Updated All Provider Services** (OpenAI, Gemini, LangChain)
+
+**Files Modified**:
+- `ai/services/providers/openai-service.ts` (Line 13)
+- `ai/services/providers/gemini-service.ts` (Line 13)
+- `ai/services/providers/langchain-service.ts` (Line 17)
+
+```typescript
+// BEFORE - No service name:
+export class OpenAIService extends BaseAIService {
+  constructor(apiKey: string, config?: Partial<AIModelConfig>) {
+    super(apiKey, defaultConfig);
+    // ...
+  }
+}
+
+// AFTER - Service name passed to base:
+export class OpenAIService extends BaseAIService {
+  constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
+    super(apiKey, defaultConfig, serviceName); // NEW: Pass serviceName
+    // ...
+  }
+}
+```
+
+**Applied to**: OpenAIService, GeminiService, LangChainService
+
+**Benefits**:
+- ✅ All providers support isolated learning
+- ✅ Consistent interface across all AI services
+
+---
+
+#### **4. Updated AI Service Factory** (`ai/services/core/ai-service-factory.ts`)
+
+**Lines Changed**: 27-47, 49-58
+
+```typescript
+// BEFORE - No service name support:
+createService(provider: string, apiKey: string, config?: any): IAIService {
+  switch (provider.toLowerCase()) {
+    case 'openai':
+      return new OpenAIService(apiKey, config);
+    // ...
+  }
+}
+
+// AFTER - Service name parameter added:
+createService(provider: string, apiKey: string, config?: any, serviceName?: string): IAIService {
+  console.log('🏭 [AIServiceFactory] Creating service:', { provider, serviceName });
+
+  switch (provider.toLowerCase()) {
+    case 'openai':
+      return new OpenAIService(apiKey, config, serviceName); // NEW: Pass serviceName
+    // ...
+  }
+}
+
+createAndRegisterService(name: string, config: AIServiceConfig): IAIService {
+  const service = this.createService(config.provider, config.apiKey, config.defaultConfig, name);
+  this.registerService(name, service);
+  console.log('📝 [AIServiceFactory] Service created and registered:', name);
+  return service;
+}
+```
+
+**Benefits**:
+- ✅ Factory creates services with proper service names
+- ✅ Registered services automatically get their name
+- ✅ Logging for debugging
+
+---
+
+#### **5. Updated use-chat Hook** (`ai/hooks/use-chat.ts`)
+
+**Lines Changed**: 82-113
+
+```typescript
+// BEFORE - No service name or feedback loading:
+const newService = factory.createService(provider, apiKey);
+setService(newService);
+
+if (serviceName) {
+  factory.registerService(serviceName, newService);
+}
+
+// AFTER - Service name + auto-load feedback:
+const newService = factory.createService(provider, apiKey, undefined, serviceName);
+console.log('✅ [use-chat] Service created successfully with serviceName:', serviceName);
+setService(newService);
+
+if (serviceName) {
+  factory.registerService(serviceName, newService);
+}
+
+// NEW: Automatically load feedback history from database
+if (userId && serviceName) {
+  console.log('📥 [use-chat] Loading feedback history for service:', serviceName);
+  newService.load_feedback_from_database?.(userId).catch((err: Error) => {
+    console.warn('⚠️ [use-chat] Failed to load feedback history:', err);
+  });
+}
+```
+
+**Benefits**:
+- ✅ Feedback automatically loads when service initializes
+- ✅ No manual loading required
+- ✅ Graceful error handling
+
+---
+
+#### **6. Updated Feedback Router** (`server/routers/feedback.ts`)
+
+**Lines Changed**: 8-40, 324-368
+
+**Changes**:
+1. Added `service_name` to input validation
+2. Stored `service_name` in database
+3. Added filtering by `service_name` in `getUserHistory` query
+
+```typescript
+// BEFORE - No service name:
+submit: protectedProcedure
+  .input(z.object({
+    responseId: z.string(),
+    // No service_name field!
+    type: FeedbackType,
+    score: z.number().min(1).max(5),
+    // ...
+  }))
+
+getUserHistory: protectedProcedure
+  .query(async ({ ctx, input }) => {
+    const feedback = await db.collection("feedback")
+      .find({ userId: ctx.user.id }) // No service filter!
+      .toArray();
+  })
+
+// AFTER - Service name support:
+submit: protectedProcedure
+  .input(z.object({
+    responseId: z.string(),
+    service_name: z.string().optional(), // NEW: Service identifier
+    type: FeedbackType,
+    score: z.number().min(1).max(5),
+    // ...
+  }))
+  .mutation(async ({ ctx, input }) => {
+    console.log('📝 [feedback.submit] Submitting feedback:', {
+      userId: ctx.user.id,
+      serviceName: input.service_name,
+      type: input.type,
+      score: input.score
+    });
+    // Stores service_name in database
+  })
+
+getUserHistory: protectedProcedure
+  .input(z.object({
+    userId: z.string().optional(),
+    serviceName: z.string().optional(), // NEW: Filter by service
+    limit: z.number().min(1).max(100).default(20),
+    offset: z.number().min(0).default(0)
+  }).optional())
+  .query(async ({ ctx, input }) => {
+    const filter: any = { userId: input?.userId || ctx.user.id };
+
+    // NEW: Filter by serviceName for isolated learning
+    if (input?.serviceName) {
+      filter.service_name = input.serviceName;
+      console.log('📂 [feedback.getUserHistory] Filtering by serviceName:', input.serviceName);
+    }
+
+    const feedback = await db.collection("feedback")
+      .find(filter) // Filtered query!
+      .sort({ timestamp: -1 })
+      .toArray();
+
+    console.log('✅ [feedback.getUserHistory] Found feedback:', {
+      count: feedback.length,
+      userId: filter.userId,
+      serviceName: input?.serviceName
+    });
+
+    return feedback;
+  })
+```
+
+**Benefits**:
+- ✅ Feedback stored with service identifier
+- ✅ Queries can filter by service
+- ✅ Comprehensive logging for debugging
+- ✅ Database-level isolation
+
+---
+
+#### **7. Updated use-feedback Hook** (`ai/hooks/use-feedback.ts`)
+
+**Lines Changed**: 7-14, 36-44, 50-80, 95-118, 136-145
+
+**Changes**:
+1. Added `serviceName` to options
+2. Scoped localStorage by serviceName
+3. Added `service_name` to submitted feedback
+4. Enhanced logging
+
+```typescript
+// BEFORE - No service isolation:
+export interface UseFeedbackOptions {
+  service?: IAIService;
+  userId: string;
+  // No serviceName!
+  autoSave?: boolean;
+}
+
+const stored = localStorage.getItem(`feedback_${userId}`);
+// Same key for all services!
+
+const newFeedback: Feedback = {
+  ...feedbackData,
+  id: generateFeedbackId(),
+  timestamp: new Date(),
+  // No service_name!
+};
+
+// AFTER - Service isolation:
+export interface UseFeedbackOptions {
+  service?: IAIService;
+  userId: string;
+  serviceName?: string; // NEW: Service name for isolated learning
+  autoSave?: boolean;
+}
+
+// Scoped storage key:
+const storageKey = serviceName
+  ? `feedback_${userId}_${serviceName}`
+  : `feedback_${userId}`;
+const stored = localStorage.getItem(storageKey);
+console.log('📂 [use-feedback] Loading feedback from:', storageKey);
+
+// Add service_name to feedback:
+const newFeedback: Feedback = {
+  ...feedbackData,
+  id: generateFeedbackId(),
+  timestamp: new Date(),
+  processed: false,
+  service_name: serviceName // NEW: Include service name
+};
+
+console.log('📝 [use-feedback] Submitting feedback:', {
+  serviceName,
+  type: newFeedback.type,
+  score: newFeedback.score
+});
+```
+
+**Benefits**:
+- ✅ Feedback scoped to specific service in localStorage
+- ✅ Database feedback includes service identifier
+- ✅ Clear logging for debugging
+
+---
+
+#### **8. Updated AI Chat Components**
+
+**Files Modified**:
+- `ai/components/chat/ai-chat.tsx` (Line 80-85)
+- `ai/components/chat/raw-materials-chat.tsx` (Line 77-82)
+
+```typescript
+// BEFORE - No service name passed:
+const feedback = useFeedback({
+  userId,
+  service: chat.getService(),
+  onFeedbackSubmit: onFeedbackSubmit
+});
+
+// AFTER - Service name passed for isolation:
+const feedback = useFeedback({
+  userId,
+  serviceName, // NEW: Pass serviceName for isolated learning
+  service: chat.getService(),
+  onFeedbackSubmit: onFeedbackSubmit
+});
+```
+
+**Benefits**:
+- ✅ All chat components support isolated learning
+- ✅ Feedback automatically tagged with service name
+
+---
+
+#### **9. Updated IAIService Interface** (`ai/services/core/ai-service-interface.ts`)
+
+**Lines Changed**: 37-42, 47-50
+
+```typescript
+// BEFORE - No load method:
+export interface IAIService {
+  generateResponse(request: AIRequest): Promise<AIResponse>;
+  addFeedback(feedback: Feedback): void;
+  getFeedbackHistory(userId: string): Feedback[];
+  // No load_feedback_from_database!
+}
+
+export interface IAIServiceFactory {
+  createService(provider: string, apiKey: string, config?: any): IAIService;
+  // No serviceName parameter!
+}
+
+// AFTER - Load method + serviceName support:
+export interface IAIService {
+  generateResponse(request: AIRequest): Promise<AIResponse>;
+  addFeedback(feedback: Feedback): void;
+  getFeedbackHistory(userId: string): Feedback[];
+
+  /**
+   * Load feedback history from database for persistent learning
+   * Each service loads only its own feedback based on serviceName
+   */
+  load_feedback_from_database?(userId: string): Promise<void>; // NEW!
+}
+
+export interface IAIServiceFactory {
+  createService(provider: string, apiKey: string, config?: any, serviceName?: string): IAIService;
+  // NEW: serviceName parameter
+}
+```
+
+**Benefits**:
+- ✅ Interface enforces persistent learning capability
+- ✅ Type safety for service names
+- ✅ Optional method (backward compatible)
+
+---
+
+### 📊 **HOW ISOLATED LEARNING WORKS**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    USER INTERACTS WITH AI                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Service: "salesRndAI" (Gemini) - Sales-focused AI             │
+├─────────────────────────────────────────────────────────────────┤
+│  1. User sends question: "What's the best sales approach?"       │
+│  2. AI responds with sales strategy                             │
+│  3. User rates: 4/5 stars, "too_long"                          │
+│  4. Feedback stored in MongoDB:                                 │
+│     {                                                           │
+│       userId: "user123",                                        │
+│       service_name: "salesRndAI",  ← ISOLATED                  │
+│       score: 4,                                                 │
+│       type: "too_long",                                        │
+│       prompt: "What's the best sales approach?",               │
+│       aiResponse: "...",                                       │
+│       aiModel: "gemini-2.5-flash"                              │
+│     }                                                           │
+│  5. Next time salesRndAI initializes:                          │
+│     - Loads feedback WHERE service_name = "salesRndAI"         │
+│     - Learns: "This user prefers shorter responses"            │
+│     - Adjusts maxTokens, temperature accordingly               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Service: "rawMaterialsAI" (Gemini) - Chemistry-focused AI     │
+├─────────────────────────────────────────────────────────────────┤
+│  1. User sends question: "What is RM000001?"                    │
+│  2. AI responds with chemical details                           │
+│  3. User rates: 5/5 stars, "excellent"                         │
+│  4. Feedback stored in MongoDB:                                 │
+│     {                                                           │
+│       userId: "user123",                                        │
+│       service_name: "rawMaterialsAI",  ← DIFFERENT ISOLATION   │
+│       score: 5,                                                 │
+│       type: "excellent",                                       │
+│       prompt: "What is RM000001?",                             │
+│       aiResponse: "...",                                       │
+│       aiModel: "gemini-2.5-flash"                              │
+│     }                                                           │
+│  5. Next time rawMaterialsAI initializes:                      │
+│     - Loads feedback WHERE service_name = "rawMaterialsAI"     │
+│     - Learns: "This user likes detailed technical responses"   │
+│     - Maintains technical depth                                │
+└─────────────────────────────────────────────────────────────────┘
+
+KEY ISOLATION POINTS:
+- MongoDB filter: WHERE service_name = "serviceName"
+- localStorage: feedback_userId_serviceName
+- Memory: Each service instance has separate feedbackHistory Map
+- Learning: Parameters adjusted per-service based on filtered feedback
+```
+
+---
+
+### ✅ **VERIFICATION CHECKLIST**
+
+#### **All 3 AI Services Use Learning Logic**:
+- ✅ **OpenAIService** extends BaseAIService → inherits learning
+- ✅ **GeminiService** extends BaseAIService → inherits learning
+- ✅ **LangChainService** extends BaseAIService → inherits learning
+
+#### **Score Calculation & Storage**:
+- ✅ Feedback includes `score` (1-5 rating)
+- ✅ Stored in MongoDB `feedback` collection
+- ✅ Aggregated in `ai_responses` collection as `averageScore`
+- ✅ Used by `FeedbackAnalyzer.analyzeFeedbackPatterns()`
+
+#### **Question & Answer Storage**:
+- ✅ Questions stored in `conversations` collection (role: user)
+- ✅ Answers stored in `conversations` collection (role: assistant)
+- ✅ Linked via `responseId`
+- ✅ Retrieved for context in `getRecentMessages`
+
+#### **Learning Enhancement**:
+- ✅ `adjustParameters()` uses feedback to tune temperature, maxTokens
+- ✅ `enhancePrompt()` adds feedback-based instructions
+- ✅ `updateUserPreferences()` learns preferred length/complexity
+- ✅ Applies in real-time during `generateResponse()`
+
+#### **Persistent Learning**:
+- ✅ `load_feedback_from_database()` loads from MongoDB
+- ✅ Called automatically in `use-chat` hook on service initialization
+- ✅ Filters by `service_name` for isolation
+- ✅ Updates in-memory maps with historical data
+
+#### **Isolated Learning Per Service**:
+- ✅ `service_name` field in feedback schema
+- ✅ Factory passes `serviceName` to all services
+- ✅ Router filters queries by `serviceName`
+- ✅ Each service loads only its own feedback
+
+---
+
+### 🚀 **TESTING RECOMMENDATIONS**
+
+1. **Test Feedback Submission**:
+   ```
+   - Send message to Sales RND AI
+   - Rate response: 3 stars, "too_long"
+   - Check MongoDB feedback collection:
+     db.feedback.find({ service_name: "salesRndAI" })
+   - Verify service_name is stored
+   ```
+
+2. **Test Learning Persistence**:
+   ```
+   - Submit 5+ feedback items to Sales RND AI
+   - Restart server/tab
+   - Check console logs for:
+     📥 [BaseAIService] Loading feedback from database
+     ✅ [BaseAIService] Loaded feedback from database: { count: 5 }
+   ```
+
+3. **Test Isolated Learning**:
+   ```
+   - Rate Sales RND AI as "too_long" (3 stars)
+   - Rate Raw Materials AI as "excellent" (5 stars)
+   - Ask same question to both AIs
+   - Sales AI should give shorter response (adjusted)
+   - Raw Materials AI should give detailed response (not affected)
+   ```
+
+4. **Database Verification**:
+   ```javascript
+   // Sales RND AI feedback (should be isolated)
+   db.feedback.find({ service_name: "salesRndAI" }).count()
+
+   // Raw Materials AI feedback (should be separate)
+   db.feedback.find({ service_name: "rawMaterialsAI" }).count()
+
+   // Should NOT mix:
+   db.feedback.find({ service_name: "salesRndAI", type: "excellent" })
+   // vs
+   db.feedback.find({ service_name: "rawMaterialsAI", type: "too_long" })
+   ```
+
+---
+
+### 📈 **BENEFITS SUMMARY**
+
+1. **Persistent Learning**: AI improves continuously, even across restarts
+2. **Isolated Learning**: Each AI service learns independently for its specific purpose
+3. **Better UX**: AI adapts to user preferences (length, style, complexity)
+4. **Data Integrity**: Feedback properly attributed to correct service
+5. **Scalability**: Can add more AI services with isolated learning
+6. **Analytics**: Can compare learning effectiveness across services
+7. **Debugging**: Comprehensive logging at every step
+
+---
+
 ## [2025-11-04] - Critical Fix: Service Initialization and Chat History Isolation
 
 ### 🚨 **CRITICAL BUG FIX - Service Initialization Fallback**

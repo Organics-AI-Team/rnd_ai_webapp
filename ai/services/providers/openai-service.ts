@@ -10,7 +10,7 @@ import { FeedbackAnalyzer } from '../core/feedback-analyzer';
 export class OpenAIService extends BaseAIService {
   private openai: OpenAI;
 
-  constructor(apiKey: string, config?: Partial<AIModelConfig>) {
+  constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
     const defaultConfig: AIModelConfig = {
       model: 'gpt-4',
       temperature: 0.7,
@@ -20,7 +20,7 @@ export class OpenAIService extends BaseAIService {
       ...config
     };
 
-    super(apiKey, defaultConfig);
+    super(apiKey, defaultConfig, serviceName);
     this.openai = new OpenAI({ apiKey });
   }
 

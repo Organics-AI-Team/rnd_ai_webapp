@@ -7,6 +7,7 @@ import { IAIService } from '../services/core/ai-service-interface';
 export interface UseFeedbackOptions {
   service?: IAIService;
   userId: string;
+  serviceName?: string; // Service name for isolated learning
   autoSave?: boolean;
   onFeedbackSubmit?: (feedback: Feedback) => void;
   onError?: (error: Error) => void;
@@ -36,6 +37,7 @@ export function useFeedback(options: UseFeedbackOptions): UseFeedbackReturn {
   const {
     service,
     userId,
+    serviceName,
     autoSave = true,
     onFeedbackSubmit,
     onError
@@ -45,32 +47,37 @@ export function useFeedback(options: UseFeedbackOptions): UseFeedbackReturn {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  // Load feedback from localStorage on mount
+  // Load feedback from localStorage on mount (scoped by serviceName)
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(`feedback_${userId}`);
+      const storageKey = serviceName ? `feedback_${userId}_${serviceName}` : `feedback_${userId}`;
+      const stored = localStorage.getItem(storageKey);
+      console.log('📂 [use-feedback] Loading feedback from:', storageKey);
       if (stored) {
         const parsedFeedback = JSON.parse(stored).map((fb: any) => ({
           ...fb,
           timestamp: new Date(fb.timestamp)
         }));
         setFeedback(parsedFeedback);
+        console.log('✅ [use-feedback] Loaded', parsedFeedback.length, 'feedback items');
       }
     } catch (err) {
-      console.warn('Failed to load feedback from localStorage:', err);
+      console.warn('⚠️ [use-feedback] Failed to load feedback from localStorage:', err);
     }
-  }, [userId]);
+  }, [userId, serviceName]);
 
-  // Save feedback to localStorage when it changes
+  // Save feedback to localStorage when it changes (scoped by serviceName)
   useEffect(() => {
     if (autoSave && feedback.length > 0) {
       try {
-        localStorage.setItem(`feedback_${userId}`, JSON.stringify(feedback));
+        const storageKey = serviceName ? `feedback_${userId}_${serviceName}` : `feedback_${userId}`;
+        localStorage.setItem(storageKey, JSON.stringify(feedback));
+        console.log('💾 [use-feedback] Saved', feedback.length, 'feedback items to:', storageKey);
       } catch (err) {
-        console.warn('Failed to save feedback to localStorage:', err);
+        console.warn('⚠️ [use-feedback] Failed to save feedback to localStorage:', err);
       }
     }
-  }, [feedback, userId, autoSave]);
+  }, [feedback, userId, serviceName, autoSave]);
 
   const generateFeedbackId = () => `fb_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -90,8 +97,15 @@ export function useFeedback(options: UseFeedbackOptions): UseFeedbackReturn {
         ...feedbackData,
         id: generateFeedbackId(),
         timestamp: new Date(),
-        processed: false
+        processed: false,
+        service_name: serviceName // Include service name for isolated learning
       };
+
+      console.log('📝 [use-feedback] Submitting feedback:', {
+        serviceName,
+        type: newFeedback.type,
+        score: newFeedback.score
+      });
 
       // Add to local state
       setFeedback(prev => [...prev, newFeedback]);
@@ -122,11 +136,13 @@ export function useFeedback(options: UseFeedbackOptions): UseFeedbackReturn {
   const clearFeedback = useCallback(() => {
     setFeedback([]);
     try {
-      localStorage.removeItem(`feedback_${userId}`);
+      const storageKey = serviceName ? `feedback_${userId}_${serviceName}` : `feedback_${userId}`;
+      localStorage.removeItem(storageKey);
+      console.log('🗑️ [use-feedback] Cleared feedback from:', storageKey);
     } catch (err) {
-      console.warn('Failed to clear feedback from localStorage:', err);
+      console.warn('⚠️ [use-feedback] Failed to clear feedback from localStorage:', err);
     }
-  }, [userId]);
+  }, [userId, serviceName]);
 
   const getAverageScore = useCallback((responseId?: string) => {
     const relevantFeedback = getFeedbackHistory(responseId);

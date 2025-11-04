@@ -9,16 +9,72 @@ import { FeedbackAnalyzer } from './feedback-analyzer';
 export abstract class BaseAIService {
   protected feedbackHistory: Map<string, Feedback[]> = new Map();
   protected userPreferences: Map<string, UserPreferences> = new Map();
+  protected serviceName?: string;
 
   constructor(
     protected apiKey: string,
-    protected defaultConfig: AIModelConfig
-  ) {}
+    protected defaultConfig: AIModelConfig,
+    serviceName?: string
+  ) {
+    this.serviceName = serviceName;
+    console.log('🏗️ [BaseAIService] Constructed:', { serviceName, model: defaultConfig.model });
+  }
 
   /**
    * Main method to generate AI responses - must be implemented by subclasses
    */
   abstract generateResponse(request: AIRequest): Promise<AIResponse>;
+
+  /**
+   * Load feedback history from database for a specific user and service
+   * This enables persistent learning across server restarts
+   *
+   * @param userId - The user ID to load feedback for
+   * @returns Promise<void>
+   */
+  async load_feedback_from_database(userId: string): Promise<void> {
+    console.log('📥 [BaseAIService] Loading feedback from database:', {
+      userId,
+      serviceName: this.serviceName
+    });
+
+    try {
+      // Call the API endpoint to fetch feedback
+      const queryParams = new URLSearchParams({ userId });
+      if (this.serviceName) {
+        queryParams.append('serviceName', this.serviceName);
+      }
+
+      const response = await fetch(`/api/trpc/feedback.getUserHistory?input=${encodeURIComponent(JSON.stringify({ userId, serviceName: this.serviceName }))}`);
+
+      if (!response.ok) {
+        console.warn('⚠️ [BaseAIService] Failed to load feedback from database:', response.status);
+        return;
+      }
+
+      const data = await response.json();
+      const feedbackList: Feedback[] = data.result?.data || [];
+
+      console.log('✅ [BaseAIService] Loaded feedback from database:', {
+        userId,
+        serviceName: this.serviceName,
+        count: feedbackList.length
+      });
+
+      // Store in memory
+      this.feedbackHistory.set(userId, feedbackList);
+
+      // Update user preferences based on loaded feedback
+      if (feedbackList.length > 0) {
+        this.updateUserPreferences(userId, feedbackList);
+        console.log('🔧 [BaseAIService] Updated user preferences from loaded feedback');
+      }
+
+    } catch (error) {
+      console.error('❌ [BaseAIService] Error loading feedback from database:', error);
+      // Don't throw - allow service to continue with empty feedback
+    }
+  }
 
   /**
    * Add feedback for a response
@@ -30,6 +86,14 @@ export abstract class BaseAIService {
 
     // Update user preferences based on new feedback
     this.updateUserPreferences(feedback.userId, userFeedback);
+
+    console.log('📝 [BaseAIService] Feedback added:', {
+      userId: feedback.userId,
+      serviceName: this.serviceName,
+      type: feedback.type,
+      score: feedback.score,
+      totalFeedback: userFeedback.length
+    });
   }
 
   /**

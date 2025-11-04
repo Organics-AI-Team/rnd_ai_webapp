@@ -84,14 +84,23 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       if (apiKey && provider) {
         console.log('🏗️ [use-chat] Creating new service:', { provider, hasApiKey: !!apiKey, forServiceName: serviceName || 'anonymous' });
         try {
-          const newService = factory.createService(provider, apiKey);
-          console.log('✅ [use-chat] Service created successfully');
+          // Pass serviceName to enable isolated learning for this specific AI service
+          const newService = factory.createService(provider, apiKey, undefined, serviceName);
+          console.log('✅ [use-chat] Service created successfully with serviceName:', serviceName);
           setService(newService);
 
           // Optionally register the newly created service if serviceName was provided
           if (serviceName) {
             console.log('📝 [use-chat] Registering service with name:', serviceName);
             factory.registerService(serviceName, newService);
+          }
+
+          // Load feedback history from database for this service
+          if (userId && serviceName) {
+            console.log('📥 [use-chat] Loading feedback history for service:', serviceName);
+            newService.load_feedback_from_database?.(userId).catch((err: Error) => {
+              console.warn('⚠️ [use-chat] Failed to load feedback history:', err);
+            });
           }
         } catch (err) {
           console.error('❌ [use-chat] Failed to create service:', err);

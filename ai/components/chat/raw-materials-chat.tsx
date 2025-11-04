@@ -76,6 +76,7 @@ export function RawMaterialsChat({
 
   const feedback = useFeedback({
     userId,
+    serviceName, // Pass serviceName for isolated learning
     service: chat.getService(),
     onFeedbackSubmit: onFeedbackSubmit
   });
