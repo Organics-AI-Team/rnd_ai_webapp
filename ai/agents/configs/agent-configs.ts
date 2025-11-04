@@ -72,15 +72,15 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   'raw-materials-specialist': {
     id: 'raw-materials-specialist',
     name: 'ผู้เชี่ยวชาญวัตถุดิบ',
-    description: 'เชี่ยวชาญวัตถุดิบเครื่องสำอาง สูตร และข้อมูลซัพพลายเออร์',
+    description: 'เชี่ยวชาญวัตถุดิบเครื่องสำอาง สูตร และข้อมูลซัพพลายเออร์ - ให้ข้อมูลเจาะลึกจากฐานข้อมูล',
     systemPromptId: 'raw-materials-specialist',
     ragIndexIds: ['raw-materials-db', 'suppliers-db', 'safety-db'],
     provider: 'gemini',
     modelConfig: {
-      temperature: 0.6,
-      maxTokens: 600,
-      topP: 0.8,
-      frequencyPenalty: 0.1,
+      temperature: 0.4,
+      maxTokens: 800,
+      topP: 0.7,
+      frequencyPenalty: 0.2,
       presencePenalty: 0.1
     },
     capabilities: [
@@ -88,10 +88,11 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
       'supplier-information',
       'safety-assessment',
       'cost-analysis',
-      'technical-specifications'
+      'technical-specifications',
+      'database-search'
     ],
     category: 'raw-materials',
-    version: '1.3.0',
+    version: '1.4.0',
     enabled: true,
     metadata: {
       author: 'R&D Team',
@@ -105,14 +106,14 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   'formulation-advisor': {
     id: 'formulation-advisor',
     name: 'ที่ปรึกษาสูตรผลิตภัณฑ์',
-    description: 'เชี่ยวชาญการพัฒนาและปรับแต่งสูตรเครื่องสำอาง',
+    description: 'เชี่ยวชาญการพัฒนาและปรับแต่งสูตรเครื่องสำอาง - แนะนำสูตรจริงจากฐานข้อมูล',
     systemPromptId: 'formulation-advisor',
     ragIndexIds: ['formulations-db', 'raw-materials-db', 'safety-db', 'research-db'],
     provider: 'gemini',
     modelConfig: {
-      temperature: 0.5,
-      maxTokens: 700,
-      topP: 0.7,
+      temperature: 0.3,
+      maxTokens: 900,
+      topP: 0.6,
       frequencyPenalty: 0.2,
       presencePenalty: 0.1
     },
@@ -121,10 +122,11 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
       'ingredient-compatibility',
       'stability-testing',
       'optimization',
-      'scale-up-guidance'
+      'scale-up-guidance',
+      'database-search'
     ],
     category: 'raw-materials',
-    version: '1.2.0',
+    version: '1.3.0',
     enabled: true,
     metadata: {
       author: 'Formulation Team',
@@ -171,15 +173,15 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   'market-analyst': {
     id: 'market-analyst',
     name: 'นักวิเคราะห์ตลาด & เทรนด์',
-    description: 'เชี่ยวชาญเทรนด์ตลาด ความต้องการที่ยังไม่ได้รับการตอบสนอง และโอกาสทางธุรกิจ',
+    description: 'เชี่ยวชาญเทรนด์ตลาด ความต้องการที่ยังไม่ได้รับการตอบสนอง และโอกาสทางธุรกิจ - อิงงานวิจัยจากฐานข้อมูล',
     systemPromptId: 'market-analyst',
     ragIndexIds: ['market-research-db', 'research-db'],
     provider: 'openai',
     modelConfig: {
-      temperature: 0.6,
-      maxTokens: 600,
-      topP: 0.8,
-      frequencyPenalty: 0.1,
+      temperature: 0.5,
+      maxTokens: 900,
+      topP: 0.7,
+      frequencyPenalty: 0.2,
       presencePenalty: 0.1
     },
     capabilities: [
@@ -187,10 +189,12 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
       'trend-forecasting',
       'consumer-insights',
       'competitive-analysis',
-      'strategic-planning'
+      'strategic-planning',
+      'research-citation',
+      'database-search'
     ],
     category: 'analytics',
-    version: '1.1.0',
+    version: '1.2.0',
     enabled: true,
     metadata: {
       author: 'Marketing Team',

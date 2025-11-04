@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-11-04] - Force AI Agents to Use Database for In-Depth Answers
+
+### 🎯 **CRITICAL FIX - Prevent Generic Answers, Force Database Usage**
+- **Priority**: HIGH - Users getting generic answers instead of database-backed specific details
+- **Status**: ✅ IMPLEMENTED - All 3 agents now FORCED to search database first
+- **Impact**: AI agents will drill down into database, cite specific chemicals, formulas, and research
+
+### 🔍 **PROBLEM IDENTIFIED**
+
+User asked: "งานวิจัยตามินซี ที่เกี่ยวกับผิวพรรณ และความงาม" (Vitamin C research for skin and beauty)
+
+**AI Response was WRONG - Too Generic**:
+- ❌ No specific chemical names
+- ❌ No database search performed
+- ❌ No INCI names, Material Codes, or Supplier info
+- ❌ No research citations or specific formulas
+- ❌ User's database has specific Vitamin C chemicals but AI didn't use them
+
+### 🔄 **SOLUTIONS**
+
+**1. Raw Materials Specialist** (v1.3.0 → v1.4.0)
+- Added rules: MUST search database, MUST cite INCI names, Material Codes, Suppliers
+- Temperature: 0.6 → 0.4 (more focused)
+- Max Tokens: 600 → 800 (allow detailed responses)
+
+**2. Formulation Advisor** (v1.2.0 → v1.3.0)
+- Added rules: MUST search formulas, MUST show all ingredients with %
+- Temperature: 0.5 → 0.3 (very focused on facts)
+- Max Tokens: 700 → 900 (full formula details)
+
+**3. Market Analyst** (v1.1.0 → v1.2.0)
+- Added rules: MUST cite research papers, authors, years, data
+- Temperature: 0.6 → 0.5 (focused on data)
+- Max Tokens: 600 → 900 (full research details)
+
+---
+
 ## [2025-11-04] - AI Agent Optimization: Thai Language & RAG Indicator
 
 ### 🎯 **FEATURE - Concise Thai Prompts & RAG Visual Indicator**
