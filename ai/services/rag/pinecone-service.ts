@@ -2,16 +2,30 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import { createEmbeddingService, UniversalEmbeddingService } from '../embeddings/universal-embedding-service';
 import { getRAGConfig, PINECONE_API_CONFIG, validateEnvironment, RAGServicesConfig } from '../../config/rag-config';
 
-// Validate environment variables
-const envValidation = validateEnvironment();
-if (!envValidation.isValid) {
-  console.error('❌ Missing required environment variables:', envValidation.missing);
-}
+/**
+ * Lazy initialization of Pinecone client
+ * This prevents initialization errors during Next.js build time
+ * The client is only created when actually needed at runtime
+ */
+let pineconeClient: Pinecone | null = null;
 
-// Initialize Pinecone client
-const pinecone = new Pinecone({
-  apiKey: PINECONE_API_CONFIG.apiKey || ''
-});
+function getPineconeClient(): Pinecone {
+  if (!pineconeClient) {
+    // Validate environment variables
+    const envValidation = validateEnvironment();
+    if (!envValidation.isValid) {
+      console.error('❌ Missing required environment variables:', envValidation.missing);
+      throw new Error(`Missing required environment variables: ${envValidation.missing.join(', ')}`);
+    }
+
+    // Initialize Pinecone client only once
+    pineconeClient = new Pinecone({
+      apiKey: PINECONE_API_CONFIG.apiKey
+    });
+    console.log('✅ Pinecone client initialized successfully');
+  }
+  return pineconeClient;
+}
 
 // Initialize universal embedding service
 const embeddingService = createEmbeddingService();
@@ -52,6 +66,8 @@ export class PineconeRAGService {
     // Get service configuration
     const serviceConfig = serviceName ? getRAGConfig(serviceName) : getRAGConfig('rawMaterialsAllAI');
 
+    // Use lazy initialization - Pinecone client is created on first use
+    const pinecone = getPineconeClient();
     this.index = pinecone.Index(serviceConfig.pineconeIndex);
     this.config = {
       topK: serviceConfig.topK,
