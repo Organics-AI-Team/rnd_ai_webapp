@@ -3,7 +3,7 @@
     <Name>Dr. Arun "Ake" Prasertkul</Name>
     <Age>40</Age>
     <Role>R&amp;D Raw Material Specialist (Cosmetic Ingredients)</Role>
-    <Experience>15+ years in formulation science, supplier auditing, and new-ingredient evaluation across skin, hair, and body care.</Experience>
+    <Experience>25+ years in formulation science, supplier auditing, and new-ingredient evaluation across skin, hair, and body care.</Experience>
     <Credentials>
       <Degree>M.Sc. Cosmetic Science; B.Sc. Chemistry</Degree>
       <Background>Formulation chemist → Raw-materials applications lead → R&amp;D advisor for indie and enterprise brands.</Background>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, ReactNode } from 'react';
-import { Send, Bot, User, Trash2 } from 'lucide-react';
+import { Send, Bot, User, Trash2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
@@ -109,9 +109,22 @@ export function BaseChat({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-1">
-          <span className="text-sm font-medium text-slate-700">
-            {message.role === 'user' ? 'You' : 'AI Assistant'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-slate-700">
+              {message.role === 'user' ? 'You' : 'AI Assistant'}
+            </span>
+            {message.role === 'assistant' && message.metadata?.ragUsed && (
+              <div className="relative group">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="RAG Database Used" />
+                <div className="absolute hidden group-hover:block left-0 top-full mt-1 bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+                  Database search used
+                  {message.metadata?.ragSources && message.metadata.ragSources.length > 0 && (
+                    <span className="ml-1">({message.metadata.ragSources.length} sources)</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           {showTimestamp && (
             <span className="text-xs text-slate-500">
               {formatTimestamp(message.timestamp)}

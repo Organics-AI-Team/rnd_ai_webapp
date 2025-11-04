@@ -71,14 +71,14 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   // Raw Materials Specialist
   'raw-materials-specialist': {
     id: 'raw-materials-specialist',
-    name: 'Raw Materials Specialist',
-    description: 'Expert in cosmetic ingredients and raw materials with access to comprehensive database',
+    name: 'ผู้เชี่ยวชาญวัตถุดิบ',
+    description: 'เชี่ยวชาญวัตถุดิบเครื่องสำอาง สูตร และข้อมูลซัพพลายเออร์',
     systemPromptId: 'raw-materials-specialist',
     ragIndexIds: ['raw-materials-db', 'suppliers-db', 'safety-db'],
     provider: 'gemini',
     modelConfig: {
       temperature: 0.6,
-      maxTokens: 800,
+      maxTokens: 600,
       topP: 0.8,
       frequencyPenalty: 0.1,
       presencePenalty: 0.1
@@ -91,7 +91,7 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
       'technical-specifications'
     ],
     category: 'raw-materials',
-    version: '1.2.0',
+    version: '1.3.0',
     enabled: true,
     metadata: {
       author: 'R&D Team',
@@ -104,14 +104,14 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   // Formulation Advisor
   'formulation-advisor': {
     id: 'formulation-advisor',
-    name: 'Cosmetic Formulation Advisor',
-    description: 'Expert in cosmetic formulation development and optimization with access to formulation database',
+    name: 'ที่ปรึกษาสูตรผลิตภัณฑ์',
+    description: 'เชี่ยวชาญการพัฒนาและปรับแต่งสูตรเครื่องสำอาง',
     systemPromptId: 'formulation-advisor',
     ragIndexIds: ['formulations-db', 'raw-materials-db', 'safety-db', 'research-db'],
     provider: 'gemini',
     modelConfig: {
       temperature: 0.5,
-      maxTokens: 1000,
+      maxTokens: 700,
       topP: 0.7,
       frequencyPenalty: 0.2,
       presencePenalty: 0.1
@@ -124,7 +124,7 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
       'scale-up-guidance'
     ],
     category: 'raw-materials',
-    version: '1.1.0',
+    version: '1.2.0',
     enabled: true,
     metadata: {
       author: 'Formulation Team',
@@ -170,14 +170,14 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   // Market Research Analyst
   'market-analyst': {
     id: 'market-analyst',
-    name: 'Cosmetic Market Research Analyst',
-    description: 'Expert in cosmetic market trends and consumer insights',
+    name: 'นักวิเคราะห์ตลาด & เทรนด์',
+    description: 'เชี่ยวชาญเทรนด์ตลาด ความต้องการที่ยังไม่ได้รับการตอบสนอง และโอกาสทางธุรกิจ',
     systemPromptId: 'market-analyst',
     ragIndexIds: ['market-research-db', 'research-db'],
     provider: 'openai',
     modelConfig: {
       temperature: 0.6,
-      maxTokens: 700,
+      maxTokens: 600,
       topP: 0.8,
       frequencyPenalty: 0.1,
       presencePenalty: 0.1
@@ -190,7 +190,7 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
       'strategic-planning'
     ],
     category: 'analytics',
-    version: '1.0.0',
+    version: '1.1.0',
     enabled: true,
     metadata: {
       author: 'Marketing Team',
