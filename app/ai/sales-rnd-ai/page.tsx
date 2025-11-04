@@ -68,6 +68,7 @@ export default function SalesRndAIPage() {
         userId={user.id}
         apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
         provider="gemini"
+        serviceName="salesRndAI"
         onError={(error) => console.error('Sales RND AI chat error:', error)}
         onFeedbackSubmit={handleFeedbackSubmit}
       />
