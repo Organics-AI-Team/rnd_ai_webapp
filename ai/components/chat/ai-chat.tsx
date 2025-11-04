@@ -38,10 +38,22 @@ export function AIChat({
   onFeedbackSubmit,
   ...baseChatProps
 }: AIChatProps) {
-  const [ragService] = useState(() => new PineconeClientService('rawMaterialsAllAI', {
-    topK: 5,
-    similarityThreshold: 0.7
-  }));
+  const [ragService] = useState(() => {
+    // Gracefully handle missing Pinecone configuration
+    // AI chat will still work without RAG functionality
+    try {
+      // Use provided serviceName or default to 'rawMaterialsAllAI'
+      // This allows each AI chat to use its own dedicated Pinecone index
+      const serviceToUse = (serviceName as any) || 'rawMaterialsAllAI';
+      return new PineconeClientService(serviceToUse, {
+        topK: 5,
+        similarityThreshold: 0.7
+      });
+    } catch (error) {
+      console.warn('⚠️ RAG service initialization failed. AI chat will work without vector search:', error.message);
+      return null;
+    }
+  });
   const [isSearchingRAG, setIsSearchingRAG] = useState(false);
   const [lastRAGResults, setLastRAGResults] = useState('');
 

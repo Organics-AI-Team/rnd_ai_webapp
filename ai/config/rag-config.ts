@@ -23,6 +23,8 @@ export interface RAGServicesConfig {
   rawMaterialsAllAI: RAGServiceConfig;
   /** Raw Materials AI Chat - for specific chemical and stock database queries */
   rawMaterialsAI: RAGServiceConfig;
+  /** Sales RND AI - for sales strategy, market intelligence, and business development */
+  salesRndAI: RAGServiceConfig;
 }
 
 /**
@@ -50,6 +52,20 @@ export const RAG_CONFIG: RAGServicesConfig = {
     description: 'Specific raw materials database with chemical information, suppliers, and stock data',
     defaultFilters: {
       source: 'raw_materials_real_stock'
+    }
+  },
+
+  /** Sales RND AI Configuration */
+  salesRndAI: {
+    pineconeIndex: 'sales-rnd-ai',
+    topK: 8, // More results for comprehensive sales insights
+    similarityThreshold: 0.65, // Slightly lower threshold for broader matching
+    includeMetadata: true,
+    description: 'Sales strategy, market intelligence, business development, and R&D collaboration data. Optimized for sales conversations and market analysis.',
+    defaultFilters: {
+      // Initially uses same data as general knowledge
+      // Can be easily updated to filter by: source: 'sales_specific_data'
+      source: 'raw_materials_real_stock' // Connect to same database initially
     }
   }
 };

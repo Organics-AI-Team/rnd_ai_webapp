@@ -13,6 +13,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if Pinecone credentials are available
+    if (!process.env.PINECONE_API_KEY) {
+      console.warn('⚠️ Pinecone API key not configured. RAG search unavailable.');
+      return NextResponse.json({
+        success: true,
+        matches: [],
+        query,
+        totalResults: 0,
+        warning: 'Vector search is not configured. Please set PINECONE_API_KEY environment variable.'
+      });
+    }
+
     // Initialize RAG service
     const ragService = new PineconeRAGService();
 
@@ -32,7 +44,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error in RAG search API:', error);
     return NextResponse.json(
-      { error: 'Failed to search raw materials', matches: [] },
+      {
+        error: 'Failed to search raw materials',
+        matches: [],
+        details: error.message
+      },
       { status: 500 }
     );
   }

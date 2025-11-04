@@ -43,7 +43,18 @@ export function RawMaterialsChat({
   onFeedbackSubmit,
   ...baseChatProps
 }: RawMaterialsChatProps) {
-  const [ragService] = useState(() => enableRAG ? new PineconeClientService('rawMaterialsAI', ragConfig) : null);
+  const [ragService] = useState(() => {
+    if (!enableRAG) return null;
+
+    try {
+      // Use provided serviceName or default to 'rawMaterialsAI' for stock materials
+      const serviceToUse = (serviceName as any) || 'rawMaterialsAI';
+      return new PineconeClientService(serviceToUse, ragConfig);
+    } catch (error) {
+      console.warn('⚠️ RAG service initialization failed for raw materials chat:', error.message);
+      return null;
+    }
+  });
   const [isSearchingRAG, setIsSearchingRAG] = useState(false);
   const [lastRAGResults, setLastRAGResults] = useState<string>('');
 

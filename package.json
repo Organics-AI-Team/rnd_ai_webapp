@@ -12,7 +12,9 @@
     "start": "next start",
     "lint": "next lint",
     "seed-admin": "tsx scripts/seed-admin.ts",
-    "migrate": "tsx scripts/migrate-to-mongo.ts"
+    "migrate": "tsx scripts/migrate-to-mongo.ts",
+    "create-sales-index": "node scripts/create-sales-ai-index.js",
+    "index-sales-data": "tsx scripts/index-sales-data.ts"
   },
   "keywords": [],
   "author": "",
