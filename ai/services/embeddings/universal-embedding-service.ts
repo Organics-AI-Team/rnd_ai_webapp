@@ -83,6 +83,14 @@ export class UniversalEmbeddingService {
     return embeddings[0];
   }
 
+  /**
+   * Alias for createEmbeddings for consistency
+   * Batch generate embeddings (6x faster than calling createEmbedding multiple times)
+   */
+  async createEmbeddingsBatch(texts: string[]): Promise<number[][]> {
+    return await this.createEmbeddings(texts);
+  }
+
   getDimensions(): number {
     switch (this.config.provider) {
       case 'gemini':

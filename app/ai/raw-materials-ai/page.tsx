@@ -66,7 +66,7 @@ export default function RawMaterialsAIPage() {
       <RawMaterialsChat
         userId={user.id}
         apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
-        provider="gemini"
+        provider="agent"
         serviceName="rawMaterialsAI"
         onError={(error) => console.error('Raw materials chat error:', error)}
         onFeedbackSubmit={handleFeedbackSubmit}

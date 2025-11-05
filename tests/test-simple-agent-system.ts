@@ -8,7 +8,6 @@ import { config } from 'dotenv';
 config({ path: '.env.local' });
 
 import { UniversalAgentSystem } from '../ai/agents/core/agent-system';
-import { RAW_MATERIALS_ALL_AI_CONFIG } from '../ai/agents/raw-materials-all-ai/config/agent-config';
 import { RAW_MATERIALS_AI_CONFIG } from '../ai/agents/raw-materials-ai/config/agent-config';
 
 async function testSimpleSystem() {
@@ -20,9 +19,6 @@ async function testSimpleSystem() {
     // ================================
     console.log('1. Creating Agents from Configurations:');
 
-    const generalAgent = new UniversalAgentSystem(RAW_MATERIALS_ALL_AI_CONFIG);
-    console.log('   ✅ Raw Materials All AI Agent created');
-
     const stockAgent = new UniversalAgentSystem(RAW_MATERIALS_AI_CONFIG);
     console.log('   ✅ Raw Materials AI (Stock) Agent created');
 
@@ -30,14 +26,6 @@ async function testSimpleSystem() {
     // 2. Show Agent Information
     // ================================
     console.log('\n2. Agent Information:');
-
-    const generalConfig = generalAgent.getConfig();
-    console.log(`   🤖 ${generalConfig.displayName}`);
-    console.log(`      ID: ${generalConfig.id}`);
-    console.log(`      Database: ${generalConfig.database.name}`);
-    console.log(`      Vector DB: ${generalConfig.vectorDb.indexName}`);
-    console.log(`      Embedding: ${generalConfig.embedding.provider}/${generalConfig.embedding.model}`);
-    console.log(`      AI Model: ${generalConfig.aiModel.provider}/${generalConfig.aiModel.model}`);
 
     const stockConfig = stockAgent.getConfig();
     console.log(`   🤖 ${stockConfig.displayName}`);
@@ -53,13 +41,6 @@ async function testSimpleSystem() {
     console.log('\n3. Testing Database Connections:');
 
     try {
-      const generalDB = await generalAgent.getDatabase();
-      console.log(`   💾 General AI Database Connected: ${generalDB.databaseName}`);
-    } catch (error: any) {
-      console.log(`   💾 General AI Database: ${error.message.substring(0, 50)}...`);
-    }
-
-    try {
       const stockDB = await stockAgent.getDatabase();
       console.log(`   💾 Stock AI Database Connected: ${stockDB.databaseName}`);
     } catch (error: any) {
@@ -70,13 +51,6 @@ async function testSimpleSystem() {
     // 4. Test Vector Database Access
     // ================================
     console.log('\n4. Testing Vector Database Access:');
-
-    try {
-      const generalIndex = generalAgent.getVectorIndex();
-      console.log(`   🔍 General AI Vector Index: ${generalConfig.vectorDb.indexName}`);
-    } catch (error: any) {
-      console.log(`   🔍 General AI Vector Index: ${error.message.substring(0, 50)}...`);
-    }
 
     try {
       const stockIndex = stockAgent.getVectorIndex();
@@ -91,13 +65,6 @@ async function testSimpleSystem() {
     console.log('\n5. Testing AI Services:');
 
     try {
-      const generalAIService = generalAgent.getAIService();
-      console.log(`   🧠 General AI Service: Ready (${generalAIService.constructor.name})`);
-    } catch (error: any) {
-      console.log(`   🧠 General AI Service: ${error.message.substring(0, 50)}...`);
-    }
-
-    try {
       const stockAIService = stockAgent.getAIService();
       console.log(`   🧠 Stock AI Service: Ready (${stockAIService.constructor.name})`);
     } catch (error: any) {
@@ -108,15 +75,6 @@ async function testSimpleSystem() {
     // 6. Test RAG System
     // ================================
     console.log('\n6. Testing RAG System:');
-
-    if (generalConfig.rag.enabled) {
-      try {
-        const ragResults = await generalAgent.performRAGSearch("chemical compounds", { topK: 3 });
-        console.log(`   🔍 General AI RAG: ${ragResults.includes('Results:') ? 'Found results' : 'No results found'}`);
-      } catch (error: any) {
-        console.log(`   🔍 General AI RAG: ${error.message.substring(0, 50)}...`);
-      }
-    }
 
     if (stockConfig.rag.enabled) {
       try {
@@ -131,9 +89,6 @@ async function testSimpleSystem() {
     // 7. Test System Prompts
     // ================================
     console.log('\n7. Testing System Prompts:');
-
-    const generalPrompt = await generalAgent.getEnhancedSystemPrompt();
-    console.log(`   📝 General AI System Prompt: ${generalPrompt.length} characters`);
 
     const stockPrompt = await stockAgent.getEnhancedSystemPrompt();
     console.log(`   📝 Stock AI System Prompt: ${stockPrompt.length} characters`);
@@ -153,7 +108,6 @@ async function testSimpleSystem() {
 
     console.log('\n📁 File Structure Created:');
     console.log('   📂 ai/agents/core/          - Universal system');
-    console.log('   📂 ai/agents/raw-materials-all-ai/config/');
     console.log('   📂 ai/agents/raw-materials-ai/config/');
     console.log('   📁 app/api/agents/[agentId]/chat/route.ts - Universal API');
 

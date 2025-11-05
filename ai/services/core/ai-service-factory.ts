@@ -1,8 +1,11 @@
 import { IAIService, IAIServiceFactory } from './ai-service-interface';
 import { OpenAIService } from '../providers/openai-service';
 import { GeminiService } from '../providers/gemini-service';
+import { GeminiToolService } from '../providers/gemini-tool-service';
+import { AgentAPIService } from '../providers/agent-api-service';
 import { LangChainService } from '../providers/langchain-service';
 import { AIServiceConfig } from '../../types/ai-types';
+import { ToolRegistry } from '../../agents/core/tool-registry';
 
 /**
  * Factory for creating AI service instances
@@ -41,6 +44,9 @@ export class AIServiceFactory implements IAIServiceFactory {
         return new GeminiService(apiKey, config, serviceName);
       case 'langchain':
         return new LangChainService(apiKey, config, serviceName);
+      case 'agent':
+        // Agent provider calls server-side API
+        return new AgentAPIService('/api/ai/raw-materials-agent', config, serviceName);
       default:
         throw new Error(`Unsupported AI provider: ${provider}`);
     }
@@ -89,7 +95,24 @@ export class AIServiceFactory implements IAIServiceFactory {
    * Get list of supported providers
    */
   getSupportedProviders(): string[] {
-    return ['openai', 'gemini', 'langchain'];
+    return ['openai', 'gemini', 'gemini-tools', 'langchain', 'agent'];
+  }
+
+  /**
+   * Create a Gemini service with tool calling support
+   * @param apiKey - Gemini API key
+   * @param toolRegistry - Tool registry containing available tools
+   * @param config - Optional configuration
+   * @param serviceName - Optional service name for isolated learning
+   */
+  createGeminiToolService(
+    apiKey: string,
+    toolRegistry: ToolRegistry,
+    config?: any,
+    serviceName?: string
+  ): IAIService {
+    console.log('🏭 [AIServiceFactory] Creating Gemini tool service:', { serviceName });
+    return new GeminiToolService(apiKey, toolRegistry, config, serviceName);
   }
 
   /**

@@ -10,6 +10,9 @@ import { useChat } from '../../hooks/use-chat';
 import { useFeedback } from '../../hooks/use-feedback';
 import { FeedbackCollector } from '../feedback/feedback-collector';
 import { PineconeClientService } from '../../services/rag/pinecone-client';
+import { HybridSearchClient } from '../../services/rag/hybrid-search-client';
+import { UnifiedSearchClient } from '../../services/rag/unified-search-client';
+import { classify_query } from '../../utils/query-classifier';
 import { ConversationMessage } from '../../types/conversation-types';
 
 export interface RawMaterialsChatProps extends Omit<BaseChatProps, 'messages' | 'onSendMessage' | 'onClearHistory'> {
@@ -32,9 +35,9 @@ export interface RawMaterialsChatProps extends Omit<BaseChatProps, 'messages' | 
 export function RawMaterialsChat({
   userId,
   apiKey,
-  provider = 'gemini', // Better for technical content
+  provider = 'agent', // Use custom agent API
   serviceName,
-  enableRAG = true,
+  enableRAG = false, // RAG disabled - using tools instead
   ragConfig = {
     topK: 5,
     similarityThreshold: 0.7
@@ -43,14 +46,19 @@ export function RawMaterialsChat({
   onFeedbackSubmit,
   ...baseChatProps
 }: RawMaterialsChatProps) {
+  // Track if tools are enabled (via API route)
+  const [toolsEnabled] = useState(true); // Always enabled - agent API handles it
+
   const [ragService] = useState(() => {
     if (!enableRAG) return null;
 
     try {
-      // Use provided serviceName or default to 'rawMaterialsAI' for stock materials
+      // Use provided serviceName or default to 'rawMaterialsAI'
       const serviceToUse = (serviceName as any) || 'rawMaterialsAI';
-      return new PineconeClientService(serviceToUse, ragConfig);
-    } catch (error) {
+      // Use UnifiedSearchClient for intelligent multi-collection search
+      console.log('🚀 [RawMaterialsChat] Initializing UnifiedSearchClient with multi-collection support');
+      return new UnifiedSearchClient(serviceToUse, ragConfig);
+    } catch (error: any) {
       console.warn('⚠️ RAG service initialization failed for raw materials chat:', error.message);
       return null;
     }
@@ -81,27 +89,51 @@ export function RawMaterialsChat({
     onFeedbackSubmit: onFeedbackSubmit
   });
 
+  /**
+   * Intelligent query detection using query classifier
+   * Replaces simple keyword matching with ML-based classification
+   */
   const isRawMaterialsQuery = (message: string): boolean => {
-    const keywords = [
-      'raw material', 'ingredient', 'formula', 'composition',
-      'rm_code', 'inci', 'supplier', 'cost', 'benefit',
-      'trade name', 'chemical', 'extract', 'active'
-    ];
-    return keywords.some(keyword =>
-      message.toLowerCase().includes(keyword.toLowerCase())
-    );
+    const classification = classify_query(message);
+    console.log('🔍 [RawMaterialsChat] Query classification:', classification);
+
+    // Use classifier's determination with confidence threshold
+    return classification.is_raw_materials_query && classification.confidence > 0.3;
   };
 
+  /**
+   * Perform unified RAG search with intelligent collection routing
+   * Uses UnifiedSearchService for automatic in-stock vs FDA separation
+   */
   const performRAGSearch = useCallback(async (query: string) => {
     if (!ragService) return;
 
     setIsSearchingRAG(true);
     try {
-      const results = await ragService.searchAndFormat(query, ragConfig);
-      setLastRAGResults(results);
+      console.log('🔍 [RawMaterialsChat] Performing unified search with intelligent routing for:', query);
+
+      // Use client-side unified search (calls API with automatic routing)
+      const unifiedClient = ragService as UnifiedSearchClient;
+      const formatted = await unifiedClient.search_and_format(query, {
+        ...ragConfig,
+        topK: 10, // Search across both collections
+        similarityThreshold: 0.5, // Lowered for broader matching
+        enable_exact_match: true,
+        enable_fuzzy_match: true,
+        enable_semantic_search: true,
+        enable_metadata_filter: true,
+        max_results: 10,
+        min_score: 0.5,
+        include_availability_context: true, // Show in-stock vs FDA indicators
+        // collection: 'both' // Auto-routes by default, or specify: 'in_stock', 'all_fda', 'both'
+      });
+
+      console.log(`✅ [RawMaterialsChat] Received formatted results from unified search with collection routing`);
+
+      setLastRAGResults(formatted);
     } catch (error) {
-      console.error('RAG search failed:', error);
-      setLastRAGResults('\n\nVector database search temporarily unavailable.');
+      console.error('❌ [RawMaterialsChat] Unified search failed:', error);
+      setLastRAGResults('\n\n⚠️ Database search temporarily unavailable. Providing response based on general knowledge.');
     } finally {
       setIsSearchingRAG(false);
     }
@@ -110,11 +142,19 @@ export function RawMaterialsChat({
   const handleSendMessage = async (message: string) => {
     // Enhance prompt with RAG results if available
     let enhancedMessage = message;
+    const ragWasUsed = !!lastRAGResults;
+
     if (lastRAGResults) {
       enhancedMessage = `${message}\n\n${lastRAGResults}`;
+      console.log('✅ [RawMaterialsChat] RAG results will be used for this message');
     }
 
-    await chat.sendMessage(enhancedMessage);
+    // Pass RAG metadata to track that RAG was used
+    await chat.sendMessage(enhancedMessage, {
+      ragUsed: ragWasUsed,
+      ragSources: ragWasUsed ? ['vector-database'] : undefined
+    });
+
     setLastRAGResults(''); // Clear RAG results after sending
   };
 
@@ -165,7 +205,12 @@ export function RawMaterialsChat({
       <div className="flex items-center gap-2">
         <Package className="w-5 h-5 text-blue-600" />
         <span className="font-semibold text-slate-800">Raw Materials AI</span>
-        {enableRAG && (
+        {toolsEnabled && (
+          <Badge variant="outline" className="text-xs bg-green-50 border-green-300">
+            🔧 Tools Enabled
+          </Badge>
+        )}
+        {enableRAG && !toolsEnabled && (
           <Badge variant="outline" className="text-xs">
             RAG Enabled
           </Badge>
@@ -238,7 +283,7 @@ export function RawMaterialsChat({
       messageActions={renderMessageActions}
       placeholder="Ask about raw materials, ingredients, formulations, or suppliers..."
       showTimestamp={true}
-      className="border border-gray-300 rounded-lg h-full flex flex-col"
+      className="border border-gray-300 rounded-lg h-full"
       {...baseChatProps}
     />
   );

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { Beaker, ArrowLeft } from "lucide-react";
 
-export default function AdminFormulasPage() {
+export default function CreateFormulaPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
 

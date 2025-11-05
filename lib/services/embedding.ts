@@ -99,6 +99,39 @@ export class EmbeddingService {
   }
 
   /**
+   * Generate embeddings for multiple texts in batch using Gemini
+   * Much faster than calling generateEmbedding() multiple times
+   * @param texts Array of text strings to embed (max 100 per batch)
+   * @returns Array of embedding vectors in same order as input texts
+   */
+  async generateEmbeddingsBatch(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+    if (texts.length > 100) {
+      throw new Error('Batch size cannot exceed 100 texts');
+    }
+
+    return this.retryOperation(
+      async () => {
+        const model = this.genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
+
+        // Clean texts (replace newlines)
+        const cleanTexts = texts.map(text => text.replace(/\n/g, ' '));
+
+        // Use batchEmbedContents for batch processing
+        const result = await model.batchEmbedContents({
+          requests: cleanTexts.map(text => ({ content: { parts: [{ text }] } }))
+        });
+
+        // Extract embedding values from each result
+        return result.embeddings.map(embedding => embedding.values);
+      },
+      'Gemini batch embedding generation',
+      3, // max retries
+      2000 // base delay
+    );
+  }
+
+  /**
    * Process raw material data for embedding
    */
   private prepareRawMaterialText(material: RawMaterial): string {

@@ -51,6 +51,7 @@ export interface RAGConfig {
   similarityThreshold: number;
   includeMetadata: boolean;
   filter?: any;
+  namespace?: string; // Support for Pinecone namespaces
 }
 
 /**
@@ -127,8 +128,15 @@ export class PineconeRAGService {
       // Create embedding for the query
       const queryEmbedding = await this.createEmbeddings([query]);
 
+      // Determine which index/namespace to query
+      const queryTarget = searchConfig.namespace
+        ? this.index.namespace(searchConfig.namespace)
+        : this.index;
+
+      console.log(`🔍 [pinecone-service] Searching ${searchConfig.namespace ? `namespace: ${searchConfig.namespace}` : 'default namespace'}`);
+
       // Search Pinecone
-      const response = await this.index.query({
+      const response = await queryTarget.query({
         vector: queryEmbedding[0],
         topK: searchConfig.topK,
         includeMetadata: searchConfig.includeMetadata,
@@ -144,6 +152,8 @@ export class PineconeRAGService {
           (match.score || 0) >= searchConfig.similarityThreshold
         );
       }
+
+      console.log(`✅ [pinecone-service] Found ${matches.length} matches (threshold: ${searchConfig.similarityThreshold})`);
 
       return matches;
     } catch (error) {

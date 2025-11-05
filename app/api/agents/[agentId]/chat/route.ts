@@ -5,13 +5,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AgentFactory } from '@/ai/agents/core/agent-factory';
-import { getRawMaterialsAllAIAgent } from '@/ai/agents/core/agent-usage-example';
 import { getRawMaterialsAIAgent } from '@/ai/agents/core/agent-usage-example';
 import { getSalesRndAIAgent } from '@/ai/agents/core/agent-usage-example';
 
 // Agent registry for easy lookup
 const AGENT_MAP: Record<string, () => any> = {
-  'raw-materials-all-ai': getRawMaterialsAllAIAgent,
   'raw-materials-ai': getRawMaterialsAIAgent,
   'sales-rnd-ai': getSalesRndAIAgent
 };

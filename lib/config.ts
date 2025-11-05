@@ -132,7 +132,6 @@ export const ROUTES = {
     analytics: '/ai/analytics',
     agents: '/ai/agents',
     raw_materials: '/ai/raw-materials-ai',
-    raw_materials_all: '/ai/raw-materials-all-ai',
     sales_rnd: '/ai/sales-rnd-ai',
   },
 
@@ -140,9 +139,9 @@ export const ROUTES = {
    * Admin routes
    */
   admin: {
-    products: '/admin/products',
+    products: '/products',
     credits: '/admin/credits',
-    formulas: '/admin/formulas',
+    formulas: '/formulas/create',
     vector_indexing: '/admin/vector-indexing',
   },
 

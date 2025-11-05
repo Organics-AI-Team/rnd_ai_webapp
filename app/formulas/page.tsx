@@ -142,7 +142,7 @@ export default function FormulasPage() {
 
             {user.role === "admin" && (
               <Button
-                onClick={() => router.push("/admin/formulas")}
+                onClick={() => router.push("/formulas/create")}
                 className="bg-purple-600 hover:bg-purple-700"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -252,7 +252,7 @@ export default function FormulasPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => router.push(`/admin/formulas?edit=${formula._id}`)}
+                                onClick={() => router.push(`/formulas/create?edit=${formula._id}`)}
                                 title="แก้ไข"
                               >
                                 <Edit className="h-4 w-4 text-green-600" />
