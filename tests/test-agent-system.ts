@@ -9,8 +9,8 @@ import { config } from 'dotenv';
 config({ path: '.env.local' });
 
 import {
-  getRawMaterialsAllAIAgent,
   getRawMaterialsAIAgent,
+  getSalesRndAIAgent,
   AgentRegistrySimple,
   createCustomAgent
 } from '../ai/agents/core/agent-usage-example';
@@ -24,23 +24,23 @@ async function testPlugAndPlaySystem() {
     // ================================
     console.log('1. Getting Pre-configured Agents:');
 
-    const generalAgent = getRawMaterialsAllAIAgent();
-    console.log('   ✅ Raw Materials All AI Agent ready');
-
     const stockAgent = getRawMaterialsAIAgent();
     console.log('   ✅ Raw Materials AI (Stock) Agent ready');
+
+    const salesAgent = getSalesRndAIAgent();
+    console.log('   ✅ Sales RnD AI Agent ready');
 
     // ================================
     // 2. Show Agent Configurations
     // ================================
     console.log('\n2. Agent Configurations:');
 
-    const generalConfig = generalAgent.getConfig();
-    console.log(`   🤖 ${generalConfig.displayName}`);
-    console.log(`      Database: ${generalConfig.database.name}`);
-    console.log(`      Vector DB: ${generalConfig.vectorDb.indexName}`);
-    console.log(`      Embedding: ${generalConfig.embedding.model}`);
-    console.log(`      AI Model: ${generalConfig.aiModel.model}`);
+    const salesConfig = salesAgent.getConfig();
+    console.log(`   🤖 ${salesConfig.displayName}`);
+    console.log(`      Database: ${salesConfig.database.name}`);
+    console.log(`      Vector DB: ${salesConfig.vectorDb.indexName}`);
+    console.log(`      Embedding: ${salesConfig.embedding.model}`);
+    console.log(`      AI Model: ${salesConfig.aiModel.model}`);
 
     const stockConfig = stockAgent.getConfig();
     console.log(`   🤖 ${stockConfig.displayName}`);
@@ -55,7 +55,7 @@ async function testPlugAndPlaySystem() {
     console.log('\n3. Testing RAG Operations:');
 
     try {
-      const ragResults = await generalAgent.performRAGSearch("chemical compounds", { topK: 3 });
+      const ragResults = await salesAgent.performRAGSearch("chemical compounds", { topK: 3 });
       console.log(`   🔍 General AI RAG Search: Found ${ragResults.includes('Results:') ? 'results' : 'no results'}`);
     } catch (error: any) {
       console.log(`   🔍 General AI RAG Search: ${error.message.substring(0, 50)}...`);
@@ -99,7 +99,7 @@ async function testPlugAndPlaySystem() {
     console.log('\n6. Testing Database Connections:');
 
     try {
-      const generalDB = await generalAgent.getDatabase();
+      const generalDB = await salesAgent.getDatabase();
       console.log(`   💾 General AI Database: ${generalDB.databaseName}`);
     } catch (error: any) {
       console.log(`   💾 General AI Database: ${error.message.substring(0, 30)}...`);
@@ -118,7 +118,7 @@ async function testPlugAndPlaySystem() {
     console.log('\n7. Testing AI Services:');
 
     try {
-      const generalAIService = generalAgent.getAIService();
+      const generalAIService = salesAgent.getAIService();
       console.log(`   🧠 General AI Service: ${generalAIService.constructor.name}`);
     } catch (error: any) {
       console.log(`   🧠 General AI Service: ${error.message.substring(0, 30)}...`);

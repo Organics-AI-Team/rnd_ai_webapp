@@ -29,43 +29,48 @@ export interface RAGServicesConfig {
 
 /**
  * Centralized RAG configuration for all AI services
+ *
+ * Unified Index with Namespaces (Updated 2025-11-05):
+ * - Index: raw-materials-stock
+ *   - Namespace 'in_stock': 3,111 materials in actual stock (raw_materials_real_stock)
+ *   - Namespace 'all_fda': 31,179 FDA-registered ingredients (raw_meterials_console)
+ * - Index: sales-rnd-ai (003-sales-ai)
  */
 export const RAG_CONFIG: RAGServicesConfig = {
-  /** Raw Materials All AI Configuration */
+  /** Raw Materials All AI Configuration - Uses all 31,179 FDA materials */
   rawMaterialsAllAI: {
-    pineconeIndex: '002-rnd-ai',
+    pineconeIndex: 'raw-materials-stock',
     topK: 5,
     similarityThreshold: 0.7,
     includeMetadata: true,
-    description: 'General raw materials knowledge and conversational AI data',
+    description: 'All FDA-registered raw materials (31,179 items) - Complete ingredient database with benefits, use cases, INCI',
     defaultFilters: {
-      source: 'general_raw_materials_knowledge'
+      source: 'raw_meterials_console',
+      namespace: 'all_fda'
     }
   },
 
-  /** Raw Materials AI Chat Configuration */
+  /** Raw Materials AI Chat Configuration - Unified search with collection routing */
   rawMaterialsAI: {
     pineconeIndex: 'raw-materials-stock',
     topK: 5,
     similarityThreshold: 0.7,
     includeMetadata: true,
-    description: 'Specific raw materials database with chemical information, suppliers, and stock data',
+    description: 'Unified RAG with intelligent routing: 3,111 in-stock materials + 31,179 FDA ingredients. Auto-detects user intent for stock vs FDA queries.',
     defaultFilters: {
-      source: 'raw_materials_real_stock'
+      // No default filters - routing handled by collection-router
     }
   },
 
-  /** Sales RND AI Configuration */
+  /** Sales RND AI Configuration - Sales and market intelligence */
   salesRndAI: {
-    pineconeIndex: 'sales-rnd-ai',
+    pineconeIndex: '003-sales-ai',
     topK: 8, // More results for comprehensive sales insights
     similarityThreshold: 0.65, // Slightly lower threshold for broader matching
     includeMetadata: true,
-    description: 'Sales strategy, market intelligence, business development, and R&D collaboration data. Optimized for sales conversations and market analysis.',
+    description: 'Sales strategy, market intelligence, business development, and R&D collaboration data. All 31,179 materials available for sales conversations.',
     defaultFilters: {
-      // Initially uses same data as general knowledge
-      // Can be easily updated to filter by: source: 'sales_specific_data'
-      source: 'raw_materials_real_stock' // Connect to same database initially
+      source: 'raw_meterials_console'
     }
   }
 };

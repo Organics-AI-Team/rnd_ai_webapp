@@ -160,7 +160,7 @@ export default function IngredientsPage() {
           duplicate: "true",
           data: JSON.stringify(result.data),
         });
-        router.push(`/admin/products?${params.toString()}`);
+        router.push(`/products?${params.toString()}`);
       }
     } catch (error: any) {
       console.error("Error duplicating ingredient:", error);
@@ -199,7 +199,7 @@ export default function IngredientsPage() {
 
             {user.role === "admin" && (
               <Button
-                onClick={() => router.push("/admin/products")}
+                onClick={() => router.push("/products")}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -386,7 +386,7 @@ export default function IngredientsPage() {
                                   ทำซ้ำ
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  onClick={() => router.push(`/admin/products?edit=${product._id}`)}
+                                  onClick={() => router.push(`/products?edit=${product._id}`)}
                                 >
                                   <Edit className="h-4 w-4 mr-2 text-green-600" />
                                   แก้ไข

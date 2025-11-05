@@ -36,7 +36,7 @@ export function AIChatLayout({
   showHeader = true
 }: AIChatLayoutProps) {
   return (
-    <div className="w-full h-screen">
+    <div className="w-full h-full">
       <div className="h-full flex flex-col">
         {/* Full Screen Chat Container */}
         <div className="flex-1 bg-white flex flex-col">
@@ -66,8 +66,8 @@ export function AIChatLayout({
             </div>
           )}
 
-          {/* Chat Content - Takes remaining space */}
-          <div className="flex-1 overflow-hidden p-4">
+          {/* Chat Content - Takes remaining space with proper constraints */}
+          <div className="flex-1 flex flex-col p-6 min-h-0">
             {children}
           </div>
         </div>

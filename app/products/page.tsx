@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-function AdminProductsContent() {
+function ProductsContent() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -89,7 +89,7 @@ function AdminProductsContent() {
       setIsDuplicateMode(false);
       setHasChangedDuplicate(false);
       // Clear URL params
-      router.replace("/admin/products");
+      router.replace("/products");
       setFormData({
         productName: "",
         inciName: "",
@@ -313,7 +313,7 @@ function AdminProductsContent() {
                 setEditingProduct(null);
                 setIsDuplicateMode(false);
                 setHasChangedDuplicate(false);
-                router.replace("/admin/products");
+                router.replace("/products");
                 setFormData({
                   productName: "",
                   inciName: "",
@@ -477,7 +477,7 @@ function AdminProductsContent() {
                       });
                       // Clear URL params if in duplicate mode
                       if (isDuplicateMode) {
-                        router.replace("/admin/products");
+                        router.replace("/products");
                       }
                     }}
                   >
@@ -687,7 +687,7 @@ function AdminProductsContent() {
   );
 }
 
-export default function AdminProductsPage() {
+export default function ProductsPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
@@ -697,7 +697,7 @@ export default function AdminProductsPage() {
         </div>
       </div>
     }>
-      <AdminProductsContent />
+      <ProductsContent />
     </Suspense>
   );
 }

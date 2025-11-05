@@ -115,9 +115,12 @@ export function BaseChat({
             </span>
             {message.role === 'assistant' && message.metadata?.ragUsed && (
               <div className="relative group">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="RAG Database Used" />
-                <div className="absolute hidden group-hover:block left-0 top-full mt-1 bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
-                  Database search used
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-green-100 rounded-full">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-xs font-medium text-green-700">RAG</span>
+                </div>
+                <div className="absolute hidden group-hover:block left-0 top-full mt-1 bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 shadow-lg">
+                  ✅ Database search used
                   {message.metadata?.ragSources && message.metadata.ragSources.length > 0 && (
                     <span className="ml-1">({message.metadata.ragSources.length} sources)</span>
                   )}
@@ -150,7 +153,7 @@ export function BaseChat({
   );
 
   return (
-    <div className={`flex flex-col h-full ${className}`}>
+    <div className={`flex flex-col flex-1 min-h-0 ${className}`}>
       {/* Header */}
       {header && (
         <div className="flex-shrink-0 p-4 border-b border-slate-200">
@@ -158,8 +161,8 @@ export function BaseChat({
         </div>
       )}
 
-      {/* Messages Container */}
-      <div className={`flex-1 overflow-y-auto ${maxHeight === 'h-96' ? 'h-full' : maxHeight}`} onScroll={handleScroll}>
+      {/* Messages Container - Scrollable Area (takes remaining space, scrolls when overflow) */}
+      <div className="flex-1 overflow-y-auto min-h-0" onScroll={handleScroll}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-500">
             <Bot className="w-12 h-12 mb-4 text-slate-300" />
@@ -174,14 +177,14 @@ export function BaseChat({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Footer */}
+      {/* Footer - Fixed at bottom, doesn't scroll */}
       {footer && (
-        <div className="flex-shrink-0 p-4 border-t border-slate-200">
+        <div className="flex-shrink-0 p-4 border-t border-slate-200 bg-white">
           {footer}
         </div>
       )}
 
-      {/* Input Form */}
+      {/* Input Form - Fixed at bottom, doesn't scroll */}
       <div className="flex-shrink-0 p-4 border-t border-slate-200 bg-white">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea

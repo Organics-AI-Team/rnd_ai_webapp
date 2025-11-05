@@ -22,7 +22,7 @@ export interface UseChatReturn {
   messages: ConversationMessage[];
   isLoading: boolean;
   error: Error | null;
-  sendMessage: (message: string) => Promise<void>;
+  sendMessage: (message: string, metadata?: Partial<ConversationMessage['metadata']>) => Promise<void>;
   clearHistory: () => void;
   retryLastMessage: () => void;
   setService: (service: IAIService) => void;
@@ -160,8 +160,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
   const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  const sendMessage = useCallback(async (content: string) => {
-    console.log('🚀 Sending message:', { content, hasService: !!service, userId });
+  const sendMessage = useCallback(async (content: string, additionalMetadata?: Partial<ConversationMessage['metadata']>) => {
+    console.log('🚀 Sending message:', {
+      content,
+      hasService: !!service,
+      userId,
+      ragUsed: additionalMetadata?.ragUsed,
+      ragSources: additionalMetadata?.ragSources?.length
+    });
 
     if (!service || !content.trim()) {
       console.error('❌ Cannot send message:', {
@@ -208,7 +214,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         }
       });
 
-      // Add AI response
+      // Add AI response with merged metadata
       const aiMessage: ConversationMessage = {
         id: generateMessageId(),
         role: 'assistant',
@@ -217,7 +223,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         metadata: {
           model: response.model,
           responseId: response.id,
-          category: response.context.category
+          category: response.context.category,
+          ...additionalMetadata // Merge in RAG metadata and other custom metadata
         }
       };
 
