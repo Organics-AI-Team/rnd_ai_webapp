@@ -5,7 +5,8 @@ import { GeminiToolService } from '../providers/gemini-tool-service';
 import { AgentAPIService } from '../providers/agent-api-service';
 import { LangChainService } from '../providers/langchain-service';
 import { AIServiceConfig } from '../../types/ai-types';
-import { ToolRegistry } from '../../agents/core/tool-registry';
+import { DefaultToolRegistry } from '../../agents/core/tool-registry';
+import { ToolRegistry } from '../../agents/core/tool-types';
 
 /**
  * Factory for creating AI service instances

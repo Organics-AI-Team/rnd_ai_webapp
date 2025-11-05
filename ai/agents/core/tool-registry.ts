@@ -68,8 +68,11 @@ export class DefaultToolRegistry implements ToolRegistry {
     }
 
     try {
-      // Validate parameters
+      // Enhanced parameter validation with detailed error reporting
+      console.log(`🔍 [ToolRegistry] Validating parameters for ${toolCall.name}:`, toolCall.arguments);
+
       const validatedParams = tool.parameters.parse(toolCall.arguments);
+      console.log(`✅ [ToolRegistry] Parameters validated successfully for ${toolCall.name}:`, validatedParams);
 
       // Execute tool handler
       const result = await tool.handler(validatedParams);
@@ -87,11 +90,26 @@ export class DefaultToolRegistry implements ToolRegistry {
       const executionTime = Date.now() - startTime;
       console.error(`❌ [ToolRegistry] Tool execution failed: ${toolCall.name}`, error);
 
+      // Enhanced error reporting
+      let errorMessage = error.message || 'Unknown error';
+
+      if (error.name === 'ZodError') {
+        const fieldErrors = error.errors?.map((err: any) =>
+          `${err.path?.join('.')}: ${err.message}`
+        ).join(', ') || 'Validation failed';
+        errorMessage = `Parameter validation failed: ${fieldErrors}`;
+        console.error(`🔍 [ToolRegistry] Validation details:`, error.errors);
+      }
+
       return {
         success: false,
-        error: error.message || 'Unknown error',
+        error: errorMessage,
         toolName: toolCall.name,
-        executionTime
+        executionTime,
+        // Add hint for common issues
+        hint: errorMessage.includes('Invalid input')
+          ? 'Check that parameter types match expectations (strings, numbers, booleans)'
+          : undefined
       };
     }
   }

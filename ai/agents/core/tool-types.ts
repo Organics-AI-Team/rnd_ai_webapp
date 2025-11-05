@@ -42,6 +42,7 @@ export interface ToolResult {
   error?: string;
   toolName: string;
   executionTime?: number;
+  hint?: string;
 }
 
 /**
