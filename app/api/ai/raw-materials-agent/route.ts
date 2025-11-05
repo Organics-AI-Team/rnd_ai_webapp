@@ -24,7 +24,10 @@ function initialize_agent() {
   // Initialize agent and register tools
   const toolRegistry = RawMaterialsAgent.initialize();
 
-  // Create Gemini tool service
+  // Get enhanced system prompt with tool instructions
+  const systemPrompt = RawMaterialsAgent.getInstructions();
+
+  // Create Gemini tool service with enhanced prompt
   toolService = new GeminiToolService(
     GEMINI_API_KEY,
     toolRegistry,
@@ -36,7 +39,8 @@ function initialize_agent() {
     'rawMaterialsAI'
   );
 
-  console.log('✅ [RawMaterialsAgentAPI] Agent initialized successfully');
+  // Note: System prompt will be used in the enhancePrompt method
+  console.log('✅ [RawMaterialsAgentAPI] Agent initialized successfully with enhanced prompt');
   return toolService;
 }
 

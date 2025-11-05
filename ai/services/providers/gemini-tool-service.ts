@@ -6,8 +6,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { BaseAIService } from '../core/base-ai-service';
 import { AIRequest, AIResponse, AIModelConfig } from '../../types/ai-types';
-import { ToolRegistry } from '../../agents/core/tool-registry';
-import { ToolDefinition } from '../../agents/core/tool-types';
+import { DefaultToolRegistry } from '../../agents/core/tool-registry';
+import { ToolRegistry, ToolDefinition } from '../../agents/core/tool-types';
 
 /**
  * Gemini service with native function calling capabilities
@@ -117,6 +117,209 @@ export class GeminiToolService extends BaseAIService {
   }
 
   /**
+   * Convert and validate function call arguments to proper types
+   */
+  private convert_and_validate_arguments(tool: ToolDefinition, args: any): any {
+    console.log(`🔧 [GeminiToolService] Converting arguments for tool: ${tool.name}`);
+    console.log(`🔍 [GeminiToolService] Original arguments:`, args);
+
+    const zodShape = tool.parameters.shape;
+    const convertedArgs: any = {};
+
+    for (const [key, value] of Object.entries(zodShape)) {
+      const zodField = value as any;
+      let rawValue = args[key];
+
+      // Skip if no value provided
+      if (rawValue === undefined || rawValue === null) {
+        continue;
+      }
+
+      // Unwrap ZodOptional and ZodDefault to get the inner type
+      let innerType = zodField;
+      let isOptional = false;
+
+      // Handle the structure: ZodDefault → ZodOptional → ActualType
+      if (zodField._def?.type === 'default') {
+        isOptional = true;
+        innerType = zodField._def.innerType;
+        console.log(`🔄 [GeminiToolService] Unwrapping ZodDefault for ${key}`);
+      }
+
+      if (innerType._def?.type === 'optional') {
+        isOptional = true;
+        innerType = innerType._def.innerType;
+        console.log(`🔄 [GeminiToolService] Unwrapping ZodOptional for ${key}`);
+      }
+
+      // Get the actual type by checking the innerType structure recursively
+      let actualType = null;
+
+      // Debug logging for type detection - enhanced
+      console.log(`🔍 [GeminiToolService] Analyzing Zod structure for ${key}:`, {
+        zodField_defTypeName: zodField._def?.typeName,
+        zodField_type: zodField.type,
+        innerType_defTypeName: innerType._def?.typeName,
+        innerType_type: innerType.type,
+        innerType_defType: innerType._def?.type,
+        hasInnerType: !!innerType,
+        hasZodFieldDef: !!zodField._def,
+        hasInnerTypeDef: !!innerType._def,
+        originalType: zodField.type
+      });
+
+      // Navigate through nested wrappers to find the actual type
+      let currentType = innerType;
+      while (currentType && actualType === null) {
+        // Check for direct type property (most common)
+        if (currentType.type && ['string', 'number', 'boolean', 'object', 'array'].includes(currentType.type)) {
+          actualType = currentType.type;
+          break;
+        }
+
+        // Check _def.type (Zod primitives)
+        if (currentType._def?.type && ['string', 'number', 'boolean', 'object', 'array'].includes(currentType._def.type)) {
+          actualType = currentType._def.type;
+          break;
+        }
+
+        // Check for ZodDefault type - unwrap to innerType
+        if (currentType._def?.type === 'default' && currentType._def.innerType) {
+          console.log(`🔄 [GeminiToolService] Unwrapping ZodDefault for ${key}`);
+          currentType = currentType._def.innerType;
+          continue;
+        }
+
+        // Check for ZodOptional type - unwrap to innerType
+        if (currentType._def?.type === 'optional' && currentType._def.innerType) {
+          console.log(`🔄 [GeminiToolService] Unwrapping ZodOptional for ${key}`);
+          currentType = currentType._def.innerType;
+          continue;
+        }
+
+        // Move to innerType if available
+        if (currentType.innerType) {
+          currentType = currentType.innerType;
+          continue;
+        }
+
+        // Can't find type, break
+        break;
+      }
+
+      // Additional check: if we still haven't found the type, try direct typeName inspection
+      if (!actualType && innerType._def?.typeName) {
+        const typeName = innerType._def.typeName;
+        console.log(`🔍 [GeminiToolService] Using direct typeName inspection for ${key}: ${typeName}`);
+
+        if (typeName === 'ZodNumber') actualType = 'number';
+        else if (typeName === 'ZodBoolean') actualType = 'boolean';
+        else if (typeName === 'ZodString') actualType = 'string';
+        else if (typeName === 'ZodObject') actualType = 'object';
+        else if (typeName === 'ZodArray') actualType = 'array';
+      }
+
+      // Enhanced fallback with better detection
+      if (!actualType) {
+        // Try to determine from the field's def structure at different levels
+        let checkField = zodField;
+        let checkInner = innerType;
+
+        // Check both the original field and the unwrapped inner type
+        for (const fieldToCheck of [checkField, checkInner]) {
+          if (fieldToCheck._def?.typeName === 'ZodNumber') { actualType = 'number'; break; }
+          else if (fieldToCheck._def?.typeName === 'ZodBoolean') { actualType = 'boolean'; break; }
+          else if (fieldToCheck._def?.typeName === 'ZodString') { actualType = 'string'; break; }
+          else if (fieldToCheck._def?.typeName === 'ZodObject') { actualType = 'object'; break; }
+          else if (fieldToCheck._def?.typeName === 'ZodArray') { actualType = 'array'; break; }
+        }
+
+        // Final fallback if still not found
+        if (!actualType) {
+          actualType = 'string'; // safe fallback
+        }
+      }
+
+      console.log(`✅ [GeminiToolService] Detected type for ${key}: ${actualType}`);
+      console.log(`🔍 [GeminiToolService] Processing ${key}: type=${actualType}, rawValue=${rawValue}, optional=${isOptional}`);
+
+      // Convert based on expected type
+      try {
+        switch (actualType) {
+          case 'number':
+            let numValue = rawValue;
+            if (typeof rawValue === 'string') {
+              numValue = parseFloat(rawValue);
+            }
+            if (isNaN(numValue)) {
+              throw new Error(`Invalid number for ${key}: ${rawValue}`);
+            }
+            convertedArgs[key] = numValue;
+            console.log(`✅ [GeminiToolService] Converted ${key}: ${rawValue} → ${numValue} (number)`);
+            break;
+
+          case 'boolean':
+            let boolValue = rawValue;
+            if (typeof rawValue === 'string') {
+              const lowerVal = rawValue.toLowerCase();
+              boolValue = lowerVal === 'true' || lowerVal === '1' || lowerVal === 'yes';
+            } else {
+              boolValue = Boolean(rawValue);
+            }
+            convertedArgs[key] = boolValue;
+            console.log(`✅ [GeminiToolService] Converted ${key}: ${rawValue} → ${boolValue} (boolean)`);
+            break;
+
+          case 'object':
+            let objValue = rawValue;
+            if (typeof rawValue === 'string') {
+              try {
+                objValue = JSON.parse(rawValue);
+              } catch {
+                console.warn(`⚠️ Could not parse JSON for ${key}, using empty object`);
+                objValue = {};
+              }
+            } else if (typeof rawValue !== 'object') {
+              objValue = {};
+            }
+            convertedArgs[key] = objValue;
+            console.log(`✅ [GeminiToolService] Converted ${key}: ${rawValue} → ${objValue} (object)`);
+            break;
+
+          case 'array':
+            let arrValue = rawValue;
+            if (typeof rawValue === 'string') {
+              try {
+                arrValue = JSON.parse(rawValue);
+              } catch {
+                console.warn(`⚠️ Could not parse array for ${key}, using empty array`);
+                arrValue = [];
+              }
+            } else if (!Array.isArray(rawValue)) {
+              arrValue = [rawValue];
+            }
+            convertedArgs[key] = arrValue;
+            console.log(`✅ [GeminiToolService] Converted ${key}: ${rawValue} → ${arrValue} (array)`);
+            break;
+
+          case 'string':
+          default:
+            // For strings and other types, use as-is
+            convertedArgs[key] = rawValue;
+            console.log(`✅ [GeminiToolService] Kept ${key} as string: ${rawValue}`);
+            break;
+        }
+      } catch (error) {
+        console.warn(`⚠️ Error converting ${key}: ${error}, using original value`);
+        convertedArgs[key] = rawValue;
+      }
+    }
+
+    console.log(`✅ [GeminiToolService] Final converted arguments:`, convertedArgs);
+    return convertedArgs;
+  }
+
+  /**
    * Generate response with tool calling support
    */
   async generateResponse(request: AIRequest): Promise<AIResponse> {
@@ -197,9 +400,25 @@ export class GeminiToolService extends BaseAIService {
         for (const functionCall of functionCalls) {
           console.log(`📞 [GeminiToolService] Function call: ${functionCall.name}`, functionCall.args);
 
+          // Get tool definition for argument conversion
+          const toolDefinition = this.toolRegistry.get_tool(functionCall.name);
+          if (!toolDefinition) {
+            console.error(`❌ [GeminiToolService] Tool not found: ${functionCall.name}`);
+            functionResults.push({
+              functionResponse: {
+                name: functionCall.name,
+                response: { error: `Tool not found: ${functionCall.name}` }
+              }
+            });
+            continue;
+          }
+
+          // Convert and validate arguments
+          const convertedArgs = this.convert_and_validate_arguments(toolDefinition, functionCall.args);
+
           const toolResult = await this.toolRegistry.execute_tool({
             name: functionCall.name,
-            arguments: functionCall.args
+            arguments: convertedArgs
           });
 
           functionResults.push({
@@ -257,6 +476,111 @@ export class GeminiToolService extends BaseAIService {
 
       throw new Error(`Failed to generate AI response with tools: ${error.message}`);
     }
+  }
+
+  /**
+   * Override enhancePrompt to include tool instructions
+   */
+  protected enhancePrompt(
+    originalPrompt: string,
+    preferences: any,
+    feedbackPatterns: any
+  ): string {
+    // Get the enhanced system prompt from RawMaterialsAgent (server-side only)
+    // Use dynamic import to prevent client-side bundling of MongoDB dependencies
+    let systemInstructions = '';
+
+    try {
+      // Only try to load system instructions on server side
+      if (typeof window === 'undefined') {
+        const { RawMaterialsAgent } = require('../../agents/raw-materials-ai/agent');
+        systemInstructions = RawMaterialsAgent.getInstructions();
+      } else {
+        // Client-side fallback - use basic instructions
+        systemInstructions = this.getDefaultSystemInstructions();
+      }
+
+      // Combine system instructions with user prompt
+      let enhancedPrompt = `SYSTEM INSTRUCTIONS:
+${systemInstructions}
+
+USER QUERY:
+${originalPrompt}`;
+
+      // Add feedback-based instructions if available
+      const feedbackInstructions = this.generateFeedbackInstructions?.(feedbackPatterns);
+      if (feedbackInstructions) {
+        enhancedPrompt = `${enhancedPrompt}\n\nFEEDBACK GUIDANCE:\n${feedbackInstructions}`;
+      }
+
+      // Add user preference instructions if available
+      const preferenceInstructions = this.generateGeminiPreferenceInstructions?.(preferences);
+      if (preferenceInstructions) {
+        enhancedPrompt = `${enhancedPrompt}\n\nUSER PREFERENCES:\n${preferenceInstructions}`;
+      }
+
+      console.log('📝 [GeminiToolService] Enhanced prompt with system instructions');
+      return enhancedPrompt;
+    } catch (error) {
+      console.warn('⚠️ [GeminiToolService] Could not load system instructions, using original prompt:', error);
+      return originalPrompt;
+    }
+  }
+
+  /**
+   * Helper method to generate feedback instructions (if not available in parent)
+   */
+  private generateFeedbackInstructions(feedbackPatterns: any): string {
+    if (!feedbackPatterns || !feedbackPatterns.suggestions) {
+      return '';
+    }
+    return feedbackPatterns.suggestions.map((suggestion: string) => `- ${suggestion}`).join('\n');
+  }
+
+  /**
+   * Helper method to generate preference instructions (if not available in parent)
+   */
+  private generateGeminiPreferenceInstructions(preferences: any): string {
+    if (!preferences) {
+      return '';
+    }
+
+    const instructions = [];
+    if (preferences.responseStyle) {
+      instructions.push(`Response style: ${preferences.responseStyle}`);
+    }
+    if (preferences.detailLevel) {
+      instructions.push(`Detail level: ${preferences.detailLevel}`);
+    }
+    if (preferences.language) {
+      instructions.push(`Language: ${preferences.language}`);
+    }
+
+    return instructions.join('\n');
+  }
+
+  /**
+   * Default system instructions for client-side usage
+   * This avoids importing MongoDB-dependent services on the client
+   */
+  private getDefaultSystemInstructions(): string {
+    return `
+You are Dr. Arun "Ake" Prasertkul, R&D Raw Material Specialist.
+
+**CRITICAL: ALWAYS USE TOOLS for material queries!**
+
+Available Tools:
+1. search_materials - General search for ingredients/materials
+2. find_materials_by_benefit - Find materials for specific benefits (like "ลดสิว", "acne")
+3. check_material_availability - Check stock availability
+
+**USAGE RULES:**
+- User asks "แนะนำ สาร 5 ตัวที่ช่วยลดสิว" → Call find_materials_by_benefit(benefit="สิว", count=5)
+- User asks "หาวัตถุดิบสำหรับ..." → Call search_materials(query="...")
+- User asks "มี [material] ไหม?" → Call check_material_availability(material_name_or_code="...")
+
+**ALWAYS use tools before providing recommendations! Present results in table format, then add expert analysis.**
+`;
   }
 
   /**

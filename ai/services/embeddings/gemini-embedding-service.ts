@@ -60,7 +60,7 @@ export class GeminiEmbeddingService {
       // Use batchEmbedContents for true batch processing (single API call!)
       const result = await model.batchEmbedContents({
         requests: texts.map(text => ({
-          content: { parts: [{ text: text.replace(/\n/g, ' ') }] }
+          content: { role: 'user', parts: [{ text: text.replace(/\n/g, ' ') }] }
         }))
       });
 

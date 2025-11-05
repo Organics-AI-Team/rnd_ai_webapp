@@ -119,7 +119,7 @@ export class EmbeddingService {
 
         // Use batchEmbedContents for batch processing
         const result = await model.batchEmbedContents({
-          requests: cleanTexts.map(text => ({ content: { parts: [{ text }] } }))
+          requests: cleanTexts.map(text => ({ content: { role: 'user', parts: [{ text }] } }))
         });
 
         // Extract embedding values from each result
