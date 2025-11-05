@@ -4,20 +4,12 @@
  */
 
 import { AgentFactory } from './agent-factory';
-import { RAW_MATERIALS_ALL_AI_CONFIG } from '../raw-materials-all-ai/config/agent-config';
 import { RAW_MATERIALS_AI_CONFIG } from '../raw-materials-ai/config/agent-config';
 import { SALES_RND_AI_CONFIG } from '../sales-rnd-ai/config/agent-config';
 
 // ==============================================
 // EXAMPLE 1: Using Pre-configured Agents
 // ==============================================
-
-/**
- * Get Raw Materials All AI Agent - Ready to Use
- */
-export function getRawMaterialsAllAIAgent() {
-  return AgentFactory.getAgent(RAW_MATERIALS_ALL_AI_CONFIG);
-}
 
 /**
  * Get Raw Materials AI (Stock) Agent - Ready to Use
@@ -64,7 +56,7 @@ export function createCustomAgent(id: string, displayName: string) {
  */
 export async function useAgentExample() {
   // Get the agent
-  const agent = getRawMaterialsAllAIAgent();
+  const agent = getRawMaterialsAIAgent();
 
   try {
     // Get AI service for generating responses
@@ -107,7 +99,7 @@ export async function useAgentExample() {
  * Example of RAG operations
  */
 export async function ragOperationsExample() {
-  const agent = getRawMaterialsAllAIAgent();
+  const agent = getRawMaterialsAIAgent();
 
   // Vector search
   const vectorResults = await agent.searchVectorDatabase("chemical compounds", {
@@ -159,8 +151,8 @@ export function manageMultipleAgentsExample() {
  * Simple registry for easy agent access
  */
 export const AgentRegistrySimple = {
-  rawMaterialsAllAI: () => getRawMaterialsAllAIAgent(),
   rawMaterialsAI: () => getRawMaterialsAIAgent(),
+  salesRndAI: () => getSalesRndAIAgent(),
   create: (id: string, displayName: string) => createCustomAgent(id, displayName),
   get: (id: string) => AgentFactory.getAgentById(id),
   list: () => AgentFactory.getAllAgents()
@@ -179,14 +171,14 @@ export class AgentManager {
   /**
    * Initialize agent for frontend use
    */
-  async initializeAgent(agentId: 'raw-materials-all-ai' | 'raw-materials-ai') {
+  async initializeAgent(agentId: 'raw-materials-ai' | 'sales-rnd-ai') {
     if (this.agents.has(agentId)) {
       return this.agents.get(agentId);
     }
 
-    const agent = agentId === 'raw-materials-all-ai'
-      ? getRawMaterialsAllAIAgent()
-      : getRawMaterialsAIAgent();
+    const agent = agentId === 'raw-materials-ai'
+      ? getRawMaterialsAIAgent()
+      : getSalesRndAIAgent();
 
     this.agents.set(agentId, agent);
     return agent;

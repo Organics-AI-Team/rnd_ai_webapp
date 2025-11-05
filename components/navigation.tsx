@@ -24,7 +24,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     },
     {
       type: "link",
-      href: "/admin/products",
+      href: "/products",
       label: "เพิ่มสาร",
       labelEn: "Add Ingredient",
       icon: Plus,
@@ -32,7 +32,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     },
     {
       type: "link",
-      href: "/admin/formulas",
+      href: "/formulas/create",
       label: "เพิ่มสูตร",
       labelEn: "Add Formula",
       icon: Plus,
@@ -79,44 +79,10 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     },
     {
       type: "link",
-      href: "/ai/raw-materials-all-ai",
-      label: "แนะนำสารทั้งหมด",
-      labelEn: "All Materials AI",
-      icon: Database,
-    },
-    {
-      type: "link",
       href: "/ai/sales-rnd-ai",
       label: "ช่วยสร้างสูตร (Sales)",
       labelEn: "Sales Formulation AI",
       icon: Sparkles,
-    },
-      // Separator
-    {
-      type: "separator",
-      adminOnly: true,
-    },
-    // Settings section
-    {
-      type: "section-title",
-      label: "การตั้งค่า",
-      adminOnly: true,
-    },
-    {
-      type: "link",
-      href: "/admin/vector-indexing",
-      label: "จัดการ Vector",
-      labelEn: "Vector Indexing",
-      icon: Database,
-      adminOnly: true,
-    },
-    {
-      type: "link",
-      href: "/admin/credits",
-      label: "จัดการเครดิต",
-      labelEn: "Manage Credits",
-      icon: Settings,
-      adminOnly: true,
     },
   ];
 

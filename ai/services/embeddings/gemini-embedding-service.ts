@@ -50,11 +50,26 @@ export class GeminiEmbeddingService {
   }
 
   /**
-   * Process a single batch of texts
+   * Process a single batch of texts using Gemini's native batch API
+   * Much faster than individual embedContent calls!
    */
   private async processBatch(texts: string[]): Promise<number[][]> {
-    const embeddingTasks = texts.map(text => this.createSingleEmbedding(text));
-    return Promise.all(embeddingTasks);
+    try {
+      const model = this.genAI.getGenerativeModel({ model: this.config.model });
+
+      // Use batchEmbedContents for true batch processing (single API call!)
+      const result = await model.batchEmbedContents({
+        requests: texts.map(text => ({
+          content: { role: 'user', parts: [{ text: text.replace(/\n/g, ' ') }] }
+        }))
+      });
+
+      // Extract embedding values from each result
+      return result.embeddings.map(embedding => embedding.values);
+    } catch (error) {
+      console.error(`Error in batch embedding (${texts.length} texts):`, error);
+      throw error;
+    }
   }
 
   /**

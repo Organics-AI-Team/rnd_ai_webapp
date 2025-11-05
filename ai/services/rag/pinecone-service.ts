@@ -1,15 +1,21 @@
-import { Pinecone } from '@pinecone-database/pinecone';
 import { createEmbeddingService, UniversalEmbeddingService } from '../embeddings/universal-embedding-service';
 import { getRAGConfig, PINECONE_API_CONFIG, validateEnvironment, RAGServicesConfig } from '../../config/rag-config';
+
+/**
+ * Dynamic import wrapper for Pinecone to avoid client-side bundling issues
+ */
+async function getPineconeModule() {
+  return import('@pinecone-database/pinecone');
+}
 
 /**
  * Lazy initialization of Pinecone client
  * This prevents initialization errors during Next.js build time
  * The client is only created when actually needed at runtime
  */
-let pineconeClient: Pinecone | null = null;
+let pineconeClient: any | null = null;
 
-function getPineconeClient(): Pinecone {
+async function getPineconeClient(): Promise<any> {
   if (!pineconeClient) {
     // Validate environment variables
     const envValidation = validateEnvironment();
@@ -17,6 +23,9 @@ function getPineconeClient(): Pinecone {
       console.error('❌ Missing required environment variables:', envValidation.missing);
       throw new Error(`Missing required environment variables: ${envValidation.missing.join(', ')}`);
     }
+
+    // Dynamically import Pinecone client only when needed
+    const { Pinecone } = await getPineconeModule();
 
     // Initialize Pinecone client only once
     pineconeClient = new Pinecone({
@@ -51,6 +60,7 @@ export interface RAGConfig {
   similarityThreshold: number;
   includeMetadata: boolean;
   filter?: any;
+  namespace?: string; // Support for Pinecone namespaces
 }
 
 /**
@@ -62,13 +72,13 @@ export class PineconeRAGService {
   private config: RAGConfig;
   private embeddingService: UniversalEmbeddingService;
 
+  private initialized = false;
+  private initPromise: Promise<void> | null = null;
+
   constructor(serviceName?: keyof RAGServicesConfig, config?: Partial<RAGConfig>, customEmbeddingService?: UniversalEmbeddingService) {
     // Get service configuration
     const serviceConfig = serviceName ? getRAGConfig(serviceName) : getRAGConfig('rawMaterialsAllAI');
 
-    // Use lazy initialization - Pinecone client is created on first use
-    const pinecone = getPineconeClient();
-    this.index = pinecone.Index(serviceConfig.pineconeIndex);
     this.config = {
       topK: serviceConfig.topK,
       similarityThreshold: serviceConfig.similarityThreshold,
@@ -77,11 +87,36 @@ export class PineconeRAGService {
     };
     this.embeddingService = customEmbeddingService || embeddingService;
 
-    console.log(`🔧 Initialized RAG service: ${serviceName || 'rawMaterialsAllAI'} → index: ${serviceConfig.pineconeIndex}`);
+    // Lazy initialization - create promise for async setup
+    this.initPromise = this.initializePinecone(serviceConfig);
+
+    console.log(`🔧 Initializing RAG service: ${serviceName || 'rawMaterialsAllAI'} → index: ${serviceConfig.pineconeIndex}`);
+  }
+
+  private async initializePinecone(serviceConfig: any): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      // Dynamically import and initialize Pinecone client
+      const pinecone = await getPineconeClient();
+      this.index = pinecone.Index(serviceConfig.pineconeIndex);
+      this.initialized = true;
+      console.log(`✅ Pinecone RAG service initialized: ${serviceConfig.pineconeIndex}`);
+    } catch (error) {
+      console.error('❌ Failed to initialize Pinecone RAG service:', error);
+      throw error;
+    }
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
   }
 
   // Create embeddings using the configured embedding service
   async createEmbeddings(texts: string[]): Promise<number[][]> {
+    await this.ensureInitialized();
     try {
       return await this.embeddingService.createEmbeddings(texts);
     } catch (error) {
@@ -92,6 +127,7 @@ export class PineconeRAGService {
 
   // Upsert documents into Pinecone
   async upsertDocuments(documents: RawMaterialDocument[]): Promise<void> {
+    await this.ensureInitialized();
     try {
       const texts = documents.map(doc => doc.text);
       const embeddings = await this.createEmbeddings(texts);
@@ -127,8 +163,15 @@ export class PineconeRAGService {
       // Create embedding for the query
       const queryEmbedding = await this.createEmbeddings([query]);
 
+      // Determine which index/namespace to query
+      const queryTarget = searchConfig.namespace
+        ? this.index.namespace(searchConfig.namespace)
+        : this.index;
+
+      console.log(`🔍 [pinecone-service] Searching ${searchConfig.namespace ? `namespace: ${searchConfig.namespace}` : 'default namespace'}`);
+
       // Search Pinecone
-      const response = await this.index.query({
+      const response = await queryTarget.query({
         vector: queryEmbedding[0],
         topK: searchConfig.topK,
         includeMetadata: searchConfig.includeMetadata,
@@ -144,6 +187,8 @@ export class PineconeRAGService {
           (match.score || 0) >= searchConfig.similarityThreshold
         );
       }
+
+      console.log(`✅ [pinecone-service] Found ${matches.length} matches (threshold: ${searchConfig.similarityThreshold})`);
 
       return matches;
     } catch (error) {
@@ -163,6 +208,7 @@ export class PineconeRAGService {
 
   // Delete documents by IDs
   async deleteDocuments(ids: string[]): Promise<void> {
+    await this.ensureInitialized();
     try {
       await this.index.deleteMany(ids);
       console.log(`Successfully deleted ${ids.length} documents from Pinecone`);
@@ -174,6 +220,7 @@ export class PineconeRAGService {
 
   // Get index statistics
   async getIndexStats(): Promise<any> {
+    await this.ensureInitialized();
     try {
       return await this.index.describeIndexStats();
     } catch (error) {
