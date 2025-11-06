@@ -1,5 +1,5 @@
 /**
- * Migration script to add rm_code to all documents in raw_meterials_console collection
+ * Migration script to add rm_code to all documents in raw_materials_console collection
  * that are missing this field.
  *
  * This script:
@@ -24,7 +24,7 @@ async function addRmCodes() {
     const db = client.db();
 
     // Step 1: Count total documents
-    const totalCount = await db.collection("raw_meterials_console").countDocuments();
+    const totalCount = await db.collection("raw_materials_console").countDocuments();
     console.log(`📊 Total documents in collection: ${totalCount}`);
 
     // Step 2: Count documents missing rm_code
@@ -36,7 +36,7 @@ async function addRmCodes() {
       ]
     };
 
-    const missingCount = await db.collection("raw_meterials_console").countDocuments(missingFilter);
+    const missingCount = await db.collection("raw_materials_console").countDocuments(missingFilter);
     console.log(`❌ Documents missing rm_code: ${missingCount}`);
     console.log(`✅ Documents with rm_code: ${totalCount - missingCount}\n`);
 
@@ -48,7 +48,7 @@ async function addRmCodes() {
     // Step 3: Find the highest existing rm_code number
     let maxNumber = 0;
 
-    const allDocuments = await db.collection("raw_meterials_console")
+    const allDocuments = await db.collection("raw_materials_console")
       .find({ rm_code: { $exists: true, $nin: [null, ""] } })
       .toArray();
 
@@ -70,7 +70,7 @@ async function addRmCodes() {
     console.log(`📝 Will start assigning from: RM${String(maxNumber + 1).padStart(6, '0')}\n`);
 
     // Step 4: Get all documents missing rm_code
-    const documentsToUpdate = await db.collection("raw_meterials_console")
+    const documentsToUpdate = await db.collection("raw_materials_console")
       .find(missingFilter)
       .toArray();
 
@@ -84,7 +84,7 @@ async function addRmCodes() {
       const doc = documentsToUpdate[i];
       const newRmCode = `RM${String(maxNumber + 1 + i).padStart(6, '0')}`;
 
-      await db.collection("raw_meterials_console").updateOne(
+      await db.collection("raw_materials_console").updateOne(
         { _id: doc._id },
         {
           $set: {
@@ -111,7 +111,7 @@ async function addRmCodes() {
     console.log(`\n✅ Successfully updated ${updatedCount} documents with rm_codes!`);
 
     // Step 6: Verify the update
-    const stillMissingCount = await db.collection("raw_meterials_console").countDocuments(missingFilter);
+    const stillMissingCount = await db.collection("raw_materials_console").countDocuments(missingFilter);
 
     if (stillMissingCount === 0) {
       console.log("🎉 Migration completed successfully! All documents now have rm_codes.");

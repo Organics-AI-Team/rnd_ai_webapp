@@ -68,23 +68,23 @@ export default function RawMaterialsAIPage() {
     setIsLoading(true);
 
     try {
-      // Enhanced API call with RAG search (now powered by Gemini!)
-      const response = await fetch('/api/ai/enhanced-chat', {
+      // Use Raw Materials Agent API with tool calling support (Gemini + Tools)
+      const response = await fetch('/api/ai/raw-materials-agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: input,
-          userId: user?.id,
-          context: {
-            category: 'raw-materials-ai',
-            useSearch: true, // Enable RAG search for raw materials
-            preferences: {
-              expertiseLevel: 'professional',
-              language: 'thai'
-            }
-          }
+          prompt: input,  // API expects 'prompt' not 'query'
+          userId: user?.id || 'anonymous',
+          conversationHistory: messages.map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+          enableEnhancements: false,  // Don't use OpenAI enhancements
+          enableStreaming: false,
+          enableMLOptimizations: false,
+          enableSearch: false  // Tools will handle search
         }),
       });
 

@@ -10,7 +10,7 @@ async function addTimestamps() {
     console.log("Adding timestamps to existing data...");
 
     // Update raw_materials_console (ingredients)
-    const ingredientsResult = await db.collection("raw_meterials_console").updateMany(
+    const ingredientsResult = await db.collection("raw_materials_console").updateMany(
       {
         $or: [
           { createdAt: { $exists: false } },

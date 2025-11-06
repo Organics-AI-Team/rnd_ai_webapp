@@ -11,7 +11,7 @@
 You now have a **fully functional unified RAG system** that can intelligently separate and search two MongoDB collections:
 
 1. **`raw_materials_real_stock`** (3,111 items) → Pinecone namespace: `in_stock`
-2. **`raw_meterials_console`** (31,179 items) → Pinecone namespace: `all_fda`
+2. **`raw_materials_console`** (31,179 items) → Pinecone namespace: `all_fda`
 
 ---
 
@@ -119,7 +119,7 @@ The system analyzes queries and routes them to the appropriate collection:
 
 **MongoDB Collections:**
 - `raw_materials_real_stock` - Exact match searches
-- `raw_meterials_console` - Exact match searches
+- `raw_materials_console` - Exact match searches
 
 **Pinecone Namespaces:**
 - `in_stock` namespace - Semantic/vector searches

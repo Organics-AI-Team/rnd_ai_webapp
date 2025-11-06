@@ -18,7 +18,7 @@ async function checkConsoleFields() {
     const db = client.db();
 
     // Look for RM000943 in console collection
-    const rm000943 = await db.collection("raw_meterials_console").findOne({
+    const rm000943 = await db.collection("raw_materials_console").findOne({
       rm_code: 'RM000943'
     });
 
@@ -38,7 +38,7 @@ async function checkConsoleFields() {
 
       // Let's check a few other RM codes to see the pattern
       console.log('\n🔍 Checking other RM codes...');
-      const sample = await db.collection("raw_meterials_console")
+      const sample = await db.collection("raw_materials_console")
         .find({ rm_code: { $regex: '^RM' } })
         .limit(3)
         .toArray();

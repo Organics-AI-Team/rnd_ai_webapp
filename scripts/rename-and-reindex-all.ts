@@ -201,7 +201,7 @@ async function indexRawMaterials(
     ];
   }
 
-  const totalCount = await db.collection('raw_meterials_console').countDocuments(query);
+  const totalCount = await db.collection('raw_materials_console').countDocuments(query);
   console.log(`📊 Total documents to index: ${totalCount.toLocaleString()}`);
 
   if (totalCount === 0) {
@@ -215,7 +215,7 @@ async function indexRawMaterials(
   let processed = 0;
 
   // Process in batches
-  const cursor = db.collection('raw_meterials_console').find(query);
+  const cursor = db.collection('raw_materials_console').find(query);
 
   let batch: any[] = [];
 
@@ -239,7 +239,7 @@ async function indexRawMaterials(
         function: material.Function || '',
         benefits: material.benefits || material.benefits_cached || '',
         usecase: material.usecase || material.usecase_cached || '',
-        source: 'raw_meterials_console'
+        source: 'raw_materials_console'
       };
 
       batch.push({

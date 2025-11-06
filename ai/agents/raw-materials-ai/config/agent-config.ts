@@ -47,9 +47,9 @@ export const RAW_MATERIALS_AI_CONFIG: SimpleAgentConfig = {
 
   // Embedding Settings
   embedding: {
-    provider: 'openai',
-    model: 'text-embedding-3-small',
-    dimensions: 1536
+    provider: 'gemini',
+    model: 'text-embedding-004',
+    dimensions: 3072
   },
 
   // RAG Settings

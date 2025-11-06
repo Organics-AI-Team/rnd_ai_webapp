@@ -16,7 +16,7 @@
    - Namespace: `in_stock`
    - Estimated Time: ~15-20 minutes
 
-2. **FDA Database** (raw_meterials_console)
+2. **FDA Database** (raw_materials_console)
    - Documents: 31,179
    - Expected Chunks: ~187,074 (6 per document)
    - Namespace: `all_fda`
@@ -61,7 +61,7 @@
 - Chunks Created: 54
 - Batches Uploaded: 2
 
-### **Collection 2: raw_meterials_console**
+### **Collection 2: raw_materials_console**
 - Status: PENDING
 - Progress: 0%
 - Will start after Collection 1 completes
@@ -105,7 +105,7 @@ Materials currently in stock:
   Chunks: ~18,666
 
 All FDA-registered ingredients:
-  Collection: raw_meterials_console
+  Collection: raw_materials_console
   Namespace: all_fda
   Documents: 31,179
   Chunks: ~187,074

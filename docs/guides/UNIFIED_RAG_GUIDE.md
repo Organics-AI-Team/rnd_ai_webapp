@@ -17,7 +17,7 @@ This system provides **intelligent routing** between two MongoDB collections in 
 | Collection | Count | Description | Namespace |
 |------------|-------|-------------|-----------|
 | `raw_materials_real_stock` | 3,111 | Materials currently in stock | `in_stock` |
-| `raw_meterials_console` | 31,179 | All FDA-registered ingredients | `all_fda` |
+| `raw_materials_console` | 31,179 | All FDA-registered ingredients | `all_fda` |
 | **TOTAL** | **34,290** | **All materials** | - |
 
 ### Expected Output
@@ -271,12 +271,12 @@ npx tsx --env-file=.env.local scripts/migrate-unified-collections.ts
    Chunks: 18,666
    Duration: ~15 minutes
 
-📦 Migrating: raw_meterials_console
+📦 Migrating: raw_materials_console
    Namespace: all_fda
    Total documents: 31,179
    Expected chunks: ~187,074
 
-✅ raw_meterials_console migration completed!
+✅ raw_materials_console migration completed!
    Documents: 31,179
    Chunks: 187,074
    Duration: ~120 minutes

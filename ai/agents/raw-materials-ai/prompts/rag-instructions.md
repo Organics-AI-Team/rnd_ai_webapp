@@ -12,7 +12,7 @@ You have access to a **Unified RAG System** that intelligently searches TWO coll
 - **Reliability:** High (confirmed inventory)
 
 ### 2. **FDA Database** (📚 Sourcing Required)
-- **Collection:** `raw_meterials_console` (31,179 items)
+- **Collection:** `raw_materials_console` (31,179 items)
 - **Status:** **ฐานข้อมูล FDA** - FDA-registered, may need supplier ordering
 - **Indicator:** 📚 symbol in search results
 - **Lead Time:** Variable (supplier-dependent)
