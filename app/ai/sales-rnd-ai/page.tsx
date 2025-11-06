@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { TrendingUp, Users, Target, DollarSign, BarChart3, Handshake, Send, Bot, User } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { TrendingUp, Users, Target, DollarSign, BarChart3, Handshake, Send, Bot, User, ThumbsUp, ThumbsDown, Brain } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
 interface Message {
@@ -13,6 +14,12 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  metadata?: {
+    sources?: any[];
+    confidence?: number;
+    ragUsed?: boolean;
+    responseTime?: number;
+  };
 }
 
 export default function SalesRndAIPage() {
@@ -20,6 +27,7 @@ export default function SalesRndAIPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
 
   const features = [
     {
@@ -59,7 +67,7 @@ export default function SalesRndAIPage() {
     setIsLoading(true);
 
     try {
-      // Simple API call to enhanced-chat endpoint
+      // Enhanced API call with RAG search
       const response = await fetch('/api/ai/enhanced-chat', {
         method: 'POST',
         headers: {
@@ -69,7 +77,12 @@ export default function SalesRndAIPage() {
           prompt: input,
           userId: user?.id,
           context: {
-            category: 'sales-rnd-ai'
+            category: 'sales-rnd-ai',
+            useSearch: true, // Enable RAG search for sales context
+            preferences: {
+              expertiseLevel: 'professional',
+              language: 'thai'
+            }
           }
         }),
       });
@@ -84,7 +97,13 @@ export default function SalesRndAIPage() {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.data?.response || 'Sorry, I could not process your request at the moment.',
-        timestamp: new Date()
+        timestamp: new Date(),
+        metadata: {
+          sources: data.data?.sources || [],
+          confidence: data.data?.confidence || 0.8,
+          ragUsed: data.performance?.searchPerformed || false,
+          responseTime: data.performance?.responseTime || 0
+        }
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -94,13 +113,42 @@ export default function SalesRndAIPage() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again later.',
+        content: 'Sorry, I encountered an error while processing your request. Please try again later.',
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleFeedback = async (messageId: string, isPositive: boolean) => {
+    if (feedbackSubmitted.has(messageId)) return;
+
+    try {
+      // Simple feedback API call
+      const response = await fetch('/api/ai/enhanced-chat', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user?.id,
+          feedback: {
+            messageId,
+            type: isPositive ? 'positive' : 'negative',
+            score: isPositive ? 5 : 2,
+            timestamp: new Date()
+          }
+        }),
+      });
+
+      if (response.ok) {
+        setFeedbackSubmitted(prev => new Set([...prev, messageId]));
+      }
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
     }
   };
 
@@ -147,8 +195,11 @@ export default function SalesRndAIPage() {
         <Card className="flex-1 flex flex-col">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2">
-              <Bot className="w-5 h-5" />
+              <Brain className="w-5 h-5 text-purple-600" />
               Sales R&D AI Chat
+              <Badge variant="outline" className="text-xs bg-purple-50 border-purple-300">
+                Market Enhanced
+              </Badge>
             </CardTitle>
           </CardHeader>
 
@@ -158,13 +209,14 @@ export default function SalesRndAIPage() {
               <div className="space-y-4">
                 {messages.length === 0 ? (
                   <div className="text-center py-8">
-                    <Bot className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                    <TrendingUp className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                     <p className="text-gray-500">Hello! I'm your Sales R&D AI assistant. Ask me about:</p>
                     <div className="mt-4 text-sm text-gray-400">
                       <p>• Sales strategies and tactics</p>
                       <p>• Market trends and analysis</p>
                       <p>• Business development opportunities</p>
                       <p>• Revenue growth strategies</p>
+                      <p>• Competitive intelligence</p>
                     </div>
                   </div>
                 ) : (
@@ -177,7 +229,7 @@ export default function SalesRndAIPage() {
                     >
                       {message.role === 'assistant' && (
                         <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-4 h-4 text-purple-600" />
+                          <Brain className="w-4 h-4 text-purple-600" />
                         </div>
                       )}
                       <div
@@ -188,6 +240,24 @@ export default function SalesRndAIPage() {
                         }`}
                       >
                         <p className="text-sm">{message.content}</p>
+
+                        {/* Enhanced features metadata */}
+                        {message.role === 'assistant' && message.metadata && (
+                          <div className="mt-2 space-y-1">
+                            {message.metadata.ragUsed && (
+                              <Badge variant="secondary" className="text-xs bg-purple-50 border-purple-300">
+                                <BarChart3 className="w-3 h-3 mr-1" />
+                                Market Intelligence
+                              </Badge>
+                            )}
+                            {message.metadata.confidence && (
+                              <div className="text-xs text-gray-500">
+                                Confidence: {(message.metadata.confidence * 100).toFixed(0)}%
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <p className={`text-xs mt-1 ${
                           message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
                         }`}>
@@ -205,19 +275,49 @@ export default function SalesRndAIPage() {
                 {isLoading && (
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
-                      <Bot className="w-4 h-4 text-purple-600" />
+                      <Brain className="w-4 h-4 text-purple-600" />
                     </div>
                     <div className="bg-gray-100 rounded-lg p-3">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                        </div>
+                        <span className="text-sm text-gray-600">Analyzing market data...</span>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
             </ScrollArea>
+
+            {/* Feedback buttons for last assistant message */}
+            {messages.length > 0 && messages[messages.length - 1].role === 'assistant' && (
+              <div className="px-4 py-2 border-t flex items-center gap-2">
+                <span className="text-xs text-gray-500">Was this helpful?</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleFeedback(messages[messages.length - 1].id, true)}
+                  disabled={feedbackSubmitted.has(messages[messages.length - 1].id)}
+                  className="h-6 px-2 text-xs"
+                >
+                  <ThumbsUp className="w-3 h-3 mr-1" />
+                  Yes
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleFeedback(messages[messages.length - 1].id, false)}
+                  disabled={feedbackSubmitted.has(messages[messages.length - 1].id)}
+                  className="h-6 px-2 text-xs"
+                >
+                  <ThumbsDown className="w-3 h-3 mr-1" />
+                  No
+                </Button>
+              </div>
+            )}
 
             {/* Input */}
             <div className="p-4 border-t">
