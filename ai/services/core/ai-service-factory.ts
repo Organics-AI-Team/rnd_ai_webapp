@@ -4,6 +4,7 @@ import { GeminiService } from '../providers/gemini-service';
 import { GeminiToolService } from '../providers/gemini-tool-service';
 import { AgentAPIService } from '../providers/agent-api-service';
 import { LangChainService } from '../providers/langchain-service';
+import { LangGraphService } from '../providers/langgraph-service';
 import { AIServiceConfig } from '../../types/ai-types';
 import { DefaultToolRegistry } from '../../agents/core/tool-registry';
 import { ToolRegistry } from '../../agents/core/tool-types';
@@ -43,6 +44,8 @@ export class AIServiceFactory implements IAIServiceFactory {
         return new OpenAIService(apiKey, config, serviceName);
       case 'gemini':
         return new GeminiService(apiKey, config, serviceName);
+      case 'langgraph':
+        return new LangGraphService(apiKey, config, serviceName);
       case 'langchain':
         return new LangChainService(apiKey, config, serviceName);
       case 'agent':
@@ -96,7 +99,7 @@ export class AIServiceFactory implements IAIServiceFactory {
    * Get list of supported providers
    */
   getSupportedProviders(): string[] {
-    return ['openai', 'gemini', 'gemini-tools', 'langchain', 'agent'];
+    return ['openai', 'gemini', 'gemini-tools', 'langchain', 'langgraph', 'agent'];
   }
 
   /**
