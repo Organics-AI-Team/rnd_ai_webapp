@@ -35,6 +35,23 @@ const nextConfig: NextConfig = {
         querystring: false,
         timers: false,
         'timers/promises': false,
+        'node:async_hooks': false,
+        'node:stream': false,
+        'node:util': false,
+        'node:buffer': false,
+        'node:process': false,
+        'node:path': false,
+        'node:fs': false,
+        'node:crypto': false,
+        'node:http': false,
+        'node:https': false,
+        'node:net': false,
+        'node:tls': false,
+        'node:dns': false,
+        'node:url': false,
+        'node:querystring': false,
+        'node:zlib': false,
+        'node:events': false,
         kerberos: false,
         '@mongodb-js/zstd': false,
         '@aws-sdk/credential-providers': false,
@@ -45,14 +62,18 @@ const nextConfig: NextConfig = {
         'mongodb-client-encryption': false
       };
 
-      // Add externals to prevent MongoDB from being bundled on client side
+      // Add externals to prevent MongoDB and other Node.js modules from being bundled on client side
       config.externals = {
         ...config.externals,
         'mongodb': 'mongodb',
         'mongodb/lib': 'mongodb/lib',
         'mongodb/lib/cmap/auth/mongodb_oidc/callback_workflow': 'mongodb/lib/cmap/auth/mongodb_oidc/callback_workflow',
         'mongodb/lib/cmap/auth/mongodb_oidc/automated_callback_workflow': 'mongodb/lib/cmap/auth/mongodb_oidc/automated_callback_workflow',
-        'mongodb/lib/mongo_client_auth_providers': 'mongodb/lib/mongo_client_auth_providers'
+        'mongodb/lib/mongo_client_auth_providers': 'mongodb/lib/mongo_client_auth_providers',
+        '@langchain/langgraph': '@langchain/langgraph',
+        '@pinecone-database/pinecone': '@pinecone-database/pinecone',
+        'node:async_hooks': 'node:async_hooks',
+        'node:stream': 'node:stream'
       };
 
       config.resolve.extensions = ['.js', '.jsx', '.ts', '.tsx'];
@@ -73,7 +94,29 @@ const nextConfig: NextConfig = {
     'snappy',
     'socks',
     'aws4',
-    'mongodb-client-encryption'
+    'mongodb-client-encryption',
+    '@tensorflow/tfjs',
+    '@tensorflow/tfjs-node',
+    '@langchain/langgraph',
+    '@langchain/core',
+    '@langchain/openai',
+    'node:async_hooks',
+    'node:stream',
+    'node:util',
+    'node:buffer',
+    'node:process',
+    'node:path',
+    'node:fs',
+    'node:crypto',
+    'node:http',
+    'node:https',
+    'node:net',
+    'node:tls',
+    'node:dns',
+    'node:url',
+    'node:querystring',
+    'node:zlib',
+    'node:events'
   ],
 };
 
