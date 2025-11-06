@@ -1,19 +1,28 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+// Version: 3.0 - Enhanced with AI optimizations: structured outputs, caching, ML learning, streaming
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Bot, Trash2, Search, AlertCircle, Package } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Bot, Trash2, Search, AlertCircle, Package, Settings, Brain, Zap, Clock, Target, BookOpen, ThumbsUp, ThumbsDown, Send, User } from 'lucide-react';
 import { BaseChat, BaseChatProps } from './base-chat';
 import { useChat } from '../../hooks/use-chat';
 import { useFeedback } from '../../hooks/use-feedback';
+import { useEnhancedChat } from '../../hooks/enhanced/use-enhanced-chat';
 import { FeedbackCollector } from '../feedback/feedback-collector';
 import { PineconeClientService } from '../../services/rag/pinecone-client';
 import { HybridSearchClient } from '../../services/rag/hybrid-search-client';
 import { UnifiedSearchClient } from '../../services/rag/unified-search-client';
+import { EnhancedHybridSearchService } from '../../services/rag/enhanced-hybrid-search-service';
+import { ResponseReranker } from '../../services/response/response-reranker';
 import { classify_query } from '../../utils/query-classifier';
 import { ConversationMessage } from '../../types/conversation-types';
+import { StructuredResponse, UserPreferences } from '../../services/enhanced/enhanced-ai-service';
 
 export interface RawMaterialsChatProps extends Omit<BaseChatProps, 'messages' | 'onSendMessage' | 'onClearHistory'> {
   apiKey?: string;
@@ -24,38 +33,78 @@ export interface RawMaterialsChatProps extends Omit<BaseChatProps, 'messages' | 
     topK?: number;
     similarityThreshold?: number;
   };
+  enableEnhancements?: boolean; // Toggle for new optimizations
+  enableStreaming?: boolean;
+  enableMLOptimizations?: boolean;
+  enableResponseReranking?: boolean; // Toggle response scoring
   onError?: (error: Error) => void;
   onFeedbackSubmit?: (feedback: any) => void;
 }
 
 /**
- * Specialized chat component for raw materials inquiries
- * Integrates RAG capabilities for raw materials database searches
+ * Enhanced Raw Materials Chat with AI optimizations
+ * - Structured outputs with confidence scoring
+ * - Intelligent caching with @tanstack/react-query
+ * - ML-driven user preference learning
+ * - Real-time streaming responses
+ * - Enhanced search with semantic reranking
+ * - Response quality scoring and fact-checking
  */
 export function RawMaterialsChat({
   userId,
   apiKey,
   provider = 'agent', // Use custom agent API
   serviceName,
-  enableRAG = false, // RAG disabled - using tools instead
+  enableRAG = false,
   ragConfig = {
     topK: 5,
     similarityThreshold: 0.7
   },
+  enableEnhancements = true, // Enable new optimizations by default
+  enableStreaming = false,
+  enableMLOptimizations = true,
+  enableResponseReranking = true,
   onError,
   onFeedbackSubmit,
   ...baseChatProps
 }: RawMaterialsChatProps) {
-  // Track if tools are enabled (via API route)
-  const [toolsEnabled] = useState(true); // Always enabled - agent API handles it
+  // State for enhanced features
+  const [isSearchingRAG, setIsSearchingRAG] = useState(false);
+  const [lastRAGResults, setLastRAGResults] = useState<string>('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [currentStreamingMessage, setCurrentStreamingMessage] = useState('');
+  const [messageMetrics, setMessageMetrics] = useState<any>(null);
+  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  const [responseScores, setResponseScores] = useState<Map<string, any>>(new Map());
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Track if tools are enabled (via API route)
+  const [toolsEnabled] = useState(true);
+
+  // Enhanced RAG service with semantic reranking
   const [ragService] = useState(() => {
     if (!enableRAG) return null;
 
     try {
-      // Use provided serviceName or default to 'rawMaterialsAI'
+      // Use enhanced service with semantic reranking when optimizations enabled
+      if (enableEnhancements) {
+        console.log('🚀 [RawMaterialsChat] Initializing Enhanced Hybrid Search Service');
+        const enhancedService = new EnhancedHybridSearchService(
+          process.env.NEXT_PUBLIC_PINECONE_API_KEY!,
+          process.env.MONGODB_URI!,
+          'rnd_ai_db',
+          'raw_materials',
+          'raw-materials-vectors'
+        );
+        // Initialize async (don't block render)
+        enhancedService.initialize().catch(error => {
+          console.warn('⚠️ Enhanced RAG service initialization failed, falling back to legacy:', error);
+        });
+        return enhancedService;
+      }
+
+      // Use legacy service when optimizations disabled
       const serviceToUse = (serviceName as any) || 'rawMaterialsAI';
-      // Use UnifiedSearchClient for intelligent multi-collection search
       console.log('🚀 [RawMaterialsChat] Initializing UnifiedSearchClient with multi-collection support');
       return new UnifiedSearchClient(serviceToUse, ragConfig);
     } catch (error: any) {
@@ -63,31 +112,70 @@ export function RawMaterialsChat({
       return null;
     }
   });
-  const [isSearchingRAG, setIsSearchingRAG] = useState(false);
-  const [lastRAGResults, setLastRAGResults] = useState<string>('');
 
-  const chat = useChat({
-    userId,
-    apiKey,
-    provider,
-    serviceName,
-    onError,
-    maxMessages: 50,
-    enablePersistence: true,
-    onMessageSend: async (message) => {
-      // Perform RAG search if enabled and message seems related to raw materials
-      if (ragService && isRawMaterialsQuery(message)) {
-        await performRAGSearch(message);
-      }
+  // Response reranking service
+  const [responseReranker] = useState(() => {
+    if (enableEnhancements && enableResponseReranking) {
+      return new ResponseReranker(process.env.NEXT_PUBLIC_PINECONE_API_KEY!);
     }
+    return null;
   });
+
+  // Choose chat hook based on enhancements enabled
+  const chat = enableEnhancements
+    ? useEnhancedChat({
+        userId,
+        apiKey: apiKey!,
+        provider,
+        model: 'gpt-4',
+        enabled: true,
+        onSuccess: (response) => {
+          if (response.structuredData) {
+            setFollowUpQuestions(response.structuredData.followUpQuestions || []);
+          }
+          if (response.metadata) {
+            setMessageMetrics({
+              responseTime: response.metadata.responseTime,
+              confidence: response.confidence,
+              category: response.metadata.category,
+            });
+          }
+        },
+        onError: (error) => {
+          console.error('Enhanced chat error:', error);
+        },
+      })
+    : useChat({
+        userId,
+        apiKey,
+        provider,
+        serviceName,
+        onError,
+        maxMessages: 50,
+        enablePersistence: true,
+        onMessageSend: async (message) => {
+          // Perform RAG search if enabled and message seems related to raw materials
+          if (ragService && isRawMaterialsQuery(message)) {
+            await performRAGSearch(message);
+          }
+        }
+      });
 
   const feedback = useFeedback({
     userId,
-    serviceName, // Pass serviceName for isolated learning
-    service: chat.getService(),
+    serviceName: enableEnhancements ? 'enhanced-raw-materials-chat' : serviceName,
+    service: chat.getService?.() || chat.getService(),
     onFeedbackSubmit: onFeedbackSubmit
   });
+
+  // Auto-scroll to bottom on new messages
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chat.messages, currentStreamingMessage, scrollToBottom]);
 
   /**
    * Intelligent query detection using query classifier
@@ -102,60 +190,218 @@ export function RawMaterialsChat({
   };
 
   /**
-   * Perform unified RAG search with intelligent collection routing
-   * Uses UnifiedSearchService for automatic in-stock vs FDA separation
+   * Perform enhanced RAG search with intelligent collection routing and semantic reranking
+   * Uses EnhancedHybridSearchService when optimizations are enabled
    */
   const performRAGSearch = useCallback(async (query: string) => {
     if (!ragService) return;
 
     setIsSearchingRAG(true);
     try {
-      console.log('🔍 [RawMaterialsChat] Performing unified search with intelligent routing for:', query);
+      console.log('🔍 [RawMaterialsChat] Performing enhanced RAG search for:', query);
 
-      // Use client-side unified search (calls API with automatic routing)
-      const unifiedClient = ragService as UnifiedSearchClient;
-      const formatted = await unifiedClient.search_and_format(query, {
-        ...ragConfig,
-        topK: 10, // Search across both collections
-        similarityThreshold: 0.5, // Lowered for broader matching
-        enable_exact_match: true,
-        enable_fuzzy_match: true,
-        enable_semantic_search: true,
-        enable_metadata_filter: true,
-        max_results: 10,
-        min_score: 0.5,
-        include_availability_context: true, // Show in-stock vs FDA indicators
-        // collection: 'both' // Auto-routes by default, or specify: 'in_stock', 'all_fda', 'both'
-      });
+      let results;
 
-      console.log(`✅ [RawMaterialsChat] Received formatted results from unified search with collection routing`);
+      if (enableEnhancements && ragService instanceof EnhancedHybridSearchService) {
+        // Use enhanced search with semantic reranking and personalization
+        results = await ragService.enhancedSearch({
+          query,
+          userId,
+          topK: 10,
+          rerank: true,
+          semanticWeight: 0.7,
+          keywordWeight: 0.3,
+          userPreferences: chat.userPreferences,
+        });
 
-      setLastRAGResults(formatted);
+        // Format enhanced results with confidence scores
+        const formattedResults = results.map((result, index) =>
+          `**${index + 1}.** ${result.content}\n*Confidence: ${(result.score * 100).toFixed(1)}%*\n`
+        ).join('\n');
+
+        console.log(`✅ [RawMaterialsChat] Enhanced search completed with semantic reranking`);
+        setLastRAGResults(formattedResults);
+      } else {
+        // Use legacy unified search
+        const unifiedClient = ragService as UnifiedSearchClient;
+        const formatted = await unifiedClient.search_and_format(query, {
+          ...ragConfig,
+          topK: 10,
+          similarityThreshold: 0.5,
+          enable_exact_match: true,
+          enable_fuzzy_match: true,
+          enable_semantic_search: true,
+          enable_metadata_filter: true,
+          max_results: 10,
+          min_score: 0.5,
+          include_availability_context: true,
+        });
+
+        console.log(`✅ [RawMaterialsChat] Legacy unified search completed`);
+        setLastRAGResults(formatted);
+      }
     } catch (error) {
-      console.error('❌ [RawMaterialsChat] Unified search failed:', error);
+      console.error('❌ [RawMaterialsChat] RAG search failed:', error);
       setLastRAGResults('\n\n⚠️ Database search temporarily unavailable. Providing response based on general knowledge.');
     } finally {
       setIsSearchingRAG(false);
     }
-  }, [ragService, ragConfig]);
+  }, [ragService, ragConfig, enableEnhancements, userId, chat.userPreferences]);
 
   const handleSendMessage = async (message: string) => {
-    // Enhance prompt with RAG results if available
-    let enhancedMessage = message;
-    const ragWasUsed = !!lastRAGResults;
+    console.log('🎯 [RawMaterialsChat] Sending message:', message);
+    console.log('🚀 Enhancements enabled:', enableEnhancements);
+    console.log('🔧 Tools enabled:', toolsEnabled);
+    console.log('🧪 RAG query:', isRawMaterialsQuery(message));
 
-    if (lastRAGResults) {
-      enhancedMessage = `${message}\n\n${lastRAGResults}`;
-      console.log('✅ [RawMaterialsChat] RAG results will be used for this message');
+    try {
+      if (enableEnhancements && enableStreaming) {
+        // Use enhanced streaming
+        setCurrentStreamingMessage('');
+        const stream = await chat.sendStreamingMessage(message, {
+          useSearch: true,
+          category: 'raw-materials',
+        });
+
+        let fullContent = '';
+        for await (const chunk of stream) {
+          fullContent += chunk;
+          setCurrentStreamingMessage(fullContent);
+        }
+
+        // Score the response using Response Reranker
+        if (responseReranker && fullContent && lastRAGResults) {
+          const searchResults = parseRAGResults(lastRAGResults);
+          const scoreData = await responseReranker.scoreResponse(
+            message,
+            fullContent,
+            searchResults,
+            {
+              enableFactCheck: true,
+              enablePersonalization: enableMLOptimizations,
+              userPreferences: chat.userPreferences
+            }
+          );
+
+          // Store response score
+          const messageId = `msg_${Date.now()}`;
+          setResponseScores(prev => new Map(prev.set(messageId, scoreData)));
+
+          console.log('📊 [RawMaterialsChat] Response scored:', {
+            overall: scoreData.overallScore.toFixed(3),
+            relevance: scoreData.relevanceScore.toFixed(3),
+            accuracy: scoreData.factualAccuracy.toFixed(3),
+            sources: scoreData.sources.length
+          });
+
+          // Enhance response if score is low
+          if (scoreData.overallScore < 0.7) {
+            const enhanced = await responseReranker.enhanceResponse(
+              message,
+              fullContent,
+              searchResults
+            );
+            setCurrentStreamingMessage(enhanced.response);
+          }
+        }
+
+        setCurrentStreamingMessage('');
+        setFollowUpQuestions([]);
+      } else {
+        // Use standard message sending
+        let enhancedMessage = message;
+        const ragWasUsed = !!lastRAGResults;
+
+        if (lastRAGResults) {
+          enhancedMessage = `${message}\n\n${lastRAGResults}`;
+          console.log('✅ [RawMaterialsChat] RAG results will be used for this message');
+        }
+
+        // Send with metadata
+        if (enableEnhancements) {
+          await chat.sendMessage(enhancedMessage);
+        } else {
+          await chat.sendMessage(enhancedMessage, {
+            ragUsed: ragWasUsed,
+            ragSources: ragWasUsed ? ['vector-database'] : undefined
+          });
+        }
+
+        console.log('✅ [RawMaterialsChat] Message sent successfully');
+      }
+
+      setLastRAGResults(''); // Clear RAG results after sending
+    } catch (error) {
+      console.error('❌ [RawMaterialsChat] Error sending message:', error);
+      setCurrentStreamingMessage('');
     }
+  };
 
-    // Pass RAG metadata to track that RAG was used
-    await chat.sendMessage(enhancedMessage, {
-      ragUsed: ragWasUsed,
-      ragSources: ragWasUsed ? ['vector-database'] : undefined
-    });
+  // Parse RAG results from formatted string
+  const parseRAGResults = (formattedResults: string): any[] => {
+    if (!formattedResults) return [];
 
-    setLastRAGResults(''); // Clear RAG results after sending
+    try {
+      return formattedResults
+        .split('\n\n')
+        .filter(line => line.trim() && line.startsWith('**'))
+        .map(line => ({
+          content: line.replace(/\*\*\d+\.\*\*/g, '').trim(),
+          score: 0.8 // Default score for parsed results
+        }));
+    } catch (error) {
+      console.warn('⚠️ Failed to parse RAG results:', error);
+      return [];
+    }
+  };
+
+  // Handle feedback submission for enhanced chat
+  const handleFeedback = useCallback((messageId: string, isPositive: boolean) => {
+    const feedbackType = isPositive ? 'helpful' : 'not_helpful';
+    const score = isPositive ? 5 : 2;
+
+    if (enableEnhancements && chat.submitFeedback) {
+      chat.submitFeedback(messageId, { type: feedbackType, score });
+    } else {
+      // Use legacy feedback
+      const responseId = messageId;
+      const aiResponse = chat.messages.find(m => m.id === messageId)?.content || '';
+
+      feedback.submitFeedback({
+        responseId,
+        userId,
+        aiResponse,
+        aiModel: 'gpt-4',
+        prompt: chat.messages.find(m => m.role === 'user')?.content || '',
+        type: feedbackType,
+        score,
+      });
+    }
+  }, [chat, feedback, enableEnhancements, userId]);
+
+  // Handle follow-up question click
+  const handleFollowUpClick = useCallback((question: string) => {
+    if (enableEnhancements && chat.messages.length > 0) {
+      // For enhanced chat, just log the selection (user will send manually)
+      console.log('Follow-up question selected:', question);
+    } else {
+      // For legacy chat, send automatically
+      handleSendMessage(question);
+    }
+  }, [chat, enableEnhancements, handleSendMessage]);
+
+  // Handle preference updates for enhanced chat
+  const handlePreferenceUpdate = useCallback((key: keyof UserPreferences, value: any) => {
+    if (enableEnhancements && chat.updateUserPreferences) {
+      chat.updateUserPreferences({ [key]: value });
+    }
+  }, [chat, enableEnhancements]);
+
+  // Get confidence color
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.8) return 'text-green-600';
+    if (confidence >= 0.6) return 'text-yellow-600';
+    return 'text-red-600';
   };
 
   const handleClearHistory = async () => {
@@ -169,31 +415,87 @@ export function RawMaterialsChat({
       return null;
     }
 
-    const responseId = message.metadata?.responseId;
-    if (!responseId) {
-      return null;
-    }
+    const responseId = message.metadata?.responseId || message.id;
 
-    const hasFeedback = feedback.getFeedbackHistory(responseId).length > 0;
+    // Check if feedback already submitted for this response
+    const hasFeedback = feedback.getFeedbackHistory?.(responseId)?.length > 0;
+
+    // Get response score for enhanced chat
+    const responseScore = enableEnhancements && responseId
+      ? responseScores.get(responseId)
+      : null;
 
     return (
       <div className="mt-2 space-y-2">
-        <FeedbackCollector
-          responseId={responseId}
-          userId={userId}
-          aiResponse={message.content}
-          aiModel={message.metadata?.model || 'unknown'}
-          prompt={chat.messages.find(m => m.id === message.id)?.content || ''}
-          onSubmit={feedback.submitFeedback}
-          disabled={hasFeedback || feedback.isSubmitting}
-          showSubmitted={hasFeedback}
-        />
+        {/* Enhanced Feedback Buttons */}
+        {enableEnhancements ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleFeedback(responseId, true)}
+              disabled={hasFeedback || chat.isLoading}
+              className="h-6 px-2 text-xs"
+            >
+              <ThumbsUp className="w-3 h-3 mr-1" />
+              Helpful
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleFeedback(responseId, false)}
+              disabled={hasFeedback || chat.isLoading}
+              className="h-6 px-2 text-xs"
+            >
+              <ThumbsDown className="w-3 h-3 mr-1" />
+              Not Helpful
+            </Button>
+          </div>
+        ) : (
+          <FeedbackCollector
+            responseId={responseId}
+            userId={userId}
+            aiResponse={message.content}
+            aiModel={message.metadata?.model || 'unknown'}
+            prompt={chat.messages.find(m => m.id === message.id)?.content || ''}
+            onSubmit={feedback.submitFeedback}
+            disabled={hasFeedback || feedback.isSubmitting}
+            showSubmitted={hasFeedback}
+          />
+        )}
 
-        {/* Show if RAG was used for this response */}
-        {message.content.includes('Vector Database Search Results') && (
+        {/* Response Quality Score for Enhanced Chat */}
+        {enableEnhancements && responseScore && (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className={`text-xs ${getConfidenceColor(responseScore.overallScore)}`}>
+                Quality: {(responseScore.overallScore * 100).toFixed(0)}%
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                Sources: {responseScore.sources.length}
+              </Badge>
+            </div>
+            {responseScore.overallScore < 0.7 && (
+              <div className="text-xs text-orange-600">
+                ⚠️ Response enhanced for accuracy
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Legacy RAG indicator */}
+        {!enableEnhancements && message.content.includes('Vector Database Search Results') && (
           <Badge variant="secondary" className="text-xs">
             <Search className="w-3 h-3 mr-1" />
             Enhanced with Database Search
+          </Badge>
+        )}
+
+        {/* Enhanced RAG indicator */}
+        {enableEnhancements && message.content.includes('Confidence:') && (
+          <Badge variant="secondary" className="text-xs bg-blue-50 border-blue-300">
+            <Brain className="w-3 h-3 mr-1" />
+            Smart Search
           </Badge>
         )}
       </div>
