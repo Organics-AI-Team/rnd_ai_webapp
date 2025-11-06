@@ -272,7 +272,8 @@ export function AgentChat({
       messageActions={renderMessageActions}
       placeholder={getPlaceholder()}
       showTimestamp={true}
-      className="border border-slate-200 rounded-lg shadow-sm"
+      maxHeight="h-full"
+      className="border border-slate-200 rounded-lg shadow-sm h-full flex flex-col"
       {...baseChatProps}
     />
   );

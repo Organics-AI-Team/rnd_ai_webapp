@@ -119,15 +119,27 @@ export const searchMaterialsTool = {
       // Format results with full data for table display
       const formatted_results = filtered_results.slice(0, params.limit || 5).map((result, index) => {
         const doc = result.document;
+
+        // Handle field mapping between different collections
+        const material_code = doc.rm_code || 'N/A';
+        const trade_name = doc.trade_name || doc.name || 'N/A';
+        const inci_name = doc.inci_name || doc.INCI_name || 'N/A';
+        const supplier = doc.supplier || 'N/A';
+        const company = doc.company_name || 'N/A';
+        const cost = doc.rm_cost || 0;
+        const benefits = Array.isArray(doc.benefits)
+          ? doc.benefits.join(', ')
+          : (typeof doc.benefits === 'string' ? doc.benefits : 'No benefits information');
+
         return {
           rank: index + 1,
-          material_code: doc.rm_code || 'N/A',
-          trade_name: doc.trade_name || 'N/A',
-          inci_name: doc.inci_name || 'N/A',
-          supplier: doc.supplier || 'N/A',
-          company: doc.company_name || 'N/A',
-          cost_per_kg: doc.rm_cost ? `฿${doc.rm_cost}` : 'Contact supplier',
-          benefits: doc.benefits || 'No benefits information',
+          material_code: material_code,
+          trade_name: trade_name,
+          inci_name: inci_name,
+          supplier: supplier,
+          company: company,
+          cost_per_kg: cost ? `฿${cost}` : 'Contact supplier',
+          benefits: benefits,
           availability: result.availability,
           status: result.availability === 'in_stock' ? '✅ In Stock' : '📚 FDA Database',
           match_score: (result.score * 100).toFixed(1) + '%',
@@ -135,7 +147,7 @@ export const searchMaterialsTool = {
           // Additional data for comprehensive display
           cas_no: doc.cas_no || 'N/A',
           einecs_no: doc.einecs_no || 'N/A',
-          category: doc.category || 'N/A'
+          category: doc.category || doc.Function || 'N/A'
         };
       });
 
@@ -154,7 +166,7 @@ export const searchMaterialsTool = {
         search_mode: params.collection || 'both',
         results: formatted_results,
         table_display: table_markdown,
-        instruction_to_ai: 'Present the results using the table_display field. Show the markdown table directly to the user for easy reading.'
+        instruction_to_ai: 'แสดงผลลัพธ์โดยใช้ table_display เท่านั้น ตอบเป็นภาษาไทยทั้งหมด แสดงตาราง markdown ให้ผู้ใช้เห็นโดยตรง'
       };
 
     } catch (error: any) {
@@ -260,7 +272,7 @@ export const findMaterialsByBenefitTool = {
 
     count: z.number().optional().default(5).describe('Number of materials to return'),
 
-    prioritize_stock: z.boolean().optional().default(true).describe('Whether to prioritize in-stock materials'),
+    prioritize_stock: z.boolean().optional().default(false).describe('Whether to prioritize in-stock materials'),
 
     additional_filters: z.object({
       max_cost: z.number().optional().describe('Maximum cost per kg in Baht'),
@@ -309,15 +321,35 @@ export const findMaterialsByBenefitTool = {
       // Format results with table support
       const formatted = filtered_results.slice(0, params.count || 5).map((result, index) => {
         const doc = result.document;
+
+        // Handle field mapping between different collections
+        const material_code = doc.rm_code || 'N/A';
+        const name = doc.trade_name || doc.name || 'N/A';
+        const inci = doc.inci_name || doc.INCI_name || 'N/A';
+        const supplier = doc.supplier || 'N/A';
+        const cost = doc.rm_cost || 0;
+
+        // Handle benefits field properly
+        let benefits = 'No information';
+        let key_benefits = 'N/A';
+
+        if (Array.isArray(doc.benefits)) {
+          benefits = doc.benefits.join(', ');
+          key_benefits = doc.benefits[0] || 'N/A';
+        } else if (typeof doc.benefits === 'string') {
+          benefits = doc.benefits;
+          key_benefits = doc.benefits.split('.')[0] || doc.benefits.substring(0, 100);
+        }
+
         return {
           rank: index + 1,
-          material_code: doc.rm_code || 'N/A',
-          name: doc.trade_name || 'N/A',
-          inci: doc.inci_name || 'N/A',
-          key_benefits: doc.benefits?.split('.')[0] || 'N/A', // First sentence
-          full_benefits: doc.benefits || 'No information',
-          supplier: doc.supplier || 'N/A',
-          cost: doc.rm_cost ? `฿${doc.rm_code}/kg` : 'Contact supplier',
+          material_code: material_code,
+          name: name,
+          inci: inci,
+          key_benefits: key_benefits,
+          full_benefits: benefits,
+          supplier: supplier,
+          cost: cost ? `฿${cost}/kg` : 'Contact supplier',
           availability: result.availability === 'in_stock'
             ? '✅ In Stock'
             : '📚 FDA Database',
@@ -356,7 +388,7 @@ export const findMaterialsByBenefitTool = {
         },
         materials: formatted,
         table_display: format_table(formatted),
-        instruction_to_ai: 'Present the results using the table_display field. Show the markdown table to the user.'
+        instruction_to_ai: 'แสดงผลลัพธ์โดยใช้ table_display เท่านั้น ตอบเป็นภาษาไทยทั้งหมด แสดงตาราง markdown ให้ผู้ใช้เห็นโดยตรง'
       };
 
     } catch (error: any) {

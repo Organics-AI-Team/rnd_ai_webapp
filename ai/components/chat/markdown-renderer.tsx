@@ -38,7 +38,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
 
     // Paragraphs
     p: ({ children }) => (
-      <p className="mb-4 text-slate-800 leading-relaxed">{children}</p>
+      <p className="mb-4 text-slate-800 leading-relaxed break-words overflow-wrap-anywhere">{children}</p>
     ),
 
     // Lists
@@ -144,7 +144,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   };
 
   return (
-    <div className="markdown-content text-slate-800 break-words">
+    <div className="markdown-content text-slate-800 break-words overflow-x-auto">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={components}

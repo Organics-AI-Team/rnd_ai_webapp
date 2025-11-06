@@ -24,6 +24,10 @@ const IN_STOCK_KEYWORDS = [
   'in stock',
   'มีในสต็อก',
   'มีอยู่',
+  'สารที่มีอยู่',
+  'ที่เรามี',
+  'ที่มีอยู่ใน stock',
+  'สารที่เรามี',
   'available',
   'can buy',
   'purchase',
@@ -150,14 +154,14 @@ export function route_query_to_collections(
     };
   }
 
-  // Default: Search in-stock first (practical business logic)
-  // Users typically care about what they can actually use
+  // Default: Search all FDA ingredients (comprehensive database)
+  // Use stock-only when explicitly requested
   return {
-    collections: ['in_stock', 'all_fda'],
-    pinecone_namespaces: ['in_stock', 'all_fda'],
+    collections: ['all_fda'],
+    pinecone_namespaces: ['all_fda'],
     confidence: 0.7,
-    reasoning: 'Default unified search - prioritizing in-stock materials',
-    search_mode: 'prioritize_stock'
+    reasoning: 'Default search using comprehensive FDA database (raw_meterials_console)',
+    search_mode: 'fda_only'
   };
 }
 
@@ -173,7 +177,7 @@ export function format_response_with_source_context(
     if (search_mode === 'stock_only') {
       return 'ไม่พบวัตถุดิบที่ต้องการในสต็อกปัจจุบัน แต่สามารถค้นหาในฐานข้อมูล FDA ทั้งหมดได้';
     }
-    return 'ไม่พบวัตถุดิบที่ต้องการ';
+    return 'ไม่พบวัตถุดิบที่ต้องการในฐานข้อมูล FDA';
   }
 
   // Group results by source
@@ -189,12 +193,12 @@ export function format_response_with_source_context(
 
   let context = '';
 
-  if (in_stock_results.length > 0) {
-    context += `\n\n✅ **พบ ${in_stock_results.length} รายการในสต็อก** (สามารถสั่งซื้อได้ทันที):\n`;
+  if (fda_results.length > 0) {
+    context += `\n\n📚 **พบ ${fda_results.length} รายการในฐานข้อมูล FDA** (31,179 รายการทั้งหมด):\n`;
   }
 
-  if (fda_results.length > 0 && search_mode !== 'stock_only') {
-    context += `\n\n📚 **พบ ${fda_results.length} รายการในฐานข้อมูล FDA** (อาจต้องสั่งซื้อเพิ่มเติม):\n`;
+  if (in_stock_results.length > 0) {
+    context += `\n\n✅ **พบ ${in_stock_results.length} รายการในสต็อก** (สามารถสั่งซื้อได้ทันที):\n`;
   }
 
   return context;
