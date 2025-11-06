@@ -85,6 +85,33 @@ export class GeminiToolService extends BaseAIService {
         type = 'OBJECT';
       } else if (typeName === 'ZodArray') {
         type = 'ARRAY';
+
+        // For arrays, we need to determine the item type
+        const arrayType = innerType._def?.type;
+        let itemType = 'STRING'; // Default array item type
+
+        if (arrayType?._def?.typeName === 'ZodNumber') {
+          itemType = 'NUMBER';
+        } else if (arrayType?._def?.typeName === 'ZodBoolean') {
+          itemType = 'BOOLEAN';
+        } else if (arrayType?._def?.typeName === 'ZodObject') {
+          itemType = 'OBJECT';
+        } else if (arrayType?._def?.typeName === 'ZodArray') {
+          itemType = 'ARRAY'; // Nested array
+        }
+
+        // Get description from original zodField
+        const description = zodField.description || innerType.description || `Parameter: ${key}`;
+
+        properties[key] = {
+          type,
+          description,
+          items: {
+            type: itemType
+          }
+        };
+
+        continue; // Skip the rest since we already handled this property
       } else if (typeName === 'ZodEnum') {
         type = 'STRING'; // Enums are strings with restricted values
       }
@@ -567,19 +594,48 @@ ${originalPrompt}`;
     return `
 You are Dr. Arun "Ake" Prasertkul, R&D Raw Material Specialist.
 
-**CRITICAL: ALWAYS USE TOOLS for material queries!**
+🔥 **CRITICAL: ALWAYS USE TOOLS - NEVER GIVE DIRECT ADVICE WITHOUT SEARCHING!** 🔥
 
 Available Tools:
-1. search_materials - General search for ingredients/materials
-2. find_materials_by_benefit - Find materials for specific benefits (like "ลดสิว", "acne")
-3. check_material_availability - Check stock availability
+1. search_fda_database - Search FDA database for ingredients/materials (31,179 items)
+2. check_stock_availability - Check stock availability (3,111 items)
+3. get_material_profile - Get detailed material profile with benefits and use cases
+4. search_materials_by_usecase - Find materials for specific product types (serum, cream, mask)
 
-**USAGE RULES:**
-- User asks "แนะนำ สาร 5 ตัวที่ช่วยลดสิว" → Call find_materials_by_benefit(benefit="สิว", count=5)
-- User asks "หาวัตถุดิบสำหรับ..." → Call search_materials(query="...")
-- User asks "มี [material] ไหม?" → Call check_material_availability(material_name_or_code="...")
+**MANDATORY TOOL USAGE FOR THESE QUERY TYPES:**
 
-**ALWAYS use tools before providing recommendations! Present results in table format, then add expert analysis.**
+✅ **ALWAYS CALL search_fda_database WHEN USER ASKS:**
+- "แนะนำ..." (recommend...)
+- "หา..." (find...)
+- "ค้นหา..." (search...)
+- "มีอะไร..." (what is there...)
+- "สารสำหรับ..." (ingredients for...)
+- "วัตถุดิบสำหรับ..." (materials for...)
+- "list X ingredients"
+- Any request for ingredient recommendations
+
+✅ **ALWAYS CALL check_stock_availability WHEN USER ASKS:**
+- "มี...ไหม" (do you have...)
+- "สั่งได้ไหม" (can I order...)
+- "เรามี..." (do we have...)
+
+✅ **ALWAYS CALL get_material_profile WHEN USER ASKS:**
+- "สารนี้ทำอะไร" (what does this ingredient do)
+- "...ใช้ทำอะไร" (what is ... used for)
+
+**QUERY EXAMPLES → TOOL CALLS:**
+- "แนะนำ สาร 5 ตัวที่ช่วยลดสิว" → search_fda_database(query="ลดสิว", limit=5)
+- "หาวัตถุดิบสำหรับใบหน้า" → search_fda_database(query="ใบหน้า", limit=5)
+- "list antioxidant ingredients" → search_fda_database(query="antioxidant", limit=5)
+- "มี vitamin C ไหม" → check_stock_availability(query="vitamin C")
+
+⚠️ **WARNING: NEVER respond with general advice without calling tools first!**
+⚠️ **If search returns 0 results, suggest alternative search terms in English/Thai!**
+
+**RESPONSE FORMAT:**
+1. Call tool first
+2. Present results in table format
+3. Add expert analysis
 `;
   }
 

@@ -67,14 +67,20 @@ export function get_agent_instructions(): string {
 
   try {
     if (systemPromptContent) {
-      // Add critical tool usage reminder at the top
-      const enhancedPrompt = `🔧 **CRITICAL TOOL USAGE INSTRUCTIONS** 🔧
+      // Temporarily use simplified prompt to test tool calling
+      const enhancedPrompt = `🔥 **ALWAYS USE TOOLS FOR ANY INGREDIENT QUERIES** 🔥
 
-You have FOUR specific tools available. ALWAYS use them for ANY factual or database-backed queries:
+You are Dr. Ake, Raw Materials Specialist.
 
-1. **search_fda_database** - ค้นหาข้อมูลวัตถุดิบจากฐานข้อมูล FDA (31,179 รายการ)
-   - ใช้เมื่อต้องการค้นหาข้อมูลครบถ้วนหรือสำรวจสารใหม่
-   - รองรับคำถามเรื่องประโยชน์, หมวดหมู่, การเปรียบเทียบ
+MANDATORY TOOL USAGE:
+- "แนะนำ" / "หา" / "ค้นหา" → search_fda_database
+- "มีไหม" / "สั่งได้" → check_stock_availability
+- "สารนี้ทำอะไร" → get_material_profile
+- "สารสำหรับ" → search_materials_by_usecase
+
+NEVER give advice without calling tools first!
+
+--- ORIGINAL PROMPT ---
 
 2. **check_stock_availability** - ตรวจสอบวัตถุดิบที่มีในสต็อก (3,111 รายการ)
    - ใช้เมื่อต้องการรู้ว่า \"เรามีไหม\", \"สั่งได้เลยไหม\"
@@ -150,5 +156,13 @@ Available Tools:
  */
 export const RawMaterialsAgent = {
   initialize: initialize_raw_materials_agent,
-  getInstructions: get_agent_instructions
+  getInstructions: get_agent_instructions,
+  // Add LangGraph agent
+  LangGraphAgent: () => {
+    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API_KEY not found in environment variables');
+    }
+    return require('./langgraph-agent').createLangGraphRawMaterialsAgent(geminiApiKey);
+  }
 };

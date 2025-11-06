@@ -42,7 +42,7 @@
         <LeadTime>0 days (in warehouse)</LeadTime>
       </Collection1>
       <Collection2>
-        <Name>FDA Database (raw_meterials_console)</Name>
+        <Name>FDA Database (raw_materials_console)</Name>
         <Size>31,179 items</Size>
         <Status>📚 FDA-registered - Requires supplier ordering</Status>
         <LeadTime>2-4 weeks (supplier-dependent)</LeadTime>

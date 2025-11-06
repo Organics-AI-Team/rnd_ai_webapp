@@ -40,10 +40,10 @@ const COLLECTIONS: CollectionConfig[] = [
     source_tag: 'raw_materials_real_stock'
   },
   {
-    name: 'raw_meterials_console',           // ← MongoDB Collection 2
+    name: 'raw_materials_console',           // ← MongoDB Collection 2
     namespace: 'all_fda',                    // ← Pinecone Namespace 2
     description: 'All FDA-registered ingredients',
-    source_tag: 'raw_meterials_console'
+    source_tag: 'raw_materials_console'
   }
 ];
 ```
@@ -63,7 +63,7 @@ MongoDB Collection 1                      Pinecone Index: raw-materials-stock
                                           │  Metadata per vector:       │
 MongoDB Collection 2                      │  - source: 'raw_materials   │
 ┌────────────────────────┐               │             _real_stock'    │
-│ raw_meterials_console  │  Migration   │  - namespace: 'in_stock'    │
+│ raw_materials_console  │  Migration   │  - namespace: 'in_stock'    │
 │ (31,179 documents)     │─────────────>│  - collection: <name>       │
 └────────────────────────┘   Script      │  - availability: 'in_stock' │
                                           │                             │
@@ -71,8 +71,7 @@ MongoDB Collection 2                      │  - source: 'raw_materials   │
                                           │  (~187,074 vectors)         │
                                           │                             │
                                           │  Metadata per vector:       │
-                                          │  - source: 'raw_meterials   │
-                                          │             _console'       │
+                                          │  - source: 'raw_materials_console' │
                                           │  - namespace: 'all_fda'     │
                                           │  - collection: <name>       │
                                           │  - availability: 'fda_only' │
@@ -124,7 +123,7 @@ MongoDB Collection 2                      │  - source: 'raw_materials   │
            ├─> Queries MongoDB collection directly
            │   └─> Collection: options.mongodb_collection
            │       ├─> 'raw_materials_real_stock' (if in_stock)
-           │       └─> 'raw_meterials_console' (if all_fda)
+           │       └─> 'raw_materials_console' (if all_fda)
 
            Strategy 2: Metadata Filter (Pinecone)
            ├─> Queries Pinecone with metadata filters
@@ -204,10 +203,10 @@ MongoDB Collection 2                      │  - source: 'raw_materials   │
 | User Query | Detected Keywords | Namespaces Searched | MongoDB Collections |
 |------------|-------------------|---------------------|---------------------|
 | "RM000001" | (exact code) | `in_stock` only | `raw_materials_real_stock` |
-| "วัตถุดิบทั้งหมดที่มี vitamin C" | "ทั้งหมด" | `all_fda` only | `raw_meterials_console` |
+| "วัตถุดิบทั้งหมดที่มี vitamin C" | "ทั้งหมด" | `all_fda` only | `raw_materials_console` |
 | "มี Hyaluronic Acid ไหม" | "มีไหม" | Both (`in_stock` first) | Both collections |
 | "moisturizing ingredient" | (default) | Both (`in_stock` first) | Both collections |
-| "all FDA ingredients" | "all", "fda" | `all_fda` only | `raw_meterials_console` |
+| "all FDA ingredients" | "all", "fda" | `all_fda` only | `raw_materials_console` |
 | "ingredients in stock" | "in stock" | `in_stock` only | `raw_materials_real_stock` |
 
 ---
@@ -229,7 +228,7 @@ MongoDB Collection 2                      │  - source: 'raw_materials   │
    - Metadata tag: `availability: 'in_stock'`
 
 2. **All FDA Ingredients (31,179 items)**
-   - MongoDB Collection: `raw_meterials_console`
+   - MongoDB Collection: `raw_materials_console`
    - Pinecone Namespace: `all_fda`
    - ~187,074 chunks (6 per document)
    - Metadata tag: `availability: 'fda_only'`
@@ -295,7 +294,7 @@ curl -X POST http://localhost:3000/api/rag/unified-search \
 **The raw-materials-ai agent connects to:**
 - ✅ **1 Pinecone Index:** `raw-materials-stock`
 - ✅ **2 Namespaces:** `in_stock` and `all_fda`
-- ✅ **2 MongoDB Collections:** `raw_materials_real_stock` and `raw_meterials_console`
+- ✅ **2 MongoDB Collections:** `raw_materials_real_stock` and `raw_materials_console`
 - ✅ **Smart Routing:** Automatically selects namespace based on query keywords
 - ✅ **Unified Results:** Merges results from both sources with clear indicators
 
