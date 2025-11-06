@@ -15,7 +15,8 @@ ai/
 │   ├── providers/                 # AI provider implementations
 │   │   ├── openai-service.ts      # OpenAI GPT service
 │   │   ├── gemini-service.ts      # Google Gemini service
-│   │   └── langchain-service.ts   # LangChain integration
+│   │   ├── langchain-service.ts   # LangChain integration
+│   │   └── langgraph-service.ts   # LangGraph workflow orchestration
 │   └── rag/                       # RAG and vector search services
 │       └── pinecone-service.ts    # Pinecone vector database service
 ├── components/

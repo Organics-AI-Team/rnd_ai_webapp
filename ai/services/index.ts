@@ -7,5 +7,6 @@ export * from './core/feedback-analyzer';
 export * from './providers/openai-service';
 export * from './providers/gemini-service';
 export * from './providers/langchain-service';
+export * from './providers/langgraph-service';
 
 export * from './rag/pinecone-service';
