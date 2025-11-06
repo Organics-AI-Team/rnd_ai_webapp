@@ -283,6 +283,7 @@ export function RawMaterialsChat({
       messageActions={renderMessageActions}
       placeholder="Ask about raw materials, ingredients, formulations, or suppliers..."
       showTimestamp={true}
+      maxHeight="h-full"
       className="border border-gray-300 rounded-lg h-full"
       {...baseChatProps}
     />
