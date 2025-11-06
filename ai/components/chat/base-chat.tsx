@@ -107,7 +107,7 @@ export function BaseChat({
         )}
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center justify-between gap-2 mb-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-slate-700">
@@ -138,7 +138,7 @@ export function BaseChat({
         {message.role === 'assistant' ? (
           <MarkdownRenderer content={message.content} />
         ) : (
-          <div className="text-slate-800 whitespace-pre-wrap break-words">
+          <div className="text-slate-800 whitespace-pre-wrap break-words overflow-wrap-anywhere">
             {message.content}
           </div>
         )}
@@ -153,58 +153,87 @@ export function BaseChat({
   );
 
   return (
-    <div className={`flex flex-col flex-1 min-h-0 ${className}`}>
-      {/* Header */}
-      {header && (
-        <div className="flex-shrink-0 p-4 border-b border-slate-200">
-          {header}
-        </div>
-      )}
-
-      {/* Messages Container - Scrollable Area (takes remaining space, scrolls when overflow) */}
-      <div className="flex-1 overflow-y-auto min-h-0" onScroll={handleScroll}>
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-500">
-            <Bot className="w-12 h-12 mb-4 text-slate-300" />
-            <p className="text-lg font-medium">Start a conversation</p>
-            <p className="text-sm mt-1">Ask me anything!</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-200">
-            {messages.map(renderMessage)}
+    <>
+      {/* Main Chat Container */}
+      <div className={`flex flex-col flex-1 min-h-0 ${maxHeight} ${className}`}>
+        {/* Header - Fixed at top */}
+        {header && (
+          <div className="flex-shrink-0 p-4 border-b border-slate-200 bg-white">
+            {header}
           </div>
         )}
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Footer - Fixed at bottom, doesn't scroll */}
-      {footer && (
-        <div className="flex-shrink-0 p-4 border-t border-slate-200 bg-white">
-          {footer}
+        {/* Messages Container - Independent scrolling area */}
+        <div className="flex-1 overflow-y-auto min-h-0 pb-24" onScroll={handleScroll}>
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-500">
+              <Bot className="w-12 h-12 mb-4 text-slate-300" />
+              <p className="text-lg font-medium">Start a conversation</p>
+              <p className="text-sm mt-1">Ask me anything!</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-200">
+              {messages.map(renderMessage)}
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
-      )}
 
-      {/* Input Form - Fixed at bottom, doesn't scroll */}
-      <div className="flex-shrink-0 p-4 border-t border-slate-200 bg-white">
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            disabled={isLoading}
-            className="min-h-[40px] max-h-32 resize-none"
-            rows={1}
-          />
-          <Button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="px-4"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
-        </form>
+        {/* Footer - Outside scrollable area */}
+        {footer && (
+          <div className="flex-shrink-0 p-4 border-t border-slate-200 bg-white">
+            {footer}
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Fixed Input - simplified approach */}
+      <div className="fixed bottom-0 left-64 right-0 lg:left-20 z-50 transition-all duration-300">
+        <div className="p-3 border-t border-slate-200 bg-white shadow-lg">
+          <form onSubmit={handleSubmit} className="flex gap-2 items-center px-4">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              disabled={isLoading}
+              className="flex-1 min-h-[40px] max-h-32 resize-none"
+              rows={1}
+            />
+            <Button
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className="px-3 py-2 h-[40px] shrink-0"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </form>
+        </div>
+      </div>
+
+      {/* Mobile Input */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50">
+        <div className="p-3 border-t border-slate-200 bg-white shadow-lg">
+          <form onSubmit={handleSubmit} className="flex gap-2 items-center px-4">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              disabled={isLoading}
+              className="flex-1 min-h-[40px] max-h-32 resize-none"
+              rows={1}
+            />
+            <Button
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className="px-3 py-2 h-[40px] shrink-0"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </form>
+        </div>
+      </div>
+    </>
   );
 }
