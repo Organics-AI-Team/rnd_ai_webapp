@@ -77,8 +77,19 @@ const nextConfig = {
         'mongodb/lib/mongo_client_auth_providers': 'mongodb/lib/mongo_client_auth_providers',
         '@langchain/langgraph': '@langchain/langgraph',
         '@pinecone-database/pinecone': '@pinecone-database/pinecone',
+        '@tensorflow/tfjs': '@tensorflow/tfjs',
         'node:async_hooks': 'node:async_hooks',
-        'node:stream': 'node:stream'
+        'node:stream': 'node:stream',
+        // Enhanced services exclusions
+        '@/ai/services/knowledge/cosmetic-knowledge-sources': '@/ai/services/knowledge/cosmetic-knowledge-sources',
+        '@/ai/services/quality/cosmetic-quality-scorer': '@/ai/services/quality/cosmetic-quality-scorer',
+        '@/ai/services/regulatory/cosmetic-regulatory-sources': '@/ai/services/regulatory/cosmetic-regulatory-sources',
+        '@/ai/services/credibility/cosmetic-credibility-weighting': '@/ai/services/credibility/cosmetic-credibility-weighting',
+        '@/ai/services/response/response-reranker': '@/ai/services/response/response-reranker',
+        '@/ai/services/rag/enhanced-hybrid-search-service': '@/ai/services/rag/enhanced-hybrid-search-service',
+        '@/ai/services/ml/preference-learning-service': '@/ai/services/ml/preference-learning-service',
+        '@/ai/agents/raw-materials-ai/enhanced-raw-materials-agent': '@/ai/agents/raw-materials-ai/enhanced-raw-materials-agent',
+        '@/ai/agents/sales-rnd-ai/enhanced-sales-rnd-agent': '@/ai/agents/sales-rnd-ai/enhanced-sales-rnd-agent'
       };
 
       config.resolve.extensions = ['.js', '.jsx', '.ts', '.tsx'];
