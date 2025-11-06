@@ -150,7 +150,13 @@ export class CosmeticKnowledgeService {
   private knowledgeSources: Map<string, CosmeticKnowledgeSource> = new Map();
 
   constructor(pineconeApiKey: string) {
-    this.searchService = new EnhancedHybridSearchService(pineconeApiKey);
+    this.searchService = new EnhancedHybridSearchService(
+      pineconeApiKey,
+      process.env.MONGODB_URI || '',
+      process.env.MONGODB_DB_NAME || 'rnd_cosmetics',
+      'raw_materials',
+      'cosmetic-ingredients-index'
+    );
     this.initializeKnowledgeSources();
   }
 
@@ -223,6 +229,29 @@ export class CosmeticKnowledgeService {
       const scoreB = this.calculateSourceRelevanceScore(b, queryType, context);
       return scoreB - scoreA;
     });
+  }
+
+  private calculateSourceRelevanceScore(
+    source: CosmeticKnowledgeSource,
+    queryType: CosmeticQueryType,
+    context: any
+  ): number {
+    let score = source.credibility;
+
+    // Boost regulatory sources for safety queries
+    if (queryType.includes('safety') && source.type === 'regulatory') {
+      score += 0.2;
+    }
+
+    // Boost scientific sources for formulation queries
+    if (queryType.includes('formulation') && source.type === 'scientific') {
+      score += 0.2;
+    }
+
+    // Consider recency for time-sensitive queries
+    score += source.recency * 0.1;
+
+    return score;
   }
 
   private classifyCosmeticQuery(query: string): CosmeticQueryType {
@@ -313,21 +342,19 @@ export class CosmeticKnowledgeService {
   ): Promise<WeightedSearchResult[]> {
     try {
       // Perform search using the enhanced hybrid search
-      const searchResults = await this.searchService.hybridSearch(query, {
+      const searchResults = await this.searchService.enhancedSearch({
+        query,
         category: 'cosmetics',
-        sourceId: source.id,
-        limit: 20,
-        includeMetadata: true,
-        filters: {
-          type: source.type,
-          region: source.region,
-          category: source.category
-        }
+        topK: 20,
+        includeMetadata: true
       });
 
       // Apply credibility weighting
       return searchResults.map(result => ({
-        ...result,
+        id: result.document?.id || result.document?._id || Math.random().toString(),
+        content: result.document?.content || result.document?.text || JSON.stringify(result.document),
+        score: result.score,
+        metadata: result.document,
         source,
         credibilityWeight: source.credibility,
         weightedScore: result.score * source.credibility,
@@ -573,16 +600,16 @@ export class CosmeticKnowledgeService {
 
       if (supportingResults.length >= 2) {
         consensus.push({
-          topic: insight.topic,
-          statement: insight.statement,
+          topic: insight.category,
+          statement: insight.insight,
           supportingSources: supportingResults.map(r => r.source.name),
           confidenceLevel: this.calculateConsensusConfidence(supportingResults)
         });
       } else if (supportingResults.length === 1) {
         // Potential conflicting information
         conflicts.push({
-          topic: insight.topic,
-          conflictingStatement: insight.statement,
+          topic: insight.category,
+          conflictingStatement: insight.insight,
           source: supportingResults[0].source.name,
           nature: 'single_source_claim'
         });
@@ -604,8 +631,8 @@ export class CosmeticKnowledgeService {
         if (statement.length > 20 && !seenStatements.has(statement)) {
           seenStatements.add(statement);
           insights.push({
-            topic: this.extractTopic(statement),
-            statement,
+            category: this.extractTopic(statement),
+            insight: statement,
             source: result.source.name,
             confidence: result.weightedScore,
             relevance: result.score
@@ -637,7 +664,7 @@ export class CosmeticKnowledgeService {
   private resultSupportsInsight(result: WeightedSearchResult, insight: CosmeticInsight): boolean {
     // Check if result supports the insight
     const resultContent = result.content.toLowerCase();
-    const insightStatement = insight.statement.toLowerCase();
+    const insightStatement = insight.insight.toLowerCase();
 
     // Simple similarity check
     return resultContent.includes(insightStatement.substring(0, 50));

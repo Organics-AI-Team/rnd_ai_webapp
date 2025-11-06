@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useEnhancedChat } from '@/ai/hooks/enhanced/use-enhanced-chat';
-import { StructuredResponse, UserPreferences } from '@/ai/services/enhanced/enhanced-ai-service';
+import { StructuredResponse, EnhancedUserPreferences } from '@/ai/services/enhanced/enhanced-ai-service';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -154,7 +154,7 @@ export function EnhancedChatInterface({ userId, apiKey, className }: EnhancedCha
   }, []);
 
   // Handle preference updates
-  const handlePreferenceUpdate = useCallback((key: keyof UserPreferences, value: any) => {
+  const handlePreferenceUpdate = useCallback((key: keyof EnhancedUserPreferences, value: any) => {
     if (userPreferences) {
       updateUserPreferences({ [key]: value });
     }

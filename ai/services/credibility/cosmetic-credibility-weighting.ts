@@ -3,8 +3,12 @@
  * Specialized credibility assessment for cosmetic industry sources
  */
 
-import { CosmeticKnowledgeSource } from '../knowledge/cosmetic-knowledge-sources';
-import { RegulatorySource } from '../regulatory/cosmetic-regulatory-sources';
+// import { CosmeticKnowledgeSource } from '../knowledge/cosmetic-knowledge-sources';
+// import { RegulatorySource } from '../regulatory/cosmetic-regulatory-sources';
+
+// Temporary types until proper exports are available
+type CosmeticKnowledgeSource = any;
+type RegulatorySource = any;
 
 // Source credibility interfaces
 export interface SourceCredibilityProfile {
@@ -424,18 +428,18 @@ export class CosmeticCredibilityWeightingService {
   }
 
   private calculateBaseScore(profile: SourceCredibilityProfile): number {
-    const { factors } = this.config.weights;
+    const weights = this.config.weights;
     const cf = profile.credibilityFactors;
 
     return (
-      cf.authority * factors.authority +
-      cf.accuracy * factors.accuracy +
-      cf.objectivity * factors.objectivity +
-      cf.currency * factors.currency +
-      cf.coverage * factors.coverage +
-      cf.methodology * factors.methodology +
-      cf.transparency * factors.transparency +
-      cf.peerRecognition * factors.peerRecognition
+      cf.authority * weights.authority +
+      cf.accuracy * weights.accuracy +
+      cf.objectivity * weights.objectivity +
+      cf.currency * weights.currency +
+      cf.coverage * weights.coverage +
+      cf.methodology * weights.methodology +
+      cf.transparency * weights.transparency +
+      cf.peerRecognition * weights.peerRecognition
     );
   }
 
@@ -677,7 +681,7 @@ export class CosmeticCredibilityWeightingService {
     };
   }
 
-  private calculateDistribution(scores: CredibilityScore[]): CredibilityDistribution {
+  private calculateDistribution(scores: CredibilityScore[]): CredibilityDistribution[] {
     const ranges = [
       { min: 0.0, max: 0.3, label: 'Very Low' },
       { min: 0.3, max: 0.5, label: 'Low' },
