@@ -8,7 +8,7 @@ import { logProductActivity } from "@/lib/productLog";
 import { parseArrayField } from "@/lib/array-utils";
 
 export const productsRouter = router({
-  // Get all products for organization (from raw_meterials_console collection)
+  // Get all products for organization (from raw_materials_console collection)
   list: protectedProcedure
     .input(
       z.object({
@@ -47,7 +47,7 @@ export const productsRouter = router({
 
     // Get total count with filter
     const totalCount = await db
-      .collection("raw_meterials_console")
+      .collection("raw_materials_console")
       .countDocuments(searchFilter);
 
     // Build sort object
@@ -59,7 +59,7 @@ export const productsRouter = router({
     sortObj[dbSortField] = sortDirection === "asc" ? 1 : -1;
 
     const rawMaterials = await db
-      .collection("raw_meterials_console")
+      .collection("raw_materials_console")
       .find(searchFilter)
       .sort(sortObj)
       .skip(offset)
@@ -72,7 +72,7 @@ export const productsRouter = router({
     });
     const favorites = organization?.favoriteIngredients || [];
 
-    // Map raw_meterials_console fields to product fields for frontend compatibility
+    // Map raw_materials_console fields to product fields for frontend compatibility
     const products = rawMaterials.map((material: any, index: number) => {
 
       // Prioritize trade_name, fallback to INCI_name
@@ -108,14 +108,14 @@ export const productsRouter = router({
     };
   }),
 
-  // Get single product (from raw_meterials_console collection)
+  // Get single product (from raw_materials_console collection)
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
       const client = await clientPromise;
       const db = client.db();
 
-      const material: any = await db.collection("raw_meterials_console").findOne({
+      const material: any = await db.collection("raw_materials_console").findOne({
         _id: new ObjectId(input.id),
       });
 
@@ -152,10 +152,10 @@ export const productsRouter = router({
       const db = client.db();
 
       // Get total count of materials
-      const totalCount = await db.collection("raw_meterials_console").countDocuments();
+      const totalCount = await db.collection("raw_materials_console").countDocuments();
 
       // Try to get the latest rm_code to check if there's a higher number
-      const latestMaterial = await db.collection("raw_meterials_console")
+      const latestMaterial = await db.collection("raw_materials_console")
         .find({})
         .sort({ _id: -1 })
         .limit(1)
@@ -196,10 +196,10 @@ export const productsRouter = router({
       const db = client.db();
 
       // Always auto-generate rm_code: Get total count and use as next number
-      const totalCount = await db.collection("raw_meterials_console").countDocuments();
+      const totalCount = await db.collection("raw_materials_console").countDocuments();
 
       // Try to get the latest rm_code to check if there's a higher number
-      const latestMaterial = await db.collection("raw_meterials_console")
+      const latestMaterial = await db.collection("raw_materials_console")
         .find({})
         .sort({ _id: -1 })
         .limit(1)
@@ -218,7 +218,7 @@ export const productsRouter = router({
       const rmCode = `RM${String(maxNumber + 1).padStart(6, '0')}`;
 
       const now = new Date();
-      const result = await db.collection("raw_meterials_console").insertOne({
+      const result = await db.collection("raw_materials_console").insertOne({
         rm_code: rmCode,
         trade_name: input.productName,
         inci_name: input.inciName || "",
@@ -273,7 +273,7 @@ export const productsRouter = router({
       const { id, ...updateData } = input;
 
       // Get current material data before update
-      const currentMaterial = await db.collection("raw_meterials_console").findOne({
+      const currentMaterial = await db.collection("raw_materials_console").findOne({
         _id: new ObjectId(id),
       });
 
@@ -283,7 +283,7 @@ export const productsRouter = router({
 
       // If updating material code, check it doesn't conflict
       if (updateData.productCode) {
-        const existingMaterial = await db.collection("raw_meterials_console").findOne({
+        const existingMaterial = await db.collection("raw_materials_console").findOne({
           rm_code: updateData.productCode,
           _id: { $ne: new ObjectId(id) },
         });
@@ -293,7 +293,7 @@ export const productsRouter = router({
         }
       }
 
-      // Build update object with raw_meterials_console field names
+      // Build update object with raw_materials_console field names
       const rawMaterialUpdate: any = {
         updatedAt: new Date(), // Always update timestamp
       };
@@ -311,7 +311,7 @@ export const productsRouter = router({
         rawMaterialUpdate.usecase_cached = updateData.details;
       }
 
-      const result = await db.collection("raw_meterials_console").updateOne(
+      const result = await db.collection("raw_materials_console").updateOne(
         {
           _id: new ObjectId(id),
         },
@@ -380,7 +380,7 @@ export const productsRouter = router({
       const client = await clientPromise;
       const db = client.db();
 
-      const result = await db.collection("raw_meterials_console").deleteOne({
+      const result = await db.collection("raw_materials_console").deleteOne({
         _id: new ObjectId(input.id),
       });
 
@@ -477,7 +477,7 @@ export const productsRouter = router({
       const db = client.db();
 
       // Get original material
-      const originalMaterial: any = await db.collection("raw_meterials_console").findOne({
+      const originalMaterial: any = await db.collection("raw_materials_console").findOne({
         _id: new ObjectId(input.id),
       });
 
@@ -486,10 +486,10 @@ export const productsRouter = router({
       }
 
       // Generate new rm_code: Get total count and use as next number
-      const totalCount = await db.collection("raw_meterials_console").countDocuments();
+      const totalCount = await db.collection("raw_materials_console").countDocuments();
 
       // Try to get the latest rm_code to check if there's a higher number
-      const latestMaterial = await db.collection("raw_meterials_console")
+      const latestMaterial = await db.collection("raw_materials_console")
         .find({})
         .sort({ _id: -1 })
         .limit(1)

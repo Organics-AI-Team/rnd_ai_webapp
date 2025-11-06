@@ -66,7 +66,7 @@ export type ProductLog = z.infer<typeof ProductLogSchema>;
 
 // Formula Ingredient Schema
 export const FormulaIngredientSchema = z.object({
-  materialId: z.string(), // Reference to raw_meterials_console
+  materialId: z.string(), // Reference to raw_materials_console
   rm_code: z.string(),
   productName: z.string(),
   inci_name: z.string().optional(),

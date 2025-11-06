@@ -34,10 +34,10 @@ const COLLECTIONS: CollectionConfig[] = [
     source_tag: 'raw_materials_real_stock'
   },
   {
-    name: 'raw_meterials_console',
+    name: 'raw_materials_console',
     namespace: 'all_fda',
     description: 'All FDA-registered ingredients',
-    source_tag: 'raw_meterials_console'
+    source_tag: 'raw_materials_console'
   }
 ];
 

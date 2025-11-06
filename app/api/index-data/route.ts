@@ -24,14 +24,14 @@ async function connectToDatabase(): Promise<Db> {
 // Helper function to fetch raw materials from MongoDB
 async function fetchRawMaterials(db: Db) {
   try {
-    // Try to get from raw_meterials_console collection first (the new data with 31K+ records)
+    // Try to get from raw_materials_console collection first (the new data with 31K+ records)
     const rawMaterials = await db
-      .collection('raw_meterials_console')
+      .collection('raw_materials_console')
       .find({})
       .toArray();
 
     if (rawMaterials.length > 0) {
-      console.log(`Found ${rawMaterials.length} raw materials in raw_meterials_console`);
+      console.log(`Found ${rawMaterials.length} raw materials in raw_materials_console`);
       return rawMaterials;
     }
 
