@@ -10,29 +10,42 @@ import { EnhancedHybridSearchService } from '@/ai/services/rag/enhanced-hybrid-s
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
 import { AIRequest } from '@/ai/types/ai-types';
 
-// Initialize services
-const enhancedService = new EnhancedAIService(process.env.OPENAI_API_KEY!);
-const streamingService = new StreamingAIService(process.env.OPENAI_API_KEY!);
-const searchService = new EnhancedHybridSearchService(
-  process.env.PINECONE_API_KEY!,
-  process.env.MONGODB_URI!,
-  'rnd_ai_db',
-  'raw_materials',
-  'raw-materials-vectors'
-);
-const learningService = new PreferenceLearningService();
+// Lazy initialization of services to avoid build-time errors
+let enhancedService: EnhancedAIService | null = null;
+let streamingService: StreamingAIService | null = null;
+let searchService: EnhancedHybridSearchService | null = null;
+let learningService: PreferenceLearningService | null = null;
 
 // Initialize services on startup
 let servicesInitialized = false;
 async function initializeServices() {
   if (!servicesInitialized) {
     try {
-      await searchService.initialize();
+      // Only initialize services if environment variables are available
+      if (process.env.OPENAI_API_KEY) {
+        enhancedService = new EnhancedAIService(process.env.OPENAI_API_KEY);
+        streamingService = new StreamingAIService(process.env.OPENAI_API_KEY);
+      }
+
+      if (process.env.PINECONE_API_KEY && process.env.MONGODB_URI) {
+        searchService = new EnhancedHybridSearchService(
+          process.env.PINECONE_API_KEY,
+          process.env.MONGODB_URI,
+          'rnd_ai_db',
+          'raw_materials',
+          'raw-materials-vectors'
+        );
+        await searchService.initialize();
+      }
+
+      learningService = new PreferenceLearningService();
       await learningService.initializeModels();
+
       servicesInitialized = true;
       console.log('✅ [EnhancedChatAPI] All services initialized successfully');
     } catch (error) {
       console.error('❌ [EnhancedChatAPI] Service initialization failed:', error);
+      // Don't throw error, allow app to continue with limited functionality
     }
   }
 }
@@ -64,6 +77,13 @@ export async function POST(request: NextRequest) {
 
     // Handle streaming requests
     if (stream) {
+      if (!streamingService) {
+        return NextResponse.json(
+          { error: 'Streaming service not available - check OPENAI_API_KEY configuration' },
+          { status: 503 }
+        );
+      }
+
       const streamResponse = await streamingService.generateSSEStream(aiRequest, {
         onChunk: (chunk) => {
           // Log performance metrics
@@ -95,55 +115,68 @@ export async function POST(request: NextRequest) {
 
     // Perform hybrid search if requested
     if (useSearch) {
-      try {
-        searchResults = await searchService.enhancedSearch({
-          query: prompt,
-          userId,
-          topK: 5,
-          rerank: true,
-          semanticWeight: 0.7,
-          keywordWeight: 0.3,
-          userPreferences: preferences,
-        });
+      if (!searchService) {
+        console.warn('⚠️ [EnhancedChatAPI] Search service not available - check PINECONE_API_KEY configuration');
+      } else {
+        try {
+          searchResults = await searchService.enhancedSearch({
+            query: prompt,
+            userId,
+            topK: 5,
+            rerank: true,
+            semanticWeight: 0.7,
+            keywordWeight: 0.3,
+            userPreferences: preferences,
+          });
 
-        // Add search context to the AI request
-        aiRequest.context = {
-          ...aiRequest.context,
-          searchResults: searchResults.map(r => ({
-            content: r.content,
-            score: r.score,
-            metadata: r.metadata,
-          })),
-        };
+          // Add search context to the AI request
+          aiRequest.context = {
+            ...aiRequest.context,
+            searchResults: searchResults.map(r => ({
+              content: r.content,
+              score: r.score,
+              metadata: r.metadata,
+            })),
+          };
 
-        console.log(`🔍 [EnhancedChatAPI] Found ${searchResults.length} search results`);
-      } catch (searchError) {
-        console.warn('⚠️ [EnhancedChatAPI] Search failed, proceeding without search results:', searchError);
+          console.log(`🔍 [EnhancedChatAPI] Found ${searchResults.length} search results`);
+        } catch (searchError) {
+          console.warn('⚠️ [EnhancedChatAPI] Search failed, proceeding without search results:', searchError);
+        }
       }
     }
 
     // Generate enhanced AI response
+    if (!enhancedService) {
+      return NextResponse.json(
+        { error: 'Enhanced AI service not available - check OPENAI_API_KEY configuration' },
+        { status: 503 }
+      );
+    }
+
     const enhancedResponse = await enhancedService.generateEnhancedResponse(aiRequest);
 
     // Record interaction for ML learning
-    try {
-      await learningService.recordInteraction({
-        userId,
-        prompt,
-        response: enhancedResponse.response,
-        feedback: {
-          type: 'pending', // Will be updated when user provides feedback
-          score: 0,
-          timestamp: new Date(),
-        },
-        context: {
-          category: enhancedResponse.structuredData.metadata.category,
-          complexity: enhancedResponse.structuredData.metadata.complexity,
-          expertiseLevel: enhancedResponse.structuredData.metadata.expertiseLevel,
-        },
-      });
-    } catch (learningError) {
-      console.warn('⚠️ [EnhancedChatAPI] Learning service error:', learningError);
+    if (learningService) {
+      try {
+        await learningService.recordInteraction({
+          userId,
+          prompt,
+          response: enhancedResponse.response,
+          feedback: {
+            type: 'pending', // Will be updated when user provides feedback
+            score: 0,
+            timestamp: new Date(),
+          },
+          context: {
+            category: enhancedResponse.structuredData.metadata.category,
+            complexity: enhancedResponse.structuredData.metadata.complexity,
+            expertiseLevel: enhancedResponse.structuredData.metadata.expertiseLevel,
+          },
+        });
+      } catch (learningError) {
+        console.warn('⚠️ [EnhancedChatAPI] Learning service error:', learningError);
+      }
     }
 
     // Return comprehensive response
@@ -201,8 +234,8 @@ export async function GET(request: NextRequest) {
           return NextResponse.json({ error: 'userId required' }, { status: 400 });
         }
 
-        const preferences = await learningService.predictPreferences(userId, {});
-        const stats = learningService.getLearningStats(userId);
+        const preferences = learningService ? await learningService.predictPreferences(userId, {}) : {};
+        const stats = learningService ? learningService.getLearningStats(userId) : {};
 
         return NextResponse.json({
           success: true,
@@ -213,8 +246,8 @@ export async function GET(request: NextRequest) {
         });
 
       case 'metrics':
-        const enhancedMetrics = enhancedService.getPerformanceMetrics();
-        const searchMetrics = searchService.getMetrics();
+        const enhancedMetrics = enhancedService ? enhancedService.getPerformanceMetrics() : {};
+        const searchMetrics = searchService ? searchService.getMetrics() : {};
 
         return NextResponse.json({
           success: true,
@@ -275,11 +308,13 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update user preferences based on feedback
-    await enhancedService.updateUserPreferences(userId, feedback);
+    if (enhancedService) {
+      await enhancedService.updateUserPreferences(userId, feedback);
 
-    // Update learning service
-    if (messageId) {
-      await enhancedService.submitFeedback(messageId, feedback);
+      // Update learning service
+      if (messageId) {
+        await enhancedService.submitFeedback(messageId, feedback);
+      }
     }
 
     console.log(`📈 [EnhancedChatAPI] Feedback recorded for user ${userId}`);
