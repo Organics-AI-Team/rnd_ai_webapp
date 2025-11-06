@@ -87,8 +87,8 @@ export class LangGraphService extends BaseAIService {
       };
     });
 
-    workflow.addEdge(START, 'chatModel');
-    workflow.addEdge('chatModel', END);
+    (workflow as any).addEdge(START, 'chatModel');
+    (workflow as any).addEdge('chatModel', END);
 
     return workflow.compile({
       checkpointer: new MemorySaver()

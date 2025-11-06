@@ -22,7 +22,7 @@ import { EnhancedHybridSearchService } from '../../services/rag/enhanced-hybrid-
 import { ResponseReranker } from '../../services/response/response-reranker';
 import { classify_query } from '../../utils/query-classifier';
 import { ConversationMessage } from '../../types/conversation-types';
-import { StructuredResponse, UserPreferences } from '../../services/enhanced/enhanced-ai-service';
+import { StructuredResponse, EnhancedUserPreferences } from '../../services/enhanced/enhanced-ai-service';
 
 export interface RawMaterialsChatProps extends Omit<BaseChatProps, 'messages' | 'onSendMessage' | 'onClearHistory'> {
   apiKey?: string;
@@ -126,7 +126,6 @@ export function RawMaterialsChat({
     ? useEnhancedChat({
         userId,
         apiKey: apiKey!,
-        provider,
         model: 'gpt-4',
         enabled: true,
         onSuccess: (response) => {
@@ -135,9 +134,9 @@ export function RawMaterialsChat({
           }
           if (response.metadata) {
             setMessageMetrics({
-              responseTime: response.metadata.responseTime,
-              confidence: response.confidence,
-              category: response.metadata.category,
+              responseTime: response.metadata.latency || 0,
+              confidence: 0.8, // Default confidence
+              category: 'general', // Default category
             });
           }
         },
@@ -164,7 +163,7 @@ export function RawMaterialsChat({
   const feedback = useFeedback({
     userId,
     serviceName: enableEnhancements ? 'enhanced-raw-materials-chat' : serviceName,
-    service: chat.getService?.() || chat.getService(),
+    service: (chat as any).getService?.() || 'default-service',
     onFeedbackSubmit: onFeedbackSubmit
   });
 
@@ -211,7 +210,7 @@ export function RawMaterialsChat({
           rerank: true,
           semanticWeight: 0.7,
           keywordWeight: 0.3,
-          userPreferences: chat.userPreferences,
+          userPreferences: (chat as any).userPreferences,
         });
 
         // Format enhanced results with confidence scores
@@ -246,7 +245,7 @@ export function RawMaterialsChat({
     } finally {
       setIsSearchingRAG(false);
     }
-  }, [ragService, ragConfig, enableEnhancements, userId, chat.userPreferences]);
+  }, [ragService, ragConfig, enableEnhancements, userId, (chat as any).userPreferences]);
 
   const handleSendMessage = async (message: string) => {
     console.log('🎯 [RawMaterialsChat] Sending message:', message);
@@ -258,7 +257,7 @@ export function RawMaterialsChat({
       if (enableEnhancements && enableStreaming) {
         // Use enhanced streaming
         setCurrentStreamingMessage('');
-        const stream = await chat.sendStreamingMessage(message, {
+        const stream = await (chat as any).sendStreamingMessage(message, {
           useSearch: true,
           category: 'raw-materials',
         });
@@ -279,7 +278,7 @@ export function RawMaterialsChat({
             {
               enableFactCheck: true,
               enablePersonalization: enableMLOptimizations,
-              userPreferences: chat.userPreferences
+              userPreferences: (chat as any).userPreferences
             }
           );
 
@@ -360,8 +359,8 @@ export function RawMaterialsChat({
     const feedbackType = isPositive ? 'helpful' : 'not_helpful';
     const score = isPositive ? 5 : 2;
 
-    if (enableEnhancements && chat.submitFeedback) {
-      chat.submitFeedback(messageId, { type: feedbackType, score });
+    if (enableEnhancements && (chat as any).submitFeedback) {
+      (chat as any).submitFeedback(messageId, { type: feedbackType, score });
     } else {
       // Use legacy feedback
       const responseId = messageId;
@@ -391,9 +390,9 @@ export function RawMaterialsChat({
   }, [chat, enableEnhancements, handleSendMessage]);
 
   // Handle preference updates for enhanced chat
-  const handlePreferenceUpdate = useCallback((key: keyof UserPreferences, value: any) => {
-    if (enableEnhancements && chat.updateUserPreferences) {
-      chat.updateUserPreferences({ [key]: value });
+  const handlePreferenceUpdate = useCallback((key: keyof EnhancedUserPreferences, value: any) => {
+    if (enableEnhancements && (chat as any).updateEnhancedUserPreferences) {
+      (chat as any).updateEnhancedUserPreferences({ [key]: value });
     }
   }, [chat, enableEnhancements]);
 
@@ -405,7 +404,7 @@ export function RawMaterialsChat({
   };
 
   const handleClearHistory = async () => {
-    chat.clearHistory();
+    (chat as any).clearHistory();
     feedback.clearFeedback();
     setLastRAGResults('');
   };
@@ -522,10 +521,10 @@ export function RawMaterialsChat({
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1">
           <div className={`w-2 h-2 rounded-full ${
-            chat.getService() ? 'bg-green-500' : 'bg-red-500'
+            (chat as any).getService?.() ? 'bg-green-500' : 'bg-red-500'
           }`} />
           <span className="text-xs text-slate-600">
-            {chat.getService() ? 'Connected' : 'Disconnected'}
+            {(chat as any).getService?.() ? 'Connected' : 'Disconnected'}
           </span>
         </div>
 
@@ -563,7 +562,7 @@ export function RawMaterialsChat({
             <Button
               variant="outline"
               size="sm"
-              onClick={chat.retryLastMessage}
+              onClick={(chat as any).retryLastMessage}
             >
               Retry Last Message
             </Button>

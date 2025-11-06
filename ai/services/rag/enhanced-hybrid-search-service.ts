@@ -5,7 +5,10 @@
 
 import { Pinecone } from '@pinecone-database/pinecone';
 import { MongoClient, Db, Collection } from 'mongodb';
-import { HybridSearchResult, SearchStrategy } from './hybrid-search-service';
+import { HybridSearchResult } from './hybrid-search-service';
+
+// Define SearchStrategy locally
+type SearchStrategy = 'semantic' | 'keyword' | 'fuzzy' | 'metadata' | 'hybrid';
 
 interface EnhancedSearchOptions {
   query: string;

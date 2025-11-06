@@ -1,0 +1,54 @@
+
+> rnd_ai_management@1.0.0 build
+> next build
+
+  ▲ Next.js 14.2.33
+  - Environments: .env.local, .env
+
+   Creating an optimized production build ...
+(node:4140) Warning: Failed to load the ES module: /Users/naruebet.orgl/Workspace/Labs/rnd_webapp/rnd_ai_management/tailwind.config.ts. Make sure to set "type": "module" in the nearest package.json file or use the .mjs extension.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+ ⨯ ESLint: Invalid Options: - Unknown options: useEslintrc, extensions - 'extensions' has been removed.
+Failed to compile.
+
+./ai/services/enhanced/enhanced-ai-service.ts:340:11
+Type error: Property 'assessComplexity' in type 'EnhancedAIService' is not assignable to the same property in base type 'BaseAIService'.
+  Type '(answer: string, userLevel: string) => "basic" | "intermediate" | "advanced"' is not assignable to type '(text: string) => "simple" | "moderate" | "complex"'.
+    Target signature provides too few arguments. Expected 2 or more, but got 1.
+
+[0m [90m 338 |[39m [90m   * Assess response complexity[39m[0m
+[0m [90m 339 |[39m [90m   */[39m[0m
+[0m[31m[1m>[22m[39m[90m 340 |[39m   [36mprivate[39m assessComplexity(answer[33m:[39m string[33m,[39m userLevel[33m:[39m string)[33m:[39m [32m'basic'[39m [33m|[39m [32m'intermediate'[39m [33m|[39m [32m'advanced'[39m {[0m
+[0m [90m     |[39m           [31m[1m^[22m[39m[0m
+[0m [90m 341 |[39m     [36mconst[39m technicalTerms [33m=[39m [[32m'mechanism'[39m[33m,[39m [32m'synthesis'[39m[33m,[39m [32m'molecular'[39m[33m,[39m [32m'chemical'[39m[33m,[39m [32m'biological'[39m][33m;[39m[0m
+[0m [90m 342 |[39m     [36mconst[39m sentenceCount [33m=[39m answer[33m.[39msplit([35m/[.!?]+/[39m)[33m.[39mlength[33m;[39m[0m
+[0m [90m 343 |[39m     [36mconst[39m avgSentenceLength [33m=[39m answer[33m.[39mlength [33m/[39m sentenceCount[33m;[39m[0m
+Next.js build worker exited with code: 1 and signal: null
+
+> rnd_ai_management@1.0.0 build
+> next build
+
+  ▲ Next.js 14.2.33
+  - Environments: .env.local, .env
+
+   Creating an optimized production build ...
+(node:4744) Warning: Failed to load the ES module: /Users/naruebet.orgl/Workspace/Labs/rnd_webapp/rnd_ai_management/tailwind.config.ts. Make sure to set "type": "module" in the nearest package.json file or use the .mjs extension.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+ ⨯ ESLint: Invalid Options: - Unknown options: useEslintrc, extensions - 'extensions' has been removed.
+Failed to compile.
+
+./ai/services/enhanced/enhanced-ai-service.ts:372:61
+Type error: Cannot find name 'UserPreferences'.
+
+[0m [90m 370 |[39m [90m   * Get or create user preferences[39m[0m
+[0m [90m 371 |[39m [90m   */[39m[0m
+[0m[31m[1m>[22m[39m[90m 372 |[39m   [36mprivate[39m [36masync[39m getUserPreferences(userId[33m:[39m string)[33m:[39m [33mPromise[39m[33m<[39m[33mUserPreferences[39m[33m>[39m {[0m
+[0m [90m     |[39m                                                             [31m[1m^[22m[39m[0m
+[0m [90m 373 |[39m     [36mif[39m ([36mthis[39m[33m.[39menhancedUserPreferences[33m.[39mhas(userId)) {[0m
+[0m [90m 374 |[39m       [36mreturn[39m [36mthis[39m[33m.[39menhancedUserPreferences[33m.[39m[36mget[39m(userId)[33m![39m[33m;[39m[0m
+[0m [90m 375 |[39m     }[0m
+Next.js build worker exited with code: 1 and signal: null

@@ -4,7 +4,7 @@
  */
 
 import * as tf from '@tensorflow/tfjs';
-import { UserPreferences } from '../enhanced/enhanced-ai-service';
+import { EnhancedUserPreferences } from '../enhanced/enhanced-ai-service';
 
 interface UserInteraction {
   userId: string;
@@ -153,10 +153,8 @@ export class PreferenceLearningService {
 
     const multiOutputModel = tf.model({
       inputs: model.inputs,
-      outputs: {
-        length_preference: lengthOutput,
-      },
-    });
+      outputs: lengthOutput,
+    } as any);
 
     multiOutputModel.compile({
       optimizer: tf.train.adam(0.001),
@@ -374,7 +372,7 @@ export class PreferenceLearningService {
   /**
    * Predict user preferences based on history
    */
-  async predictPreferences(userId: string, currentContext: any): Promise<Partial<UserPreferences>> {
+  async predictPreferences(userId: string, currentContext: any): Promise<Partial<EnhancedUserPreferences>> {
     if (!this.isInitialized || !this.preferenceModel) {
       await this.initializeModels();
     }
@@ -402,7 +400,7 @@ export class PreferenceLearningService {
       featuresTensor.dispose();
       prediction.dispose();
 
-      return this.interpretPrediction(predictionData);
+      return this.interpretPrediction(predictionData as Float32Array);
     } catch (error) {
       console.error('❌ [PreferenceLearning] Prediction failed:', error);
       return this.getDefaultPreferences();
@@ -412,7 +410,7 @@ export class PreferenceLearningService {
   /**
    * Interpret model prediction
    */
-  private interpretPrediction(predictionData: Float32Array): Partial<UserPreferences> {
+  private interpretPrediction(predictionData: Float32Array): Partial<EnhancedUserPreferences> {
     const [conciseScore, mediumScore, detailedScore] = predictionData;
 
     let preferredLength: 'concise' | 'medium' | 'detailed' = 'medium';
@@ -430,7 +428,7 @@ export class PreferenceLearningService {
   /**
    * Get default preferences for new users
    */
-  private getDefaultPreferences(): Partial<UserPreferences> {
+  private getDefaultPreferences(): Partial<EnhancedUserPreferences> {
     return {
       preferredLength: 'medium',
       preferredStyle: 'casual',

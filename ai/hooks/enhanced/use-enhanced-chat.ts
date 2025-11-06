@@ -5,7 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { useState, useCallback, useEffect } from 'react';
-import { EnhancedAIService, StructuredResponse, UserPreferences } from '../../services/enhanced/enhanced-ai-service';
+import { EnhancedAIService, StructuredResponse, EnhancedUserPreferences } from '../../services/enhanced/enhanced-ai-service';
 import { AIRequest, AIResponse } from '../../types/ai-types';
 
 // Cache keys for TanStack Query
@@ -43,8 +43,8 @@ interface UseEnhancedChatReturn {
   sendStreamingMessage: (prompt: string, context?: any) => Promise<AsyncIterable<string>>;
   clearMessages: () => void;
   refetchLastMessage: () => void;
-  userPreferences: UserPreferences | undefined;
-  updateUserPreferences: (preferences: Partial<UserPreferences>) => void;
+  userPreferences: EnhancedUserPreferences | undefined;
+  updateUserPreferences: (preferences: Partial<EnhancedUserPreferences>) => void;
   submitFeedback: (messageId: string, feedback: { type: string; score: number }) => void;
   getRelatedQueries: (query: string) => Promise<string[]>;
   optimisticResponse: (prompt: string) => void;
@@ -78,9 +78,9 @@ export function useEnhancedChat(options: EnhancedChatOptions): UseEnhancedChatRe
     refetch: refetchPreferences,
   } = useQuery({
     queryKey: CACHE_KEYS.userPreferences(userId),
-    queryFn: () => enhancedService.getUserPreferences(userId),
+    queryFn: () => (enhancedService as any).getEnhancedUserPreferences(userId),
     staleTime: staleTime * 2, // Preferences change less frequently
-    cacheTime: cacheTime * 6, // Cache longer
+    gcTime: cacheTime * 6, // Cache longer (renamed from cacheTime in react-query v5)
     enabled,
   });
 
@@ -280,12 +280,12 @@ export function useEnhancedChat(options: EnhancedChatOptions): UseEnhancedChatRe
   }, [messages, sendMessage]);
 
   // Update user preferences
-  const updateUserPreferences = useCallback((preferences: Partial<UserPreferences>) => {
+  const updateUserPreferences = useCallback((preferences: Partial<EnhancedUserPreferences>) => {
     const updatedPreferences = { ...userPreferences, ...preferences };
     queryClient.setQueryData(CACHE_KEYS.userPreferences(userId), updatedPreferences);
 
     // Also update in the service
-    enhancedService.updateUserPreferences(userId, {
+    enhancedService.updateEnhancedUserPreferences(userId, {
       type: 'helpful',
       score: 5,
       topic: 'preference_update',
@@ -296,7 +296,7 @@ export function useEnhancedChat(options: EnhancedChatOptions): UseEnhancedChatRe
   const submitFeedback = useCallback((messageId: string, feedback: { type: string; score: number }) => {
     const message = messages.find(msg => msg.id === messageId);
     if (message && message.structuredData) {
-      enhancedService.updateUserPreferences(userId, {
+      enhancedService.updateEnhancedUserPreferences(userId, {
         ...feedback,
         topic: message.structuredData.metadata.category,
       });

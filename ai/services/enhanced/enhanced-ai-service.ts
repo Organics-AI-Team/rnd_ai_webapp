@@ -27,8 +27,8 @@ export const StructuredResponseSchema = z.object({
 
 export type StructuredResponse = z.infer<typeof StructuredResponseSchema>;
 
-// User preference learning schema
-export const UserPreferencesSchema = z.object({
+// User preference learning schema (renamed to avoid conflict with base type)
+export const EnhancedUserPreferencesSchema = z.object({
   userId: z.string(),
   preferredLength: z.enum(['concise', 'medium', 'detailed']),
   preferredStyle: z.enum(['formal', 'casual', 'technical']),
@@ -44,14 +44,14 @@ export const UserPreferencesSchema = z.object({
   })).optional(),
 });
 
-export type UserPreferences = z.infer<typeof UserPreferencesSchema>;
+export type EnhancedUserPreferences = z.infer<typeof EnhancedUserPreferencesSchema>;
 
 /**
  * Enhanced AI Service with structured outputs and optimization
  */
 export class EnhancedAIService extends BaseAIService {
   private responseCache = new Map<string, StructuredResponse>();
-  private userPreferences = new Map<string, UserPreferences>();
+  private enhancedUserPreferences = new Map<string, EnhancedUserPreferences>();
   private performanceMetrics = {
     totalRequests: 0,
     averageResponseTime: 0,
@@ -71,6 +71,16 @@ export class EnhancedAIService extends BaseAIService {
 
     super(apiKey, defaultConfig, serviceName);
     console.log('🚀 [EnhancedAIService] Initialized with structured outputs and optimization');
+  }
+
+  /**
+   * Generate AI response (implements abstract method from BaseAIService)
+   */
+  async generateResponse(request: AIRequest): Promise<AIResponse> {
+    const enhancedResponse = await this.generateEnhancedResponse(request);
+    // Return only the AIResponse part without structuredData
+    const { structuredData, ...aiResponse } = enhancedResponse;
+    return aiResponse;
   }
 
   /**
@@ -94,18 +104,17 @@ export class EnhancedAIService extends BaseAIService {
           confidence: cachedResponse.confidence,
           sources: cachedResponse.sources,
           metadata: {
-            model: this.defaultConfig.model,
-            responseTime: Date.now() - startTime,
-            category: cachedResponse.metadata.category,
-            language: cachedResponse.metadata.language,
-            feedback: false,
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            latency: Date.now() - startTime,
           },
           structuredData: cachedResponse,
-        };
+        } as any;
       }
 
       // Get user preferences
-      const userPreferences = await this.getUserPreferences(request.userId);
+      const userPreferences = await this.getEnhancedUserPreferences(request.userId);
 
       // Build enhanced prompt
       const enhancedPrompt = this.buildEnhancedPrompt(request, userPreferences);
@@ -131,14 +140,13 @@ export class EnhancedAIService extends BaseAIService {
         confidence: structuredResponse.confidence,
         sources: structuredResponse.sources,
         metadata: {
-          model: this.defaultConfig.model,
-          responseTime,
-          category: structuredResponse.metadata.category,
-          language: structuredResponse.metadata.language,
-          feedback: true,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          latency: responseTime,
         },
         structuredData: structuredResponse,
-      };
+      } as any;
 
     } catch (error) {
       console.error('❌ [EnhancedAIService] Error generating enhanced response:', error);
@@ -149,7 +157,7 @@ export class EnhancedAIService extends BaseAIService {
   /**
    * Build enhanced prompt with context and user preferences
    */
-  private buildEnhancedPrompt(request: AIRequest, userPreferences: UserPreferences): string {
+  private buildEnhancedPrompt(request: AIRequest, userPreferences: EnhancedUserPreferences): string {
     const contextAwareness = `
 CONTEXT AWARENESS:
 - User Expertise: ${userPreferences.expertiseLevel}
@@ -192,7 +200,7 @@ Please provide a comprehensive, structured response that follows these guideline
   private async structureResponse(
     baseResponse: AIResponse,
     request: AIRequest,
-    userPreferences: UserPreferences
+    userPreferences: EnhancedUserPreferences
   ): Promise<StructuredResponse> {
     // Parse and enhance the response
     const answer = baseResponse.response;
@@ -208,11 +216,11 @@ Please provide a comprehensive, structured response that follows these guideline
 
     // Determine response category and complexity
     const category = this.categorizeResponse(request.prompt);
-    const complexity = this.assessComplexity(answer, userPreferences.expertiseLevel);
+    const complexity = this.assessEnhancedComplexity(answer, userPreferences.expertiseLevel);
 
     const structuredResponse: StructuredResponse = {
       answer,
-      confidence: baseResponse.confidence || 0.8,
+      confidence: (baseResponse as any).confidence || 0.8,
       sources,
       relatedTopics,
       followUpQuestions,
@@ -221,7 +229,7 @@ Please provide a comprehensive, structured response that follows these guideline
         complexity,
         language: userPreferences.language,
         expertiseLevel: userPreferences.expertiseLevel,
-        responseTime: baseResponse.metadata?.responseTime || 0,
+        responseTime: baseResponse.metadata?.latency || 0,
         modelUsed: this.defaultConfig.model,
       },
     };
@@ -268,7 +276,7 @@ Please provide a comprehensive, structured response that follows these guideline
   /**
    * Generate follow-up questions based on response and user preferences
    */
-  private generateFollowUpQuestions(answer: string, userPreferences: UserPreferences): string[] {
+  private generateFollowUpQuestions(answer: string, userPreferences: EnhancedUserPreferences): string[] {
     const complexityMap = {
       beginner: [
         "Can you explain this in simpler terms?",
@@ -327,9 +335,9 @@ Please provide a comprehensive, structured response that follows these guideline
   }
 
   /**
-   * Assess response complexity
+   * Assess enhanced response complexity
    */
-  private assessComplexity(answer: string, userLevel: string): 'basic' | 'intermediate' | 'advanced' {
+  private assessEnhancedComplexity(answer: string, userLevel: string): 'basic' | 'intermediate' | 'advanced' {
     const technicalTerms = ['mechanism', 'synthesis', 'molecular', 'chemical', 'biological'];
     const sentenceCount = answer.split(/[.!?]+/).length;
     const avgSentenceLength = answer.length / sentenceCount;
@@ -361,13 +369,13 @@ Please provide a comprehensive, structured response that follows these guideline
   /**
    * Get or create user preferences
    */
-  private async getUserPreferences(userId: string): Promise<UserPreferences> {
-    if (this.userPreferences.has(userId)) {
-      return this.userPreferences.get(userId)!;
+  private async getEnhancedUserPreferences(userId: string): Promise<EnhancedUserPreferences> {
+    if (this.enhancedUserPreferences.has(userId)) {
+      return this.enhancedUserPreferences.get(userId)!;
     }
 
     // Create default preferences
-    const defaultPreferences: UserPreferences = {
+    const defaultPreferences: EnhancedUserPreferences = {
       userId,
       preferredLength: 'medium',
       preferredStyle: 'casual',
@@ -378,18 +386,18 @@ Please provide a comprehensive, structured response that follows these guideline
       feedbackHistory: [],
     };
 
-    this.userPreferences.set(userId, defaultPreferences);
+    this.enhancedUserPreferences.set(userId, defaultPreferences);
     return defaultPreferences;
   }
 
   /**
    * Update user preferences based on feedback
    */
-  async updateUserPreferences(
+  async updateEnhancedUserPreferences(
     userId: string,
     feedback: { type: string; score: number; topic: string }
   ): Promise<void> {
-    const preferences = await this.getUserPreferences(userId);
+    const preferences = await this.getEnhancedUserPreferences(userId);
 
     const feedbackEntry = {
       type: feedback.type as any,
@@ -403,14 +411,14 @@ Please provide a comprehensive, structured response that follows these guideline
     // Adjust preferences based on feedback
     this.adjustPreferencesFromFeedback(preferences, feedback);
 
-    this.userPreferences.set(userId, preferences);
+    this.enhancedUserPreferences.set(userId, preferences);
     console.log(`📈 [EnhancedAIService] Updated preferences for user ${userId}`);
   }
 
   /**
    * Adjust preferences based on feedback patterns
    */
-  private adjustPreferencesFromFeedback(preferences: UserPreferences, feedback: any): void {
+  private adjustPreferencesFromFeedback(preferences: EnhancedUserPreferences, feedback: any): void {
     // Simple preference adjustment logic
     if (feedback.type === 'too_long' && preferences.preferredLength !== 'concise') {
       preferences.preferredLength = preferences.preferredLength === 'detailed' ? 'medium' : 'concise';
@@ -419,11 +427,11 @@ Please provide a comprehensive, structured response that follows these guideline
     }
 
     if (feedback.type === 'unclear') {
-      preferences.complexity = preferences.complexity === 'advanced' ? 'intermediate' : 'basic';
+      preferences.preferredComplexity = preferences.preferredComplexity === 'advanced' ? 'intermediate' : 'basic';
     } else if (feedback.score >= 4 && feedback.type === 'helpful') {
       // Positive feedback - could increase complexity
-      if (preferences.complexity === 'basic') preferences.complexity = 'intermediate';
-      else if (preferences.complexity === 'intermediate') preferences.complexity = 'advanced';
+      if (preferences.preferredComplexity === 'basic') preferences.preferredComplexity = 'intermediate';
+      else if (preferences.preferredComplexity === 'intermediate') preferences.preferredComplexity = 'advanced';
     }
   }
 

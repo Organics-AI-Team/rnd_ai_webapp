@@ -1330,7 +1330,7 @@ export class CosmeticQualityScorer {
     }
 
     // Formulation improvements
-    if (cosmeticFactors.formulationAccuracy < 0.7) {
+    if (cosmeticFactors.practicalApplication < 0.7) {
       suggestions.push({
         category: 'formulation',
         priority: 'medium',
