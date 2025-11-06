@@ -265,6 +265,7 @@ export function AIChat({
       messageActions={renderMessageActions}
       placeholder="Ask me anything... (Try asking about chemicals or raw materials!)"
       showTimestamp={true}
+      maxHeight="h-full"
       className="border border-gray-300 rounded-lg h-full flex flex-col"
       {...baseChatProps}
     />
