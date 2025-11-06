@@ -9,6 +9,77 @@ import { z } from 'zod';
 import { getUnifiedSearchService } from '@/ai/services/rag/unified-search-service';
 
 /**
+ * Normalize array-like fields coming from MongoDB
+ */
+const parseTextArray = (field: any): string[] => {
+  if (!field) return [];
+
+  if (Array.isArray(field)) {
+    return field
+      .map(item => (typeof item === 'string' ? item.trim() : String(item).trim()))
+      .filter(item => item.length > 0);
+  }
+
+  if (typeof field === 'string') {
+    const cleaned = field
+      .replace(/[\[\]'"]/g, ' ')
+      .split(/[,|\n]/)
+      .map(entry => entry.trim())
+      .filter(entry => entry.length > 0);
+
+    if (cleaned.length > 0) {
+      return cleaned;
+    }
+    return [field.trim()].filter(Boolean);
+  }
+
+  return [String(field).trim()].filter(Boolean);
+};
+
+/**
+ * Deduplicate list values while preserving order
+ */
+const dedupeList = (items: string[]): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const item of items) {
+    const normalized = item.toLowerCase();
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(item);
+    }
+  }
+
+  return result;
+};
+
+/**
+ * Format list for compact table display
+ */
+const formatListForTable = (items: string[], maxItems = 3): string => {
+  if (items.length === 0) return 'ไม่มีข้อมูล';
+
+  const trimmed = items.slice(0, maxItems);
+  const display = trimmed.join(', ');
+
+  if (items.length > maxItems) {
+    return `${display}, ...`;
+  }
+
+  return display;
+};
+
+/**
+ * Check if list has an item containing target term (case-insensitive)
+ */
+const listContainsTerm = (items: string[], term: string): boolean => {
+  if (!term) return true;
+  const lower = term.toLowerCase();
+  return items.some(item => item.toLowerCase().includes(lower));
+};
+
+/**
  * Tool 1: Search FDA Database (for comprehensive ingredient listing)
  * Use when user wants general information about ingredients
  */
@@ -326,11 +397,343 @@ export const checkStockAvailabilityTool = {
 };
 
 /**
+ * Tool 3: Material Profile (benefits + use cases + applications)
+ * Use when user needs detailed use case guidance for a specific ingredient
+ */
+export const getMaterialProfileTool = {
+  name: 'get_material_profile',
+  description: `ดึงข้อมูลโปรไฟล์วัตถุดิบแบบละเอียด (INCI, ประโยชน์, Use Case, สถานะสต็อก)
+
+  ใช้เมื่อผู้ใช้ถาม:
+  - "สาร [ชื่อ] ใช้ทำอะไรได้บ้าง"
+  - "INCI [ชื่อ] ใช้ในผลิตภัณฑ์ประเภทไหน"
+  - "วัตถุดิบ [ชื่อ] มีประโยชน์อะไร และเหมาะกับอะไร"
+  - "ยกตัวอย่างผลิตภัณฑ์ที่ใช้สารนี้"
+
+  ให้ข้อมูลเพื่ออธิบายประโยชน์และการนำไปใช้จริง`,
+
+  parameters: z.object({
+    material: z.string().min(1).describe('ชื่อวัตถุดิบ, INCI หรือรหัส เช่น "Caffeoyl Hexapeptide-48", "RM001234"'),
+    limit: z.number().min(1).max(5).optional().default(3).describe('จำนวนวัถุดิบที่จะสรุป (1-5)'),
+    collection: z.enum(['auto', 'in_stock', 'all_fda', 'both']).optional().default('auto').describe(
+      'ฐานข้อมูลที่ต้องการค้นหา:\n' +
+      '- auto: ให้ระบบเลือกให้ (ค่าเริ่มต้น)\n' +
+      '- in_stock: สต็อกวัตถุดิบ (3,111 รายการ)\n' +
+      '- all_fda: ฐานข้อมูล FDA ทั้งหมด\n' +
+      '- both: รวมทั้งสอง'
+    ),
+    include_related: z.boolean().optional().default(true).describe('แสดงวัตถุดิบที่ใกล้เคียงเพิ่มเติมหรือไม่ (default: true)')
+  }),
+
+  handler: async (params: {
+    material: string;
+    limit?: number;
+    collection?: 'auto' | 'in_stock' | 'all_fda' | 'both';
+    include_related?: boolean;
+  }) => {
+    console.log('🔧 [get-material-profile] Called with:', params);
+
+    try {
+      const searchService = getUnifiedSearchService();
+      const limit = params.limit ?? 3;
+      const requestedCollection = params.collection ?? 'auto';
+      const collectionForSearch: 'in_stock' | 'all_fda' | 'both' =
+        requestedCollection === 'in_stock' || requestedCollection === 'all_fda'
+          ? requestedCollection
+          : 'both';
+
+      const topK = Math.min(limit * 3, 15);
+      const results = await searchService.unified_search(params.material, {
+        collection: collectionForSearch,
+        topK,
+        similarityThreshold: 0.45,
+        max_results: topK,
+        include_availability_context: true
+      });
+
+      if (results.length === 0) {
+        return {
+          success: true,
+          query: params.material,
+          total_found: 0,
+          returned: 0,
+          profiles: [],
+          table_display: 'ไม่พบข้อมูลวัตถุดิบตามคำค้นหา',
+          instruction_to_ai: 'ไม่พบข้อมูลในฐานข้อมูล ให้ขอโทษผู้ใช้และแนะนำให้ตรวจสอบชื่อหรือรหัสใหม่'
+        };
+      }
+
+      const profiles = results.slice(0, limit).map((result, index) => {
+        const doc = result.document || {};
+
+        const materialCode = doc.rm_code || doc.material_code || 'N/A';
+        const tradeName = doc.trade_name || doc.name || doc.productName || 'ไม่ระบุ';
+        const inciName = doc.inci_name || doc.INCI_name || 'ไม่ระบุ';
+        const functionName = doc.Function || doc.function || doc.category || 'ไม่ระบุ';
+        const supplier = doc.supplier || doc.company_name || 'ไม่ระบุ';
+        const rawCost = doc.rm_cost || doc.price || '';
+        const cost = rawCost ? `฿${rawCost}` : 'ราคาติดต่อ';
+        const applicationNotes = doc.Chem_IUPAC_Name_Description || doc.description || '';
+
+        const benefits = dedupeList(parseTextArray(doc.benefits || doc.benefits_cached));
+        const useCases = dedupeList(parseTextArray(doc.usecase || doc.usecase_cached));
+
+        const availability = result.availability === 'in_stock' ? '✅ มีในสต็อก' : '📚 FDA Database';
+        const matchScore = (result.score * 100).toFixed(0) + '%';
+
+        const benefitSummary = formatListForTable(benefits, 4);
+        const useCaseSummary = formatListForTable(useCases, 4);
+
+        const summary = useCases.length > 0
+          ? `เหมาะกับผลิตภัณฑ์ประเภท ${useCaseSummary} พร้อมประโยชน์เด่น ${benefitSummary}`
+          : `ประโยชน์เด่น ${benefitSummary}`;
+
+        return {
+          rank: index + 1,
+          material_code: materialCode,
+          trade_name: tradeName,
+          inci_name: inciName,
+          function: functionName,
+          supplier,
+          cost_per_kg: cost,
+          benefits,
+          use_cases: useCases,
+          application_notes: applicationNotes,
+          availability: result.availability,
+          status: availability,
+          match_score: matchScore,
+          summary
+        };
+      });
+
+      const table = (() => {
+        let table = '\n| # | วัตถุดิบ | ใช้ในผลิตภัณฑ์ | ประโยชน์เด่น | สถานะ | คะแนน |\n' +
+          '|---|-----------|------------------|-------------|--------|--------|';
+
+        for (const profile of profiles) {
+          const materialLabel = `${profile.trade_name !== 'ไม่ระบุ' ? profile.trade_name : profile.inci_name} (${profile.inci_name})`;
+          table += `| ${profile.rank} | ${materialLabel} | ${formatListForTable(profile.use_cases, 3)} | ${formatListForTable(profile.benefits, 3)} | ${profile.status} | ${profile.match_score} |\n`;
+        }
+
+        return table;
+      })();
+
+      const allUseCases = dedupeList(profiles.flatMap(profile => profile.use_cases));
+      const allBenefits = dedupeList(profiles.flatMap(profile => profile.benefits));
+
+      const narrativeSummary = (() => {
+        const useCaseText = allUseCases.length > 0 ? `ผลิตภัณฑ์กลุ่ม ${formatListForTable(allUseCases, 5)}` : 'หลายประเภท';
+        const benefitText = allBenefits.length > 0 ? formatListForTable(allBenefits, 5) : 'หลากหลายประโยชน์';
+        return `วัตถุดิบกลุ่มนี้เหมาะสำหรับ ${useCaseText} โดยให้คุณสมบัติเด่นด้าน ${benefitText}.`;
+      })();
+
+      return {
+        success: true,
+        query: params.material,
+        total_found: results.length,
+        returned: profiles.length,
+        primary_material: profiles[0],
+        related_materials: params.include_related === false ? [] : profiles.slice(1),
+        profiles,
+        table_display: table,
+        narrative_summary: narrativeSummary,
+        recommended_use_cases: allUseCases,
+        recommended_benefits: allBenefits,
+        instruction_to_ai: 'ให้แสดงตาราง table_display ก่อน แล้วสรุปผลเป็นภาษาไทยในเชิงแนะนำการใช้งานจริง พร้อมยกตัวอย่างผลิตภัณฑ์หรือรูปแบบสูตรที่เหมาะสมโดยอิงจาก use_cases'
+      };
+    } catch (error: any) {
+      console.error('❌ [get-material-profile] Error:', error);
+      return {
+        success: false,
+        error: error.message,
+        profiles: [],
+        table_display: 'เกิดข้อผิดพลาดในการดึงโปรไฟล์วัตถุดิบ: ' + error.message
+      };
+    }
+  }
+};
+
+/**
+ * Tool 4: Search materials by product use case
+ * Use when user asks for ingredients suited to a product format (serum, cream, etc.)
+ */
+export const searchMaterialsByUsecaseTool = {
+  name: 'search_materials_by_usecase',
+  description: `ค้นหาวัตถุดิบตามประเภทผลิตภัณฑ์ (Use Case) เช่น serum, cream, sun care
+
+  ใช้เมื่อผู้ใช้ถาม:
+  - "วัถุดิบสำหรับเซรั่มลดริ้วรอย"
+  - "มีอะไรที่ใช้ทำ eye cream บ้าง"
+  - "หา active สำหรับ sleeping mask"
+  - "ต้องการสารสำหรับ sun care ที่ช่วย [benefit]"
+
+  ระบุ usecase ชัดเจนเพื่อหาวัตถุดิบที่เหมาะกับรูปแบบผลิตภัณฑ์`,
+
+  parameters: z.object({
+    usecase: z.string().min(1).describe('ประเภทผลิตภัณฑ์หรือ Use Case เช่น "serum", "cream", "toner", "eye cream", "mask"'),
+    benefit: z.string().optional().describe('ประโยชน์เพิ่มเติมที่ต้องการกรอง เช่น "ลดริ้วรอย", "ความชุ่มชื้น", "ปรับผิวสว่าง"'),
+    limit: z.number().min(1).max(10).optional().default(5).describe('จำนวนผลลัพธ์ที่ต้องการ (1-10)'),
+    offset: z.number().min(0).optional().default(0).describe('จำนวนผลลัพธ์ที่ต้องการข้าม (สำหรับหน้าถัดไป)'),
+    collection: z.enum(['auto', 'in_stock', 'all_fda', 'both']).optional().default('auto').describe('ฐานข้อมูลที่ต้องการค้นหา'),
+    prioritize_stock: z.boolean().optional().default(true).describe('เรียงวัตถุดิบที่มีในสต็อกขึ้นก่อนหรือไม่ (default: true)'),
+    exclude_codes: z.array(z.string()).optional().describe('รหัสวัตถุดิบที่ต้องการยกเว้น เช่น ["RM000123", "RM000456"]')
+  }),
+
+  handler: async (params: {
+    usecase: string;
+    benefit?: string;
+    limit?: number;
+    offset?: number;
+    collection?: 'auto' | 'in_stock' | 'all_fda' | 'both';
+    prioritize_stock?: boolean;
+    exclude_codes?: string[];
+  }) => {
+    console.log('🔧 [search-materials-by-usecase] Called with:', params);
+
+    try {
+      const searchService = getUnifiedSearchService();
+      const limit = params.limit ?? 5;
+      const offset = params.offset ?? 0;
+      const excludeCodes = params.exclude_codes ?? [];
+      const requestedCollection = params.collection ?? 'auto';
+      const collectionForSearch: 'in_stock' | 'all_fda' | 'both' =
+        requestedCollection === 'in_stock' || requestedCollection === 'all_fda'
+          ? requestedCollection
+          : 'both';
+
+      const baseQuery = params.benefit
+        ? `${params.usecase} ingredients for ${params.benefit}`
+        : `ingredients for ${params.usecase}`;
+
+      const fetchLimit = Math.min(limit + offset + excludeCodes.length + 10, 60);
+
+      const results = await searchService.unified_search(baseQuery, {
+        collection: collectionForSearch,
+        topK: fetchLimit,
+        similarityThreshold: 0.45,
+        max_results: fetchLimit,
+        include_availability_context: true
+      });
+
+      if (results.length === 0) {
+        return {
+          success: true,
+          query: baseQuery,
+          total_found: 0,
+          returned: 0,
+          materials: [],
+          table_display: 'ไม่พบวัตถุดิบที่ตรงกับ use case ที่ระบุ',
+          instruction_to_ai: 'แจ้งผู้ใช้ว่าไม่พบข้อมูล และเสนอให้ระบุคำค้นเป็นภาษาอังกฤษหรือกรองประโยชน์ให้กว้างขึ้น'
+        };
+      }
+
+      const filtered = results.filter(result => {
+        const doc = result.document || {};
+        const code = doc.rm_code || doc.material_code;
+        if (code && excludeCodes.includes(code)) {
+          return false;
+        }
+
+        const useCases = dedupeList(parseTextArray(doc.usecase || doc.usecase_cached));
+        const benefits = dedupeList(parseTextArray(doc.benefits || doc.benefits_cached));
+
+        const matchesUseCase = listContainsTerm(useCases, params.usecase);
+        const matchesBenefit = listContainsTerm(benefits, params.benefit || '');
+
+        return matchesUseCase && matchesBenefit;
+      });
+
+      let working = filtered.length > 0 ? filtered : results;
+
+      if (params.prioritize_stock !== false) {
+        working = [...working].sort((a, b) => {
+          if (a.availability === b.availability) return 0;
+          return a.availability === 'in_stock' ? -1 : 1;
+        });
+      }
+
+      const paginated = working.slice(offset, offset + limit);
+
+      const formatted = paginated.map((result, index) => {
+        const doc = result.document || {};
+        const materialCode = doc.rm_code || doc.material_code || 'N/A';
+        const tradeName = doc.trade_name || doc.name || doc.productName || doc.inci_name || doc.INCI_name || 'ไม่ระบุ';
+        const inciName = doc.inci_name || doc.INCI_name || 'ไม่ระบุ';
+        const supplier = doc.supplier || doc.company_name || 'ไม่ระบุ';
+        const benefits = dedupeList(parseTextArray(doc.benefits || doc.benefits_cached));
+        const useCases = dedupeList(parseTextArray(doc.usecase || doc.usecase_cached));
+
+        return {
+          rank: offset + index + 1,
+          material_code: materialCode,
+          trade_name: tradeName,
+          inci_name: inciName,
+          supplier,
+          benefits,
+          use_cases: useCases,
+          availability: result.availability,
+          status: result.availability === 'in_stock' ? '✅ มีในสต็อก' : '📚 FDA Database',
+          match_score: (result.score * 100).toFixed(0) + '%'
+        };
+      });
+
+      const table = (() => {
+        let table = '\n| # | วัตถุดิบ | ใช้ในผลิตภัณฑ์ | ประโยชน์เด่น | สถานะ | คะแนน |\n' +
+          '|---|-----------|------------------|-------------|--------|--------|';
+
+        for (const material of formatted) {
+          const materialLabel = `${material.trade_name} (${material.inci_name})`;
+          table += `| ${material.rank} | ${materialLabel} | ${formatListForTable(material.use_cases, 3)} | ${formatListForTable(material.benefits, 3)} | ${material.status} | ${material.match_score} |\n`;
+        }
+
+        return table;
+      })();
+
+      const highlightUseCases = dedupeList(formatted.flatMap(mat => mat.use_cases));
+      const highlightBenefits = dedupeList(formatted.flatMap(mat => mat.benefits));
+
+      const recommendationSummary = (() => {
+        const useCaseText = highlightUseCases.length > 0 ? formatListForTable(highlightUseCases, 5) : params.usecase;
+        const benefitText = highlightBenefits.length > 0 ? formatListForTable(highlightBenefits, 5) : (params.benefit || 'หลายคุณสมบัติ');
+        return `กลุ่มวัตถุดิบที่แนะนำเหมาะสำหรับผลิตภัณฑ์ประเภท ${useCaseText} และให้คุณสมบัติเด่นด้าน ${benefitText}. แนะนำให้จับคู่กับสารเสริมโครงสร้างสูตรและสารเพิ่มสัมผัสที่เข้ากันได้`;
+      })();
+
+      return {
+        success: true,
+        query: baseQuery,
+        total_found: working.length,
+        returned: formatted.length,
+        offset,
+        limit,
+        materials: formatted,
+        table_display: table,
+        narrative_summary: recommendationSummary,
+        recommended_use_cases: highlightUseCases,
+        recommended_benefits: highlightBenefits,
+        instruction_to_ai: 'ใช้ table_display เพื่อนำเสนอรายการ จากนั้นสรุปแนวทางการพัฒนาสูตรแบบเป็นกันเอง พร้อมระบุไอเดียการผสมผสานสารอื่น ๆ',
+        filter_applied: filtered.length > 0,
+        filtered_out_count: results.length - working.length
+      };
+    } catch (error: any) {
+      console.error('❌ [search-materials-by-usecase] Error:', error);
+      return {
+        success: false,
+        error: error.message,
+        materials: [],
+        table_display: 'เกิดข้อผิดพลาดในการค้นหา use case: ' + error.message
+      };
+    }
+  }
+};
+
+/**
  * Export both separated tools
  */
 export const separatedSearchTools = {
   search_fda_database: searchFDADataBaseTool,
-  check_stock_availability: checkStockAvailabilityTool
+  check_stock_availability: checkStockAvailabilityTool,
+  get_material_profile: getMaterialProfileTool,
+  search_materials_by_usecase: searchMaterialsByUsecaseTool
 };
 
 /**
@@ -346,5 +749,15 @@ export const separatedToolDefinitions = [
     name: checkStockAvailabilityTool.name,
     description: checkStockAvailabilityTool.description,
     parameters: checkStockAvailabilityTool.parameters
+  },
+  {
+    name: getMaterialProfileTool.name,
+    description: getMaterialProfileTool.description,
+    parameters: getMaterialProfileTool.parameters
+  },
+  {
+    name: searchMaterialsByUsecaseTool.name,
+    description: searchMaterialsByUsecaseTool.description,
+    parameters: searchMaterialsByUsecaseTool.parameters
   }
 ];
