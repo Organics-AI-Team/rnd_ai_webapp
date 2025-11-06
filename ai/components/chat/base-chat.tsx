@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, ReactNode } from 'react';
-import { Send, Bot, User, Trash2, Database } from 'lucide-react';
+import { Send, Bot, User, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
@@ -43,6 +43,14 @@ export function BaseChat({
   const [input, setInput] = useState('');
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [composerDimensions, setComposerDimensions] = useState<{ left: number; width: number }>({
+    left: 0,
+    width: 0
+  });
+  const composerRef = React.useRef<HTMLDivElement>(null);
+  const [composerHeight, setComposerHeight] = useState(0);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -152,88 +160,139 @@ export function BaseChat({
     </div>
   );
 
+  const updateComposerMetrics = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    setIsMobileLayout(window.innerWidth < 1024);
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    setComposerDimensions({
+      left: rect.left + window.scrollX,
+      width: rect.width
+    });
+
+    if (composerRef.current) {
+      const composerRect = composerRef.current.getBoundingClientRect();
+      setComposerHeight(composerRect.height);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    updateComposerMetrics();
+    window.addEventListener('resize', updateComposerMetrics);
+
+    let resizeObserver: ResizeObserver | undefined;
+    if ('ResizeObserver' in window && containerRef.current) {
+      resizeObserver = new ResizeObserver(() => updateComposerMetrics());
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateComposerMetrics);
+      resizeObserver?.disconnect();
+    };
+  }, [updateComposerMetrics]);
+
+  const composerStyle = isMobileLayout
+    ? {
+        bottom: 0,
+        left: 0,
+        right: 0
+      }
+    : {
+        bottom: 24,
+        left: composerDimensions.left || 0,
+        ...(composerDimensions.width > 0
+          ? { width: composerDimensions.width }
+          : { right: 0 })
+      };
+
+  const messagePadding = composerHeight
+    ? `${composerHeight + (isMobileLayout ? 48 : 72)}px`
+    : isMobileLayout
+      ? '240px'
+      : '280px';
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!composerRef.current) return;
+
+    const observer = new ResizeObserver(() => updateComposerMetrics());
+    observer.observe(composerRef.current);
+    updateComposerMetrics();
+
+    return () => observer.disconnect();
+  }, [updateComposerMetrics]);
+
   return (
-    <>
-      {/* Main Chat Container */}
-      <div className={`flex flex-col flex-1 min-h-0 ${maxHeight} ${className}`}>
-        {/* Header - Fixed at top */}
-        {header && (
-          <div className="flex-shrink-0 p-4 border-b border-slate-200 bg-white">
-            {header}
+    <div ref={containerRef} className={`relative flex flex-col flex-1 min-h-0 ${maxHeight} ${className}`}>
+      {/* Header */}
+      {header && (
+        <div className="flex-shrink-0 p-4 border-b border-slate-200 bg-white">
+          {header}
+        </div>
+      )}
+
+      {/* Messages */}
+      <div
+        className="flex-1 overflow-y-auto min-h-0"
+        onScroll={handleScroll}
+        style={{ paddingBottom: messagePadding }}
+      >
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-500">
+            <Bot className="w-12 h-12 mb-4 text-slate-300" />
+            <p className="text-lg font-medium">Start a conversation</p>
+            <p className="text-sm mt-1">Ask me anything!</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-200">
+            {messages.map(renderMessage)}
           </div>
         )}
+        <div ref={messagesEndRef} />
+      </div>
 
-        {/* Messages Container - Independent scrolling area */}
-        <div className="flex-1 overflow-y-auto min-h-0 pb-24" onScroll={handleScroll}>
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500">
-              <Bot className="w-12 h-12 mb-4 text-slate-300" />
-              <p className="text-lg font-medium">Start a conversation</p>
-              <p className="text-sm mt-1">Ask me anything!</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-200">
-              {messages.map(renderMessage)}
+      {/* Footer / Composer */}
+      <div
+        className={`fixed z-50 transition-all duration-200 ${
+          isMobileLayout ? 'px-4' : ''
+        }`}
+        style={composerStyle}
+      >
+        <div ref={composerRef} className="bg-white border border-slate-200 shadow-xl rounded-xl">
+          {footer && (
+            <div className="p-4 border-b border-slate-200 bg-white rounded-t-xl">
+              {footer}
             </div>
           )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Footer - Outside scrollable area */}
-        {footer && (
-          <div className="flex-shrink-0 p-4 border-t border-slate-200 bg-white">
-            {footer}
+          <div className="p-3">
+            <form onSubmit={handleSubmit} className="flex gap-2 items-center px-2">
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={placeholder}
+                disabled={isLoading}
+                className="flex-1 min-h-[44px] max-h-40 resize-none"
+                rows={1}
+              />
+              <Button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                className="px-3 py-2 h-[44px] shrink-0"
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </form>
           </div>
-        )}
-      </div>
-
-      {/* Fixed Input - simplified approach */}
-      <div className="fixed bottom-0 left-64 right-0 lg:left-20 z-50 transition-all duration-300">
-        <div className="p-3 border-t border-slate-200 bg-white shadow-lg">
-          <form onSubmit={handleSubmit} className="flex gap-2 items-center px-4">
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              disabled={isLoading}
-              className="flex-1 min-h-[40px] max-h-32 resize-none"
-              rows={1}
-            />
-            <Button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="px-3 py-2 h-[40px] shrink-0"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </form>
         </div>
       </div>
-
-      {/* Mobile Input */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50">
-        <div className="p-3 border-t border-slate-200 bg-white shadow-lg">
-          <form onSubmit={handleSubmit} className="flex gap-2 items-center px-4">
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              disabled={isLoading}
-              className="flex-1 min-h-[40px] max-h-32 resize-none"
-              rows={1}
-            />
-            <Button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="px-3 py-2 h-[40px] shrink-0"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </form>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
