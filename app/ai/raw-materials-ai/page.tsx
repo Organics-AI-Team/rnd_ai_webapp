@@ -68,7 +68,7 @@ export default function RawMaterialsAIPage() {
     setIsLoading(true);
 
     try {
-      // Enhanced API call with RAG search
+      // Enhanced API call with RAG search (now powered by Gemini!)
       const response = await fetch('/api/ai/enhanced-chat', {
         method: 'POST',
         headers: {

@@ -4,7 +4,7 @@
  *
  * Collections:
  * 1. raw_materials_real_stock (3,111) → namespace: 'in_stock'
- * 2. raw_meterials_console (31,179) → namespace: 'all_fda'
+ * 2. raw_materials_console (31,179) → namespace: 'all_fda'
  *
  * Total: 34,290 documents → ~205,740 chunks (6 per document)
  */
@@ -32,10 +32,10 @@ const COLLECTIONS: CollectionConfig[] = [
     source_tag: 'raw_materials_real_stock'
   },
   {
-    name: 'raw_meterials_console',
+    name: 'raw_materials_console',
     namespace: 'all_fda',
     description: 'All FDA-registered ingredients',
-    source_tag: 'raw_meterials_console'
+    source_tag: 'raw_materials_console'
   }
 ];
 

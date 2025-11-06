@@ -33,7 +33,7 @@ export interface RAGServicesConfig {
  * Unified Index with Namespaces (Updated 2025-11-05):
  * - Index: raw-materials-stock
  *   - Namespace 'in_stock': 3,111 materials in actual stock (raw_materials_real_stock)
- *   - Namespace 'all_fda': 31,179 FDA-registered ingredients (raw_meterials_console)
+ *   - Namespace 'all_fda': 31,179 FDA-registered ingredients (raw_materials_console)
  * - Index: sales-rnd-ai (003-sales-ai)
  */
 export const RAG_CONFIG: RAGServicesConfig = {
@@ -45,7 +45,7 @@ export const RAG_CONFIG: RAGServicesConfig = {
     includeMetadata: true,
     description: 'All FDA-registered raw materials (31,179 items) - Complete ingredient database with benefits, use cases, INCI',
     defaultFilters: {
-      source: 'raw_meterials_console',
+      source: 'raw_materials_console',
       namespace: 'all_fda'
     }
   },
@@ -70,7 +70,7 @@ export const RAG_CONFIG: RAGServicesConfig = {
     includeMetadata: true,
     description: 'Sales strategy, market intelligence, business development, and R&D collaboration data. All 31,179 materials available for sales conversations.',
     defaultFilters: {
-      source: 'raw_meterials_console'
+      source: 'raw_materials_console'
     }
   }
 };

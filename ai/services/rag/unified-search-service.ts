@@ -4,7 +4,7 @@
  *
  * Automatically routes queries to:
  * - In-stock materials (3,111 items from raw_materials_real_stock)
- * - All FDA ingredients (31,179 items from raw_meterials_console)
+ * - All FDA ingredients (31,179 items from raw_materials_console)
  * - Both (unified search with smart prioritization)
  */
 
@@ -70,7 +70,7 @@ export class UnifiedSearchService extends HybridSearchService {
           metadata_filters: {
             ...options.metadata_filters,
             namespace: namespace,
-            source: collection === 'in_stock' ? 'raw_materials_real_stock' : 'raw_meterials_console'
+            source: collection === 'in_stock' ? 'raw_materials_real_stock' : 'raw_materials_console'
           }
         });
 

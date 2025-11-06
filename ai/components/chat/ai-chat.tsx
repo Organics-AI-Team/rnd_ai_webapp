@@ -87,9 +87,9 @@ export function AIChat({
       const enhancedService = new EnhancedHybridSearchService(
         process.env.NEXT_PUBLIC_PINECONE_API_KEY!,
         process.env.MONGODB_URI!,
-        'rnd_ai_db',
-        'raw_materials',
-        'raw-materials-vectors'
+        'rnd_ai',
+        'raw_materials_console',
+        'raw-materials-stock'
       );
       // Initialize async (don't block render)
       enhancedService.initialize().catch(error => {

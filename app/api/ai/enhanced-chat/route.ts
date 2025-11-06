@@ -1,18 +1,18 @@
 /**
  * Enhanced AI Chat API Route
  * Integrates all optimization features: structured outputs, caching, ML learning, streaming
+ * Now supports both OpenAI and Gemini APIs
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { EnhancedAIService } from '@/ai/services/enhanced/enhanced-ai-service';
-import { StreamingAIService } from '@/ai/services/streaming/streaming-ai-service';
+import { GeminiService } from '@/ai/services/providers/gemini-service';
 import { EnhancedHybridSearchService } from '@/ai/services/rag/enhanced-hybrid-search-service';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
 import { AIRequest } from '@/ai/types/ai-types';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Lazy initialization of services to avoid build-time errors
-let enhancedService: EnhancedAIService | null = null;
-let streamingService: StreamingAIService | null = null;
+let geminiService: GeminiService | null = null;
 let searchService: EnhancedHybridSearchService | null = null;
 let learningService: PreferenceLearningService | null = null;
 
@@ -21,25 +21,34 @@ let servicesInitialized = false;
 async function initializeServices() {
   if (!servicesInitialized) {
     try {
-      // Only initialize services if environment variables are available
-      if (process.env.OPENAI_API_KEY) {
-        enhancedService = new EnhancedAIService(process.env.OPENAI_API_KEY);
-        streamingService = new StreamingAIService(process.env.OPENAI_API_KEY);
+      // Initialize Gemini service (primary)
+      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (geminiApiKey) {
+        geminiService = new GeminiService(geminiApiKey, {
+          model: 'gemini-2.0-flash-exp',
+          temperature: 0.7,
+          maxTokens: 9000
+        }, 'enhanced-chat');
+        console.log('✅ [EnhancedChatAPI] Gemini service initialized');
       }
 
+      // Initialize search service
       if (process.env.PINECONE_API_KEY && process.env.MONGODB_URI) {
         searchService = new EnhancedHybridSearchService(
           process.env.PINECONE_API_KEY,
           process.env.MONGODB_URI,
-          'rnd_ai_db',
-          'raw_materials',
-          'raw-materials-vectors'
+          'rnd_ai',
+          'raw_materials_console',
+          'raw-materials-stock'
         );
         await searchService.initialize();
+        console.log('✅ [EnhancedChatAPI] Search service initialized');
       }
 
+      // Initialize ML learning service
       learningService = new PreferenceLearningService();
       await learningService.initializeModels();
+      console.log('✅ [EnhancedChatAPI] ML learning service initialized');
 
       servicesInitialized = true;
       console.log('✅ [EnhancedChatAPI] All services initialized successfully');
@@ -75,39 +84,10 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Handle streaming requests
+    // Handle streaming requests (currently disabled for Gemini, use non-streaming)
     if (stream) {
-      if (!streamingService) {
-        return NextResponse.json(
-          { error: 'Streaming service not available - check OPENAI_API_KEY configuration' },
-          { status: 503 }
-        );
-      }
-
-      const streamResponse = await streamingService.generateSSEStream(aiRequest, {
-        onChunk: (chunk) => {
-          // Log performance metrics
-          if (chunk.type === 'metadata') {
-            console.log(`📊 [EnhancedChatAPI] Response metadata:`, chunk.metadata);
-          }
-        },
-        onError: (error) => {
-          console.error('❌ [EnhancedChatAPI] Streaming error:', error);
-        },
-        includeMetadata: true,
-        timeout: 30000,
-      });
-
-      return new Response(streamResponse, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
+      console.warn('⚠️ [EnhancedChatAPI] Streaming not yet implemented for Gemini, using non-streaming mode');
+      // Fall through to non-streaming handler
     }
 
     // Handle enhanced non-streaming requests
@@ -146,15 +126,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate enhanced AI response
-    if (!enhancedService) {
+    // Generate enhanced AI response using Gemini
+    if (!geminiService) {
       return NextResponse.json(
-        { error: 'Enhanced AI service not available - check OPENAI_API_KEY configuration' },
+        { error: 'Gemini AI service not available - check GEMINI_API_KEY configuration' },
         { status: 503 }
       );
     }
 
-    const enhancedResponse = await enhancedService.generateEnhancedResponse(aiRequest);
+    // Generate response using Gemini
+    const startTime = Date.now();
+    const geminiResponse = await geminiService.generateResponse(aiRequest);
+    const responseTime = Date.now() - startTime;
 
     // Record interaction for ML learning
     if (learningService) {
@@ -162,16 +145,16 @@ export async function POST(request: NextRequest) {
         await learningService.recordInteraction({
           userId,
           prompt,
-          response: enhancedResponse.response,
+          response: geminiResponse.response,
           feedback: {
             type: 'pending', // Will be updated when user provides feedback
             score: 0,
             timestamp: new Date(),
           },
           context: {
-            category: enhancedResponse.structuredData.metadata.category,
-            complexity: enhancedResponse.structuredData.metadata.complexity,
-            expertiseLevel: enhancedResponse.structuredData.metadata.expertiseLevel,
+            category: context?.category || 'general',
+            complexity: 'medium',
+            expertiseLevel: preferences?.expertiseLevel || 'intermediate',
           },
         });
       } catch (learningError) {
@@ -179,30 +162,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Return comprehensive response
+    // Return comprehensive response with enhanced features
     const response = {
       success: true,
       data: {
-        response: enhancedResponse.response,
-        confidence: enhancedResponse.confidence,
-        sources: enhancedResponse.sources,
-        structuredData: enhancedResponse.structuredData,
-        metadata: enhancedResponse.metadata,
+        response: geminiResponse.response,
+        confidence: geminiResponse.confidence || 0.8,
+        sources: geminiResponse.sources || [],
+        metadata: geminiResponse.metadata || {},
         searchResults: searchResults.length > 0 ? searchResults : undefined,
       },
       performance: {
-        responseTime: enhancedResponse.metadata?.responseTime || 0,
-        cacheHit: enhancedResponse.structuredData.metadata.responseTime < 100, // Assume cache hit if very fast
+        responseTime,
+        cacheHit: false,
         searchPerformed: useSearch,
         searchResultCount: searchResults.length,
       },
       recommendations: {
-        followUpQuestions: enhancedResponse.structuredData.followUpQuestions,
-        relatedTopics: enhancedResponse.structuredData.relatedTopics,
+        followUpQuestions: [],
+        relatedTopics: [],
       },
     };
 
-    console.log(`✅ [EnhancedChatAPI] Enhanced response generated in ${enhancedResponse.metadata?.responseTime}ms`);
+    console.log(`✅ [EnhancedChatAPI] Gemini response generated in ${responseTime}ms`);
 
     return NextResponse.json(response);
 

@@ -6,7 +6,7 @@
  * This script will:
  * 1. Delete the current polluted index
  * 2. Create clean index with proper namespace separation
- * 3. Index only clean FDA data from raw_meterials_console (default)
+ * 3. Index only clean FDA data from raw_materials_console (default)
  * 4. Index stock data separately for stock queries only
  */
 
@@ -46,7 +46,7 @@ function prepareConsoleDocument(doc: any) {
     cas_no: doc.cas_no || 'N/A',
     ec_no: doc.ec_no || doc.einecs_no || 'N/A',
     description: doc.Chem_IUPAC_Name_Description || doc.description || 'No description available',
-    source: 'raw_meterials_console',
+    source: 'raw_materials_console',
     namespace: 'all_fda'
   };
 
@@ -129,7 +129,7 @@ async function indexConsoleData() {
     const ragService = new PineconeRAGService();
 
     // Get total count
-    const totalCount = await db.collection("raw_meterials_console").countDocuments();
+    const totalCount = await db.collection("raw_materials_console").countDocuments();
     console.log(`📦 Found ${totalCount} materials in console collection`);
 
     let processed = 0;
@@ -139,7 +139,7 @@ async function indexConsoleData() {
     for (let skip = 0; skip < totalCount; skip += BATCH_SIZE) {
       console.log(`\n📋 Processing batch ${Math.floor(skip / BATCH_SIZE) + 1}/${Math.ceil(totalCount / BATCH_SIZE)} (${skip}-${skip + BATCH_SIZE})`);
 
-      const batch = await db.collection("raw_meterials_console")
+      const batch = await db.collection("raw_materials_console")
         .find({})
         .skip(skip)
         .limit(BATCH_SIZE)

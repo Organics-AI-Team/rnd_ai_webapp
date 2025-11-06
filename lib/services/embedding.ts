@@ -414,7 +414,7 @@ export function getEmbeddingService(): EmbeddingService {
   if (!embeddingService) {
     const config: EmbeddingConfig = {
       pineconeApiKey: process.env.PINECONE_API_KEY || '',
-      pineconeIndex: process.env.PINECONE_INDEX || '002-rnd-ai',
+      pineconeIndex: 'raw-materials-stock',
       geminiApiKey: process.env.GEMINI_API_KEY || ''
     };
 

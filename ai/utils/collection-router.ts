@@ -4,7 +4,7 @@
  *
  * Collections:
  * 1. raw_materials_real_stock (3,111 items) - Materials we actually have in stock
- * 2. raw_meterials_console (31,179 items) - All FDA-registered ingredients
+ * 2. raw_materials_console (31,179 items) - All FDA-registered ingredients
  */
 
 export type CollectionType = 'in_stock' | 'all_fda' | 'both';
@@ -160,7 +160,7 @@ export function route_query_to_collections(
     collections: ['all_fda'],
     pinecone_namespaces: ['all_fda'],
     confidence: 0.7,
-    reasoning: 'Default search using comprehensive FDA database (raw_meterials_console)',
+    reasoning: 'Default search using comprehensive FDA database (raw_materials_console)',
     search_mode: 'fda_only'
   };
 }
@@ -187,8 +187,8 @@ export function format_response_with_source_context(
   );
 
   const fda_results = results.filter(r =>
-    r.metadata?.source === 'raw_meterials_console' ||
-    r.document?.source === 'raw_meterials_console'
+    r.metadata?.source === 'raw_materials_console' ||
+    r.document?.source === 'raw_materials_console'
   );
 
   let context = '';
