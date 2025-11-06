@@ -17,8 +17,9 @@ COPY package.json package-lock.json ./
 
 # Install dependencies
 # --frozen-lockfile ensures exact versions from package-lock.json
+# --legacy-peer-deps handles dependency conflicts with Zod versions
 # Uses npm ci for faster, more reliable installs in CI/CD
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder
 # Build the Next.js application
