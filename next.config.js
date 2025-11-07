@@ -22,6 +22,19 @@ const nextConfig = {
   // Fix for Pinecone fs module issue and MongoDB browser compatibility
   // Prevents bundling Node.js modules in client-side code
   webpack: (config, { isServer }) => {
+    // ChromaDB and optional dependencies exclusion (both server and client)
+    // ChromaDB has optional peer dependencies that cause build issues
+    config.externals = config.externals || [];
+    if (typeof config.externals === 'object' && !Array.isArray(config.externals)) {
+      config.externals = [config.externals];
+    }
+    config.externals.push({
+      'chromadb': 'commonjs chromadb',
+      '@chroma-core/default-embed': 'commonjs @chroma-core/default-embed',
+      'hnswlib-node': 'commonjs hnswlib-node',
+      'tiktoken': 'commonjs tiktoken'
+    });
+
     if (!isServer) {
       config.resolve.fallback = {
         fs: false,
@@ -86,10 +99,6 @@ const nextConfig = {
         '@tensorflow/tfjs': '@tensorflow/tfjs',
         'node:async_hooks': 'node:async_hooks',
         'node:stream': 'node:stream',
-        // ChromaDB exclusions (server-side only)
-        'chromadb': 'chromadb',
-        '@chroma-core/default-embed': '@chroma-core/default-embed',
-        'hnswlib-node': 'hnswlib-node',
         // Enhanced services exclusions
         '@/ai/services/knowledge/cosmetic-knowledge-sources': '@/ai/services/knowledge/cosmetic-knowledge-sources',
         '@/ai/services/quality/cosmetic-quality-scorer': '@/ai/services/quality/cosmetic-quality-scorer',

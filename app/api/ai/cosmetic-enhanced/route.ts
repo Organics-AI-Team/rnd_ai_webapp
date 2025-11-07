@@ -526,7 +526,7 @@ export async function GET(request: NextRequest) {
   const action = searchParams.get('action');
 
   try {
-    const services = initialize_services();
+    const services = initializeServices();
 
     switch (action) {
       case 'health':
@@ -546,20 +546,12 @@ export async function GET(request: NextRequest) {
         });
 
       case 'test-quick-validation':
-        // Import and run quick validation
-        const { CosmeticOptimizationTestSuite } = await import('@/tests/cosmetic-optimization-test');
-        const testSuite = new CosmeticOptimizationTestSuite({
-          apiKey: OPENAI_API_KEY || 'test',
-          pineconeApiKey: PINECONE_API_KEY || 'test',
-          testQueries: [],
-          testContexts: []
-        });
-
-        const validation = await testSuite.runQuickValidation();
+        // Test validation feature temporarily disabled - test suite not available in production build
         return NextResponse.json({
-          validation,
+          message: 'Test validation feature is temporarily disabled',
+          reason: 'Test suite not available in production builds',
           timestamp: new Date().toISOString()
-        });
+        }, { status: 501 }); // 501 Not Implemented
 
       case 'knowledge-sources':
         // Get available knowledge sources

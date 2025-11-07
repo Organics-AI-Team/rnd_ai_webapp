@@ -223,3 +223,6 @@ export const DEFAULT_AGENT_CONFIGS: Record<string, SimpleAgentConfig> = {
     }
   }
 };
+
+// Export BaseAgent as UniversalAgentSystem for backward compatibility
+export { BaseAgent as UniversalAgentSystem };

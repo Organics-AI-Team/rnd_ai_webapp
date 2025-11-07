@@ -17,15 +17,18 @@ const NAMESPACE = 'all_fda';
 interface MaterialDocument {
   _id: any;
   rm_code: string;
-  trade_name: string;
-  supplier: string;
-  rm_cost: number;
-  benefits: string[];
-  usecase: string[];
-  benefits_cached: string[];
-  usecase_cached: string[];
-  createdAt: Date;
-  updatedAt: Date;
+  INCI_name?: string; // Added: INCI standardized name
+  trade_name?: string;
+  supplier?: string;
+  rm_cost?: number;
+  Function?: string; // Added: Primary function (e.g., "ANTI-SEBUM, ANTIOXIDANT")
+  Chem_IUPAC_Name_Description?: string; // Added: Full chemical description
+  benefits?: string[] | string;
+  usecase?: string[] | string;
+  benefits_cached?: string[];
+  usecase_cached?: string[];
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 async function indexRawMaterialsConsole() {
@@ -172,10 +175,23 @@ async function processBatch(documents: MaterialDocument[], chunkingService: Dyna
     const docChunks = await chunkingService.chunkDocument(documentText, {
       documentId: doc.rm_code,
       metadata: {
+        // Core identifiers
         rm_code: doc.rm_code,
-        trade_name: doc.trade_name,
-        supplier: doc.supplier,
-        rm_cost: doc.rm_cost,
+        INCI_name: doc.INCI_name || '',
+        trade_name: doc.trade_name || '',
+
+        // Functional fields (CRITICAL for filtering and display)
+        Function: doc.Function || '',
+
+        // Benefits and use cases
+        benefits: Array.isArray(doc.benefits) ? doc.benefits.join(', ') : (doc.benefits || ''),
+        usecase: Array.isArray(doc.usecase) ? doc.usecase.join(', ') : (doc.usecase || ''),
+
+        // Supplier info
+        supplier: doc.supplier || '',
+        rm_cost: doc.rm_cost || 0,
+
+        // Source tracking
         source: 'raw_materials_console',
         namespace: NAMESPACE
       }
@@ -187,14 +203,37 @@ async function processBatch(documents: MaterialDocument[], chunkingService: Dyna
   return chunks;
 }
 
-function formatDocumentForChunking(doc: MaterialDocument): string {
+/**
+ * Format document for chunking with ALL relevant fields
+ * Updated: 2025-11-08 - Include INCI_name, Function, and Chem_IUPAC_Name_Description
+ *
+ * These fields are critical for semantic search to work properly:
+ * - INCI_name: The standardized ingredient name
+ * - Function: PRIMARY functionality (e.g., "ANTI-SEBUM, ANTIOXIDANT")
+ * - benefits: Thai language benefits (e.g., "ลดสิว", "ความชุ่มชื้น")
+ * - usecase: Product types (e.g., "เซรั่ม", "ครีม")
+ * - Chem_IUPAC_Name_Description: Full chemical description
+ */
+function formatDocumentForChunking(doc: any): string {
   const parts = [
-    `RM Code: ${doc.rm_code}`,
-    `Trade Name: ${doc.trade_name}`,
-    `Supplier: ${doc.supplier}`,
-    `Cost: ${doc.rm_cost}`,
-    doc.benefits && doc.benefits.length > 0 ? `Benefits: ${doc.benefits.join(', ')}` : '',
-    doc.usecase && doc.usecase.length > 0 ? `Use Cases: ${doc.usecase.join(', ')}` : ''
+    // Primary identifiers
+    `RM Code: ${doc.rm_code || 'N/A'}`,
+    doc.INCI_name ? `INCI Name: ${doc.INCI_name}` : '',
+    doc.trade_name ? `Trade Name: ${doc.trade_name}` : '',
+
+    // Functional information (CRITICAL for search)
+    doc.Function ? `Function: ${doc.Function}` : '',
+
+    // Benefits and use cases (Thai + English)
+    doc.benefits && doc.benefits.length > 0 ? `Benefits: ${Array.isArray(doc.benefits) ? doc.benefits.join(', ') : doc.benefits}` : '',
+    doc.usecase && doc.usecase.length > 0 ? `Use Cases: ${Array.isArray(doc.usecase) ? doc.usecase.join(', ') : doc.usecase}` : '',
+
+    // Chemical description
+    doc.Chem_IUPAC_Name_Description ? `Description: ${doc.Chem_IUPAC_Name_Description}` : '',
+
+    // Supplier and cost info
+    doc.supplier ? `Supplier: ${doc.supplier}` : '',
+    doc.rm_cost ? `Cost: ${doc.rm_cost}` : ''
   ].filter(Boolean);
 
   return parts.join('\n');
