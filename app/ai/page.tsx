@@ -21,14 +21,6 @@ import {
 export default function AIHubPage() {
   const aiFeatures = [
     {
-      title: 'General AI Chat',
-      description: 'Converse with our versatile AI assistant for general inquiries and tasks',
-      icon: <MessageSquare className="w-6 h-6" />,
-      href: '/ai/ai-chat',
-      badge: 'Popular',
-      color: 'bg-blue-500'
-    },
-    {
       title: 'Raw Materials AI',
       description: 'Specialized AI for ingredient research with access to comprehensive database',
       icon: <Package className="w-6 h-6" />,
@@ -37,12 +29,20 @@ export default function AIHubPage() {
       color: 'bg-green-500'
     },
     {
+      title: 'Sales R&D AI',
+      description: 'AI assistant for sales strategies, market intelligence, and business development',
+      icon: <TrendingUp className="w-6 h-6" />,
+      href: '/ai/sales-rnd-ai',
+      badge: 'Market Intel',
+      color: 'bg-purple-500'
+    },
+    {
       title: 'AI Agents Hub',
       description: 'Access specialized AI agents for different domains and expertise areas',
       icon: <Users className="w-6 h-6" />,
       href: '/ai/agents',
       badge: 'New',
-      color: 'bg-purple-500'
+      color: 'bg-blue-500'
     },
     {
       title: 'Analytics Dashboard',
