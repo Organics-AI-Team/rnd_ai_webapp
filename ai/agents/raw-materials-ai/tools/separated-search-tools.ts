@@ -243,19 +243,18 @@ export const searchFDADataBaseTool = {
  */
 export const checkStockAvailabilityTool = {
   name: 'check_stock_availability',
-  description: `ตรวจสอบวัตถุดิบที่มีอยู่ในสต็อก (3,111 รายการ)
+  description: `ค้นหาวัตถุดิบจากฐานข้อมูลหลัก (31,179 รายการ)
 
   ใช้เมื่อผู้ใช้ถาม:
   - "มี...ไหม?" (do we have...?)
-  - "...มีอยู่ในสต็อกไหม" (...is it in stock?)
+  - "หาวัตถุดิบ..." (find ingredients...)
   - "สารที่เรามี" (materials that we have)
-  - "สารที่มีอยู่ใน stock" (materials that are in stock)
-  - "ซื้อได้ทันที" (can order immediately)
-  - "วัตถุดิบที่มีพร้อมส่ง" (ready-to-ship ingredients)
+  - "มีสารอะไรบ้างที่ช่วย..." (what ingredients help with...)
+  - "แนะนำสาร..." (recommend ingredients...)
   - "ที่ไม่มี SAM" (not SAM - use exclude_patterns ["SAM"])
   - "อีก 5 อัน" (another 5 - use offset parameter)
 
-  จะค้นหาเฉพาะวัตถุดิบที่มีอยู่ในคลัง
+  จะค้นหาจากฐานข้อมูล raw_materials_console
   รองรับการกรองผลลัพธ์และ pagination`,
 
   parameters: z.object({
@@ -294,9 +293,9 @@ export const checkStockAvailabilityTool = {
       // Fetch more results to account for exclusions and pagination
       const fetchLimit = Math.min(requestedLimit + offset + excludeCodes.length + excludePatterns.length + 10, 50);
 
-      // Search only in stock collection
+      // Search raw_materials_console collection (all FDA materials)
       const results = await searchService.unified_search(params.query, {
-        collection: 'in_stock', // Only search stock
+        collection: 'all_fda', // Search raw_materials_console
         topK: fetchLimit,
         similarityThreshold: 0.5,
         max_results: fetchLimit,
@@ -357,7 +356,7 @@ export const checkStockAvailabilityTool = {
 
       // Format as Thai table
       const format_stock_table = (materials: any[]) => {
-        if (materials.length === 0) return 'ไม่พบวัตถุดิบที่ต้องการในสต็อก';
+        if (materials.length === 0) return 'ไม่พบวัตถุดิบที่ต้องการ';
 
         let table = '\n| # | รหัสวัตถุดิบ | ชื่อการค้า | INCI Name | ซัพพลายเออร์ | ราคา/กก. | สถานะ | คะแนน |\n' +
           '|---|---------------|--------------|------------|----------------|-------------|--------|---------|';
@@ -378,7 +377,7 @@ export const checkStockAvailabilityTool = {
         limit: requestedLimit,
         excluded_count: excludeCodes.length + excludePatterns.length,
         excluded_patterns: excludePatterns,
-        database: 'สต็อกวัตถุดิบ (3,111 รายการ)',
+        database: 'raw_materials_console (31,179 รายการ)',
         materials: formatted,
         table_display: format_stock_table(formatted),
         instruction_to_ai: 'แสดงผลลัพธ์โดยใช้ table_display เท่านั้น ตอบเป็นภาษาไทยทั้งหมด แสดงตาราง markdown ให้ผู้ใช้เห็นโดยตรง'
@@ -390,7 +389,7 @@ export const checkStockAvailabilityTool = {
         success: false,
         error: error.message,
         materials: [],
-        table_display: 'เกิดข้อผิดพลาดในการตรวจสอบสต็อก: ' + error.message
+        table_display: 'เกิดข้อผิดพลาดในการค้นหา: ' + error.message
       };
     }
   }
@@ -402,7 +401,7 @@ export const checkStockAvailabilityTool = {
  */
 export const getMaterialProfileTool = {
   name: 'get_material_profile',
-  description: `ดึงข้อมูลโปรไฟล์วัตถุดิบแบบละเอียด (INCI, ประโยชน์, Use Case, สถานะสต็อก)
+  description: `ดึงข้อมูลโปรไฟล์วัตถุดิบแบบละเอียดจากฐานข้อมูล raw_materials_console (INCI, ประโยชน์, Use Case)
 
   ใช้เมื่อผู้ใช้ถาม:
   - "สาร [ชื่อ] ใช้ทำอะไรได้บ้าง"
@@ -410,25 +409,17 @@ export const getMaterialProfileTool = {
   - "วัตถุดิบ [ชื่อ] มีประโยชน์อะไร และเหมาะกับอะไร"
   - "ยกตัวอย่างผลิตภัณฑ์ที่ใช้สารนี้"
 
-  ให้ข้อมูลเพื่ออธิบายประโยชน์และการนำไปใช้จริง`,
+  ค้นหาจากฐานข้อมูล raw_materials_console (31,179 รายการ)`,
 
   parameters: z.object({
     material: z.string().min(1).describe('ชื่อวัตถุดิบ, INCI หรือรหัส เช่น "Caffeoyl Hexapeptide-48", "RM001234"'),
     limit: z.number().min(1).max(5).optional().default(3).describe('จำนวนวัถุดิบที่จะสรุป (1-5)'),
-    collection: z.enum(['auto', 'in_stock', 'all_fda', 'both']).optional().default('auto').describe(
-      'ฐานข้อมูลที่ต้องการค้นหา:\n' +
-      '- auto: ให้ระบบเลือกให้ (ค่าเริ่มต้น)\n' +
-      '- in_stock: สต็อกวัตถุดิบ (3,111 รายการ)\n' +
-      '- all_fda: ฐานข้อมูล FDA ทั้งหมด\n' +
-      '- both: รวมทั้งสอง'
-    ),
     include_related: z.boolean().optional().default(true).describe('แสดงวัตถุดิบที่ใกล้เคียงเพิ่มเติมหรือไม่ (default: true)')
   }),
 
   handler: async (params: {
     material: string;
     limit?: number;
-    collection?: 'auto' | 'in_stock' | 'all_fda' | 'both';
     include_related?: boolean;
   }) => {
     console.log('🔧 [get-material-profile] Called with:', params);
@@ -436,11 +427,9 @@ export const getMaterialProfileTool = {
     try {
       const searchService = getUnifiedSearchService();
       const limit = params.limit ?? 3;
-      const requestedCollection = params.collection ?? 'auto';
-      const collectionForSearch: 'in_stock' | 'all_fda' | 'both' =
-        requestedCollection === 'in_stock' || requestedCollection === 'all_fda'
-          ? requestedCollection
-          : 'both';
+
+      // Always search raw_materials_console (all_fda) only
+      const collectionForSearch: 'all_fda' = 'all_fda';
 
       const topK = Math.min(limit * 3, 15);
       const results = await searchService.unified_search(params.material, {
@@ -559,7 +548,7 @@ export const getMaterialProfileTool = {
  */
 export const searchMaterialsByUsecaseTool = {
   name: 'search_materials_by_usecase',
-  description: `ค้นหาวัตถุดิบตามประเภทผลิตภัณฑ์ (Use Case) เช่น serum, cream, sun care
+  description: `ค้นหาวัตถุดิบตามประเภทผลิตภัณฑ์ (Use Case) จากฐานข้อมูล raw_materials_console
 
   ใช้เมื่อผู้ใช้ถาม:
   - "วัถุดิบสำหรับเซรั่มลดริ้วรอย"
@@ -567,15 +556,13 @@ export const searchMaterialsByUsecaseTool = {
   - "หา active สำหรับ sleeping mask"
   - "ต้องการสารสำหรับ sun care ที่ช่วย [benefit]"
 
-  ระบุ usecase ชัดเจนเพื่อหาวัตถุดิบที่เหมาะกับรูปแบบผลิตภัณฑ์`,
+  ค้นหาจากฐานข้อมูล raw_materials_console (31,179 รายการ)`,
 
   parameters: z.object({
     usecase: z.string().min(1).describe('ประเภทผลิตภัณฑ์หรือ Use Case เช่น "serum", "cream", "toner", "eye cream", "mask"'),
     benefit: z.string().optional().describe('ประโยชน์เพิ่มเติมที่ต้องการกรอง เช่น "ลดริ้วรอย", "ความชุ่มชื้น", "ปรับผิวสว่าง"'),
     limit: z.number().min(1).max(10).optional().default(5).describe('จำนวนผลลัพธ์ที่ต้องการ (1-10)'),
     offset: z.number().min(0).optional().default(0).describe('จำนวนผลลัพธ์ที่ต้องการข้าม (สำหรับหน้าถัดไป)'),
-    collection: z.enum(['auto', 'in_stock', 'all_fda', 'both']).optional().default('auto').describe('ฐานข้อมูลที่ต้องการค้นหา'),
-    prioritize_stock: z.boolean().optional().default(true).describe('เรียงวัตถุดิบที่มีในสต็อกขึ้นก่อนหรือไม่ (default: true)'),
     exclude_codes: z.array(z.string()).optional().describe('รหัสวัตถุดิบที่ต้องการยกเว้น เช่น ["RM000123", "RM000456"]')
   }),
 
@@ -584,8 +571,6 @@ export const searchMaterialsByUsecaseTool = {
     benefit?: string;
     limit?: number;
     offset?: number;
-    collection?: 'auto' | 'in_stock' | 'all_fda' | 'both';
-    prioritize_stock?: boolean;
     exclude_codes?: string[];
   }) => {
     console.log('🔧 [search-materials-by-usecase] Called with:', params);
@@ -595,11 +580,9 @@ export const searchMaterialsByUsecaseTool = {
       const limit = params.limit ?? 5;
       const offset = params.offset ?? 0;
       const excludeCodes = params.exclude_codes ?? [];
-      const requestedCollection = params.collection ?? 'auto';
-      const collectionForSearch: 'in_stock' | 'all_fda' | 'both' =
-        requestedCollection === 'in_stock' || requestedCollection === 'all_fda'
-          ? requestedCollection
-          : 'both';
+
+      // Always search raw_materials_console (all_fda) only
+      const collectionForSearch: 'all_fda' = 'all_fda';
 
       const baseQuery = params.benefit
         ? `${params.usecase} ingredients for ${params.benefit}`
@@ -645,13 +628,7 @@ export const searchMaterialsByUsecaseTool = {
 
       let working = filtered.length > 0 ? filtered : results;
 
-      if (params.prioritize_stock !== false) {
-        working = [...working].sort((a, b) => {
-          if (a.availability === b.availability) return 0;
-          return a.availability === 'in_stock' ? -1 : 1;
-        });
-      }
-
+      // No need to prioritize stock since we only search raw_materials_console
       const paginated = working.slice(offset, offset + limit);
 
       const formatted = paginated.map((result, index) => {
