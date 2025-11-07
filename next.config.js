@@ -86,6 +86,10 @@ const nextConfig = {
         '@tensorflow/tfjs': '@tensorflow/tfjs',
         'node:async_hooks': 'node:async_hooks',
         'node:stream': 'node:stream',
+        // ChromaDB exclusions (server-side only)
+        'chromadb': 'chromadb',
+        '@chroma-core/default-embed': '@chroma-core/default-embed',
+        'hnswlib-node': 'hnswlib-node',
         // Enhanced services exclusions
         '@/ai/services/knowledge/cosmetic-knowledge-sources': '@/ai/services/knowledge/cosmetic-knowledge-sources',
         '@/ai/services/quality/cosmetic-quality-scorer': '@/ai/services/quality/cosmetic-quality-scorer',
@@ -94,6 +98,8 @@ const nextConfig = {
         '@/ai/services/response/response-reranker': '@/ai/services/response/response-reranker',
         '@/ai/services/rag/enhanced-hybrid-search-service': '@/ai/services/rag/enhanced-hybrid-search-service',
         '@/ai/services/ml/preference-learning-service': '@/ai/services/ml/preference-learning-service',
+        '@/ai/services/vector/chroma-service': '@/ai/services/vector/chroma-service',
+        '@/ai/services/rag/chroma-rag-service': '@/ai/services/rag/chroma-rag-service',
         '@/ai/agents/raw-materials-ai/enhanced-raw-materials-agent': '@/ai/agents/raw-materials-ai/enhanced-raw-materials-agent',
         '@/ai/agents/sales-rnd-ai/enhanced-sales-rnd-agent': '@/ai/agents/sales-rnd-ai/enhanced-sales-rnd-agent'
       };
