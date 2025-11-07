@@ -97,13 +97,13 @@ export default function RawMaterialsAIPage() {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.data?.response || 'Sorry, I could not process your request at the moment.',
+        content: data.response || 'Sorry, I could not process your request at the moment.',
         timestamp: new Date(),
         metadata: {
-          sources: data.data?.sources || [],
-          confidence: data.data?.confidence || 0.8,
-          ragUsed: data.performance?.searchPerformed || false,
-          responseTime: data.performance?.responseTime || 0
+          sources: data.searchResults || [],
+          confidence: data.metadata?.confidence || 0.8,
+          ragUsed: data.features?.searchEnabled || false,
+          responseTime: data.metadata?.latency || 0
         }
       };
 
