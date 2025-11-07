@@ -2,6 +2,122 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-11-08] - FIX: ChromaDB NumPy 2.0 Compatibility Issue
+
+### 🐛 **BUG FIX: ChromaDB Runtime Error - NumPy 2.0 Incompatibility**
+- **Status**: ✅ FIXED - Pinned NumPy to 1.26.4
+- **Issue**: `AttributeError: np.float_ was removed in the NumPy 2.0 release`
+- **Impact**: ChromaDB service failed healthcheck on Railway, unable to start
+- **Solution**: Pin numpy==1.26.4 in Dockerfile before installing ChromaDB
+
+### 🔍 **ROOT CAUSE ANALYSIS**
+
+#### **Problem: ChromaDB 0.4.22 Using Deprecated NumPy Types**
+Error from Railway deploy logs:
+```python
+File "/usr/local/lib/python3.11/site-packages/chromadb/api/types.py", line 101
+ImageDType = Union[np.uint, np.int_, np.float_]
+                                     ^^^^^^^^^
+AttributeError: `np.float_` was removed in the NumPy 2.0 release. Use `np.float64` instead.
+```
+
+**Root Cause**:
+- ChromaDB 0.4.22 released before NumPy 2.0 (June 2024)
+- Uses deprecated NumPy type aliases: `np.float_`, `np.uint`, `np.int_`
+- NumPy 2.0 removed these deprecated aliases (breaking change)
+- `pip install chromadb==0.4.22` installed latest NumPy (2.x) by default
+- ChromaDB failed to import due to NumPy API incompatibility
+
+**Evidence**:
+1. Build succeeded - ChromaDB package installed successfully
+2. Healthcheck failed - Service couldn't start (/api/v1/heartbeat unreachable)
+3. Deploy logs showed NumPy AttributeError on ChromaDB import
+4. Error in chromadb/api/types.py line 101 using removed `np.float_` type
+
+#### **Solution: Pin NumPy Version Before ChromaDB Install**
+
+**Dockerfile Changes**:
+```dockerfile
+# Before (Broken - installs NumPy 2.x automatically)
+RUN pip install --no-cache-dir chromadb==0.4.22
+
+# After (Fixed - pins NumPy 1.26.4 first)
+RUN pip install --no-cache-dir numpy==1.26.4 && \
+    pip install --no-cache-dir chromadb==0.4.22
+```
+
+**Why This Works**:
+- NumPy 1.26.4 is last stable release before 2.0 breaking changes
+- Installing NumPy first ensures ChromaDB uses compatible version
+- ChromaDB's numpy dependency satisfied by pinned version
+- No data migration required (staying on ChromaDB 0.4.22)
+
+**Files Modified**:
+- `chromadb-service/Dockerfile:8-9` - Added numpy==1.26.4 install before chromadb
+
+**Expected Result After Fix**:
+- ChromaDB starts successfully with NumPy 1.26.4
+- All np.float_, np.uint, np.int_ types available
+- Healthcheck passes at /api/v1/heartbeat
+- Service shows "Running" in Railway dashboard
+
+**Senior Dev Analysis**:
+- Always pin critical dependencies to avoid transitive dependency breaking changes
+- NumPy 2.0 major release (June 2024) removed legacy type aliases
+- ChromaDB 0.5.x+ supports NumPy 2.0 but requires migration testing
+- For production stability, explicit version pinning > using latest
+- Lesson: When deploying mature packages, check their dependency compatibility with latest versions
+
+**Alternative Solutions Considered**:
+1. ❌ Upgrade to chromadb>=0.5.0 - Requires testing, possible data migration
+2. ✅ Pin NumPy 1.26.4 - Simple, stable, zero migration risk
+3. ❌ Use numpy<2.0 - Too broad, could pull vulnerable older versions
+
+---
+
+## [2025-11-08] - FEATURE: Applied Markdown Renderer to AI Chat Messages
+
+### ✅ **FEATURE: Rich Markdown Rendering for AI Responses**
+- **Status**: ✅ COMPLETED - Both Raw Materials AI and Sales AI pages now render markdown
+- **Issue**: AI responses were displayed as plain text without formatting support
+- **Solution**: Integrated MarkdownRenderer component into shared AIChatMessage component
+- **Impact**: AI responses now support tables, code blocks, lists, links, and other markdown formatting
+- **Benefit**: Better readability and structured presentation of AI responses
+
+### 🔍 **IMPLEMENTATION**
+
+**Integration Strategy**:
+- ❌ Before: Plain text rendering with `<p>{message.content}</p>`
+- ✅ After: Markdown rendering with `<MarkdownRenderer content={message.content} />`
+
+**Scope**:
+- ✅ Assistant messages: Rendered with markdown support
+- ✅ User messages: Keep plain text rendering (no markdown needed)
+
+**Files Modified**:
+- `components/ai/ai_chat_message.tsx:6` - Added MarkdownRenderer import
+- `components/ai/ai_chat_message.tsx:90-96` - Conditional rendering: markdown for assistant, plain text for user
+
+**Component Architecture**:
+- Applied to shared `AIChatMessage` component
+- Automatically applies to ALL AI pages using this component:
+  - ✅ Raw Materials AI (`/ai/raw-materials-ai`)
+  - ✅ Sales R&D AI (`/ai/sales-rnd-ai`)
+
+**Features Supported**:
+- Tables with custom styling
+- Code blocks with syntax highlighting
+- Ordered and unordered lists
+- Links and emphasis (bold, italic)
+- Proper whitespace handling
+
+**Testing**:
+- Dev server compiled successfully (port 3001)
+- No TypeScript errors
+- Ready for user testing
+
+---
+
 ## [2025-11-08] - FIX: Switched from Vector Search to Direct MongoDB Search
 
 ### ✅ **IMMEDIATE FIX: Search Tools Now Use Direct MongoDB Queries**
