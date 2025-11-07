@@ -2,6 +2,139 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-11-08] - REFACTOR: Separated Chat Components for Independent Rendering
+
+### ✨ **REFACTOR: Created Area-Based Chat Components**
+- **Status**: ✅ COMPLETED - Messages and Input now render as separate components
+- **Change**: Split chat UI into independently renderable area components
+- **Impact**: Better modularity, easier customization, independent component updates
+
+### 🔧 **IMPLEMENTATION**
+
+#### **Problem: Coupled Chat UI Components**
+Previous structure:
+- Messages, loading, empty state, feedback, and input were tightly coupled
+- Difficult to customize or render parts independently
+- Hard to reuse in different layouts
+
+#### **Solution: Area-Based Component Architecture**
+Created 2 new composite components in `components/ai/`:
+
+**1. `ai_chat_messages_area.tsx` (71 lines)**
+- Encapsulates entire messages display area
+- Handles empty state, messages list, and loading indicator
+- Props: messages, loading state, theme, empty state config, metadata
+- Renders as complete ScrollArea with all message logic
+- **Benefit**: Messages area can render independently
+
+**2. `ai_chat_input_area.tsx` (62 lines)**
+- Encapsulates input and feedback area
+- Handles input field and optional feedback buttons
+- Props: input value, handlers, messages for feedback, disabled state
+- Auto-shows feedback for last assistant message
+- **Benefit**: Input area can render separately or be moved
+
+#### **Architecture Change:**
+
+**Before (Inline JSX):**
+```tsx
+<CardContent className="flex-1 flex flex-col p-0">
+  <ScrollArea className="flex-1 p-4">
+    {messages.length === 0 ? (
+      <AIEmptyState ... />
+    ) : (
+      messages.map(m => <AIChatMessage ... />)
+    )}
+    {isLoading && <AILoadingIndicator ... />}
+  </ScrollArea>
+
+  {messages.length > 0 && <AIFeedbackButtons ... />}
+  <AIChatInput ... />
+</CardContent>
+```
+
+**After (Separated Components):**
+```tsx
+<CardContent className="flex-1 flex flex-col p-0">
+  <AIChatMessagesArea
+    messages={messages}
+    isLoading={isLoading}
+    themeColor="blue"
+    emptyStateIcon={...}
+    emptyStateGreeting="..."
+    emptyStateSuggestions={[...]}
+    loadingMessage="..."
+    metadataIcon={...}
+    metadataLabel="..."
+  />
+
+  <AIChatInputArea
+    input={input}
+    onInputChange={setInput}
+    onSend={handleSend}
+    placeholder="..."
+    disabled={isLoading}
+    messages={messages}
+    onFeedback={handleFeedback}
+    feedbackDisabled={feedbackSubmitted}
+  />
+</CardContent>
+```
+
+#### **Modified Files:**
+
+**New Components:**
+- `components/ai/ai_chat_messages_area.tsx` - Complete messages display area
+- `components/ai/ai_chat_input_area.tsx` - Complete input and feedback area
+- `components/ai/index.ts` - Added exports for new components
+
+**Refactored Pages:**
+- `app/ai/raw-materials-ai/page.tsx` - Now uses separated area components
+
+#### **Benefits:**
+
+1. **Independent Rendering**: Messages and input can render separately
+2. **Layout Flexibility**: Easy to move input to different position (top, side, popup)
+3. **Customization**: Each area can be customized without affecting others
+4. **Reusability**: Areas can be reused in different chat layouts
+5. **Cleaner Code**: Page component focuses on logic, not UI structure
+6. **No Hardcoded HTML**: All rendering through React components
+
+### 📊 **Component Structure:**
+
+```
+AI Chat Components (Now with Areas):
+├── Core Components (7):
+│   ├── ai_chat_message.tsx         - Single message
+│   ├── ai_chat_input.tsx           - Input field only
+│   ├── ai_features_grid.tsx        - Features display
+│   ├── ai_loading_indicator.tsx    - Loading state
+│   ├── ai_feedback_buttons.tsx     - Feedback UI
+│   ├── ai_empty_state.tsx          - Empty state
+│   └── ai_auth_guard.tsx           - Auth prompt
+│
+└── Area Components (2 NEW):
+    ├── ai_chat_messages_area.tsx   - Complete messages area
+    └── ai_chat_input_area.tsx      - Complete input area
+```
+
+### 🎯 **Use Cases Enabled:**
+
+1. **Split Screen**: Render messages in one panel, input in another
+2. **Floating Input**: Input can float over other content
+3. **Sidebar Chat**: Messages in sidebar, input docked at bottom
+4. **Mobile Optimization**: Different layouts for mobile/desktop
+5. **Custom Layouts**: Easy to create unique chat experiences
+
+### ✅ **Verification:**
+- ✅ `AIChatMessagesArea` component created with full functionality
+- ✅ `AIChatInputArea` component created with conditional feedback
+- ✅ Components exported in index.ts
+- ✅ Raw materials AI page refactored successfully
+- ✅ No hardcoded HTML - all component-based
+- ✅ Logic unchanged - only architectural improvement
+- ✅ Snake_case naming convention followed
+
 ## [2025-11-08] - BUILD FIX: Exclude ChromaDB from Client Bundle
 
 ### 🐛 **BUG FIX: Resolved ChromaDB Build Error**
