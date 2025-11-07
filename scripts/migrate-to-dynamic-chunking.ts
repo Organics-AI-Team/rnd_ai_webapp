@@ -16,7 +16,7 @@
  */
 
 import mongoClientPromise from '@/lib/mongodb';
-import { PineconeRAGService } from '@/ai/services/rag/pinecone-service';
+import { PineconeRAGService } from '@/ai/services/rag/pinecone-service-stub';
 import { DynamicChunkingService } from '@/ai/services/rag/dynamic-chunking-service';
 
 interface MigrationConfig {

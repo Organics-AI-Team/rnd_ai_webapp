@@ -82,7 +82,7 @@ const nextConfig = {
         'mongodb/lib/cmap/auth/mongodb_oidc/automated_callback_workflow': 'mongodb/lib/cmap/auth/mongodb_oidc/automated_callback_workflow',
         'mongodb/lib/mongo_client_auth_providers': 'mongodb/lib/mongo_client_auth_providers',
         '@langchain/langgraph': '@langchain/langgraph',
-        '@pinecone-database/pinecone': '@pinecone-database/pinecone',
+        // '@pinecone-database/pinecone': '@pinecone-database/pinecone', // Disabled - Using ChromaDB instead
         '@tensorflow/tfjs': '@tensorflow/tfjs',
         'node:async_hooks': 'node:async_hooks',
         'node:stream': 'node:stream',

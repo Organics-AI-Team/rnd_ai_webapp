@@ -15,7 +15,7 @@ export { OpenAIService } from './services/providers/openai-service';
 export { GeminiService } from './services/providers/gemini-service';
 export { LangChainService } from './services/providers/langchain-service';
 
-export { PineconeRAGService } from './services/rag/pinecone-service';
+export { PineconeRAGService } from './services/rag/pinecone-service-stub';
 
 // Components
 export { BaseChat } from './components/chat/base-chat';
