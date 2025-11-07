@@ -374,22 +374,32 @@ export class GeminiToolService extends BaseAIService {
 
       console.log(`🔧 [GeminiToolService] Registered ${functionDeclarations.length} functions`);
 
-      // Create model with tools
+      // Get system instructions (only once, not per message)
+      let systemInstructions = '';
+      try {
+        if (typeof window === 'undefined') {
+          const { RawMaterialsAgent } = require('../../agents/raw-materials-ai/agent');
+          systemInstructions = RawMaterialsAgent.getInstructions();
+        } else {
+          systemInstructions = this.getDefaultSystemInstructions();
+        }
+      } catch (error) {
+        console.warn('⚠️ [GeminiToolService] Could not load system instructions:', error);
+      }
+
+      // Create model with tools AND system instruction
       const model = this.genAI.getGenerativeModel({
         model: adjustedConfig.model,
         generationConfig: {
           temperature: adjustedConfig.temperature,
           maxOutputTokens: adjustedConfig.maxTokens,
         },
+        systemInstruction: systemInstructions || undefined,
         tools: functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined
       });
 
-      // Create enhanced prompt with context
-      const enhancedPrompt = this.enhancePrompt(
-        request.prompt,
-        userPreferences,
-        feedbackPatterns
-      );
+      // Use ONLY the user's prompt, without repeating system instructions
+      const enhancedPrompt = request.prompt;
 
       // Create conversation history
       const history = request.context?.conversationHistory?.map(msg => ({

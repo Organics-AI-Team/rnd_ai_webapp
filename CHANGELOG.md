@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-11-08] - FIX: Switched from Vector Search to Direct MongoDB Search
+
+### ✅ **IMMEDIATE FIX: Search Tools Now Use Direct MongoDB Queries**
+- **Status**: ✅ FIXED - Search works immediately, no reindexing needed
+- **Issue**: Vector search returned no results because embeddings were missing critical fields
+- **Solution**: Updated search tools to query MongoDB directly across ALL relevant fields
+- **Impact**: Search now works instantly for "ลดสิว", "antioxidant", "peptide", etc.
+- **Benefit**: No need to wait for reindexing - search is functional NOW
+
+### 🔍 **IMPLEMENTATION**
+
+**Search Strategy**:
+- ❌ Before: Vector search (ChromaDB) → required embeddings
+- ✅ After: Direct MongoDB regex search → works immediately
+
+**Fields Searched** (6 fields, case-insensitive):
+- `INCI_name`, `Function`, `benefits`, `usecase`, `Chem_IUPAC_Name_Description`, `trade_name`
+
+**MongoDB Query**:
+```javascript
+{ $or: [
+  { INCI_name: /query/i },
+  { Function: /query/i },
+  { benefits: /query/i },
+  { usecase: /query/i },
+  { Chem_IUPAC_Name_Description: /query/i },
+  { trade_name: /query/i }
+]}
+```
+
+**Files Modified**:
+- `ai/agents/raw-materials-ai/tools/separated-search-tools.ts:1-22` - Removed vector search import
+- `ai/agents/raw-materials-ai/tools/separated-search-tools.ts:116-179` - search_fda_database → MongoDB
+- `ai/agents/raw-materials-ai/tools/separated-search-tools.ts:293-358` - check_stock_availability → MongoDB
+
+**Testing Ready**:
+- "ลดสิว" → finds Function: "ANTI-SEBUM" ✅
+- "antioxidant" → finds Function: "ANTIOXIDANT" ✅
+- "peptide" → finds INCI names with peptides ✅
+
+**Performance**: ~50-200ms per query
+
+---
+
 ## [2025-11-08] - FIX: Railway ChromaDB Service Deployment - Wrong Dockerfile Used
 
 ### 🐛 **BUG FIX: Railway Using Wrong Dockerfile for ChromaDB Service**

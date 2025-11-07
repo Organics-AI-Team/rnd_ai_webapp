@@ -1,12 +1,25 @@
 /**
  * Separated Search Tools
- * Two distinct tools for different purposes:
- * 1. search_fda_database - Search comprehensive FDA database
- * 2. check_stock_availability - Check materials we have in stock
+ * Direct MongoDB search across ALL relevant fields
+ *
+ * Updated: 2025-11-08 - Changed from vector search to direct MongoDB queries
+ *
+ * Search tools:
+ * 1. search_fda_database - Search comprehensive FDA database (31,179 items)
+ * 2. check_stock_availability - Check materials in stock (3,111 items)
+ * 3. get_material_profile - Get detailed material profiles
+ * 4. search_materials_by_usecase - Search by product type
+ *
+ * All searches query these fields:
+ * - INCI_name (ingredient name)
+ * - Function (primary functionality, e.g., "ANTI-SEBUM, ANTIOXIDANT")
+ * - benefits (Thai/English benefits, e.g., "ลดสิว", "ความชุ่มชื้น")
+ * - usecase (product types, e.g., "เซรั่ม", "ครีม")
+ * - Chem_IUPAC_Name_Description (chemical description)
+ * - trade_name (product name)
  */
 
 import { z } from 'zod';
-import { getUnifiedSearchService } from '@/ai/services/rag/unified-search-service';
 
 /**
  * Normalize array-like fields coming from MongoDB
@@ -124,40 +137,59 @@ export const searchFDADataBaseTool = {
     console.log('🔧 [search-fda-database] Called with:', params);
 
     try {
-      const searchService = getUnifiedSearchService();
+      // Direct MongoDB search instead of vector search
+      const mongoClientPromise = require('@/lib/mongodb').default;
+      const client = await mongoClientPromise;
+      const db = client.db('rnd_ai');
+      const collection = db.collection('raw_materials_console');
 
-      // Build search query for FDA database only
+      // Build search query for FDA database
       let searchQuery = params.query;
       if (params.benefit) {
-        searchQuery = `ingredients for ${params.benefit}`;
+        searchQuery = params.benefit; // Use benefit directly for searching
       }
 
-      // Search for more results to handle pagination and exclusion
       const requestedLimit = params.limit || 5;
       const offset = params.offset || 0;
       const excludeCodes = params.exclude_codes || [];
 
-      // Fetch more results than needed to account for exclusions
-      const fetchLimit = Math.min(requestedLimit + offset + excludeCodes.length + 10, 50);
+      // Build MongoDB query to search across ALL relevant fields
+      // Search in: INCI_name, Function, benefits, usecase, Chem_IUPAC_Name_Description
+      const searchRegex = new RegExp(searchQuery, 'i'); // Case-insensitive
 
-      const results = await searchService.unified_search(searchQuery, {
-        collection: 'all_fda', // Only search FDA database
-        topK: fetchLimit,
-        similarityThreshold: 0.5,
-        max_results: fetchLimit,
-        include_availability_context: false // Don't show stock context
-      });
+      const mongoQuery: any = {
+        $or: [
+          { INCI_name: searchRegex },
+          { Function: searchRegex },
+          { benefits: searchRegex },
+          { usecase: searchRegex },
+          { Chem_IUPAC_Name_Description: searchRegex },
+          { trade_name: searchRegex }
+        ]
+      };
 
-      // Apply exclusion and pagination filters
-      const filteredResults = results.filter(result => {
-        const materialCode = result.document?.rm_code || result.document?.material_code;
-        return !excludeCodes.includes(materialCode);
-      });
+      // Exclude specified codes
+      if (excludeCodes.length > 0) {
+        mongoQuery.rm_code = { $nin: excludeCodes };
+      }
 
-      // Apply pagination
-      const paginatedResults = filteredResults.slice(offset, offset + requestedLimit);
+      console.log('🔍 [search-fda-database] MongoDB query:', JSON.stringify(mongoQuery));
 
-      console.log(`🔍 [search-fda-database] Pagination: ${filteredResults.length} total after exclusion, showing ${paginatedResults.length} from offset ${offset}`);
+      // Execute MongoDB query with pagination
+      const totalCount = await collection.countDocuments(mongoQuery);
+      const results = await collection
+        .find(mongoQuery)
+        .skip(offset)
+        .limit(requestedLimit)
+        .toArray();
+
+      console.log(`🔍 [search-fda-database] Found ${totalCount} total, returning ${results.length} from offset ${offset}`);
+
+      // Convert MongoDB results to expected format
+      const paginatedResults = results.map((doc: any) => ({
+        document: doc,
+        score: 0.95 // High score since it's a direct match
+      }));
       const formatted = paginatedResults.map((result, index) => {
         const doc = result.document;
 
@@ -214,12 +246,12 @@ export const searchFDADataBaseTool = {
       return {
         success: true,
         query: searchQuery,
-        total_found: filteredResults.length,
+        total_found: totalCount,
         returned: formatted.length,
         offset: offset,
         limit: requestedLimit,
         excluded_count: excludeCodes.length,
-        database: 'FDA Database (31,179 รายการ)',
+        database: 'FDA Database (31,179 รายการ) - Direct MongoDB Search',
         materials: formatted,
         table_display: format_thai_table(formatted),
         instruction_to_ai: 'แสดงผลลัพธ์โดยใช้ table_display เท่านั้น ตอบเป็นภาษาไทยทั้งหมด แสดงตาราง markdown ให้ผู้ใช้เห็นโดยตรง'
@@ -282,50 +314,61 @@ export const checkStockAvailabilityTool = {
     console.log('🔧 [check-stock-availability] Called with:', params);
 
     try {
-      const searchService = getUnifiedSearchService();
+      // Direct MongoDB search
+      const mongoClientPromise = require('@/lib/mongodb').default;
+      const client = await mongoClientPromise;
+      const db = client.db('rnd_ai');
+      const collection = db.collection('raw_materials_console');
 
-      // Pagination and exclusion parameters
       const requestedLimit = params.limit || 5;
       const offset = params.offset || 0;
       const excludeCodes = params.exclude_codes || [];
       const excludePatterns = params.exclude_patterns || [];
 
-      // Fetch more results to account for exclusions and pagination
-      const fetchLimit = Math.min(requestedLimit + offset + excludeCodes.length + excludePatterns.length + 10, 50);
+      // Build MongoDB query
+      const searchRegex = new RegExp(params.query, 'i');
 
-      // Search raw_materials_console collection (all FDA materials)
-      const results = await searchService.unified_search(params.query, {
-        collection: 'all_fda', // Search raw_materials_console
-        topK: fetchLimit,
-        similarityThreshold: 0.5,
-        max_results: fetchLimit,
-        include_availability_context: true // Show stock context
-      });
+      const mongoQuery: any = {
+        $or: [
+          { INCI_name: searchRegex },
+          { Function: searchRegex },
+          { benefits: searchRegex },
+          { usecase: searchRegex },
+          { Chem_IUPAC_Name_Description: searchRegex },
+          { trade_name: searchRegex }
+        ]
+      };
 
-      // Filter out malformed material codes and apply exclusions
-      const cleanResults = results.filter(r => {
-        const code = r.document?.rm_code;
-        const tradeName = r.document?.trade_name || '';
+      // Exclude specified codes
+      if (excludeCodes.length > 0) {
+        mongoQuery.rm_code = { $nin: excludeCodes };
+      }
 
-        // Filter malformed codes
-        const isValidCode = code && !(/^[A-Z]+[ก-๙]/.test(code)) && !/^[ก-๙]/.test(code) && !/\s/.test(code);
+      // Exclude patterns from trade_name
+      if (excludePatterns.length > 0) {
+        const patternConditions = excludePatterns.map(pattern => ({
+          trade_name: { $not: new RegExp(pattern, 'i') }
+        }));
+        mongoQuery.$and = patternConditions;
+      }
 
-        // Apply code exclusions
-        const notExcludedCode = !excludeCodes.includes(code);
+      console.log('🔍 [check-stock-availability] MongoDB query:', JSON.stringify(mongoQuery));
 
-        // Apply pattern exclusions (for things like "SAM", "สมุนไพร")
-        const notExcludedPattern = !excludePatterns.some(pattern =>
-          tradeName.toLowerCase().includes(pattern.toLowerCase()) ||
-          code.toLowerCase().includes(pattern.toLowerCase())
-        );
+      // Execute MongoDB query
+      const totalCount = await collection.countDocuments(mongoQuery);
+      const results = await collection
+        .find(mongoQuery)
+        .skip(offset)
+        .limit(requestedLimit)
+        .toArray();
 
-        return isValidCode && notExcludedCode && notExcludedPattern;
-      });
+      console.log(`🔍 [check-stock-availability] Found ${totalCount} total, returning ${results.length} from offset ${offset}`);
 
-      // Apply pagination
-      const paginatedResults = cleanResults.slice(offset, offset + requestedLimit);
-
-      console.log(`🔍 [check-stock-availability] Pagination: ${cleanResults.length} total after filtering, showing ${paginatedResults.length} from offset ${offset}`);
+      // Convert to expected format
+      const paginatedResults = results.map((doc: any) => ({
+        document: doc,
+        score: 0.95
+      }));
 
       // Format results for stock materials
       const formatted = paginatedResults.map((result, index) => {
@@ -371,13 +414,13 @@ export const checkStockAvailabilityTool = {
       return {
         success: true,
         query: params.query,
-        total_found: cleanResults.length,
+        total_found: totalCount,
         returned: formatted.length,
         offset: offset,
         limit: requestedLimit,
         excluded_count: excludeCodes.length + excludePatterns.length,
         excluded_patterns: excludePatterns,
-        database: 'raw_materials_console (31,179 รายการ)',
+        database: 'raw_materials_console (31,179 รายการ) - Direct MongoDB Search',
         materials: formatted,
         table_display: format_stock_table(formatted),
         instruction_to_ai: 'แสดงผลลัพธ์โดยใช้ table_display เท่านั้น ตอบเป็นภาษาไทยทั้งหมด แสดงตาราง markdown ให้ผู้ใช้เห็นโดยตรง'
