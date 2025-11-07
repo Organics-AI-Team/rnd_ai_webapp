@@ -11,7 +11,7 @@
  * - Dynamic chunk size based on content
  */
 
-import { RawMaterialDocument } from './pinecone-service';
+import { RawMaterialDocument } from './pinecone-service-stub';
 
 export interface ChunkConfig {
   /** Maximum chunk size in characters */

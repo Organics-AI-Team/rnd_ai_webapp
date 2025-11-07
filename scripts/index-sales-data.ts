@@ -15,7 +15,7 @@
  */
 
 import { config } from 'dotenv';
-import { PineconeRAGService } from '../ai/services/rag/pinecone-service';
+import { PineconeRAGService } from '../ai/services/rag/pinecone-service-stub';
 import rawMaterialsClientPromise from '../lib/raw-materials-mongodb';
 
 // Load environment variables

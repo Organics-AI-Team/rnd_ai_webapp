@@ -16,7 +16,7 @@
  * - Query expansion
  */
 
-import { PineconeRAGService, RAGConfig, RawMaterialDocument } from './pinecone-service';
+import { PineconeRAGService, RAGConfig, RawMaterialDocument } from './pinecone-service-stub';
 import { classify_query, QueryClassification, fuzzy_match_score } from '../../utils/query-classifier';
 import mongoClientPromise from '@/lib/mongodb';
 

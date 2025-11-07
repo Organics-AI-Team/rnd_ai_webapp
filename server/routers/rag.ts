@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import rawMaterialsClientPromise from "@/lib/raw-materials-mongodb";
-import { PineconeRAGService, RawMaterialDocument } from "@/ai/services/rag/pinecone-service";
+import { PineconeRAGService, RawMaterialDocument } from "@/ai/services/rag/pinecone-service-stub";
 import { ObjectId } from "mongodb";
 import { getRAGConfig, RAGServicesConfig } from "@/ai/config/rag-config";
 

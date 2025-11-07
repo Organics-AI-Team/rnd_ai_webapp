@@ -9,4 +9,4 @@ export * from './providers/gemini-service';
 export * from './providers/langchain-service';
 export * from './providers/langgraph-service';
 
-export * from './rag/pinecone-service';
+// export * from './rag/pinecone-service-stub'; // Disabled - Using ChromaDB instead

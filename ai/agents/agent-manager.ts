@@ -4,7 +4,7 @@
  */
 
 import { IAIService } from '../services/core/ai-service-interface';
-import { PineconeRAGService } from '../services/rag/pinecone-service';
+import { PineconeRAGService } from '../services/rag/pinecone-service-stub';
 import { AgentConfig, getAgentConfig, getEnabledAgentConfigs } from './configs/agent-configs';
 import { getSystemPrompt } from './prompts/system-prompts';
 import { getRAGIndexConfig } from '../rag/indices/index-config';
