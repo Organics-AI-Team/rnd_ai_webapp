@@ -4,7 +4,9 @@
 FROM python:3.11-slim
 
 # Install ChromaDB and dependencies
-RUN pip install --no-cache-dir chromadb==0.4.22
+# Pin numpy<2.0 for compatibility with ChromaDB 0.4.22
+RUN pip install --no-cache-dir numpy==1.26.4 && \
+    pip install --no-cache-dir chromadb==0.4.22
 
 # Create data directory for persistent storage
 # Railway will mount a volume here
