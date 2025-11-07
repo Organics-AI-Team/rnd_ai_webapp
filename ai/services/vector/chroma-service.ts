@@ -10,21 +10,40 @@
  * - Collection management
  * - Batch operations
  *
+ * NOTE: ChromaDB is lazy-loaded to avoid bundling issues in Next.js
+ *
  * @author AI Management System
  * @date 2025-11-07
  */
 
-import { ChromaClient, Collection, IncludeEnum, IEmbeddingFunction } from 'chromadb';
 import { Logger } from '@/ai/utils/logger';
 import { ErrorHandler, ErrorType } from '@/ai/utils/error-handler';
 
 const logger = Logger.scope('ChromaService');
 
+// Type imports only (no runtime code)
+type ChromaClient = any;
+type Collection = any;
+type IncludeEnum = any;
+type IEmbeddingFunction = any;
+
+/**
+ * Lazy-load ChromaDB to avoid Next.js bundling issues
+ */
+async function loadChromaDB() {
+  if (typeof window !== 'undefined') {
+    throw new Error('ChromaDB can only be used server-side');
+  }
+
+  const chromadb = await import('chromadb');
+  return chromadb;
+}
+
 /**
  * Custom Embedding Function for ChromaDB
  * This is a stub that tells ChromaDB we're providing embeddings externally
  */
-class CustomEmbeddingFunction implements IEmbeddingFunction {
+class CustomEmbeddingFunction {
   async generate(texts: string[]): Promise<number[][]> {
     // This should never be called since we provide embeddings externally
     throw new Error('CustomEmbeddingFunction.generate() should not be called - embeddings are provided externally');
@@ -48,6 +67,8 @@ async function getChromaClient(): Promise<ChromaClient> {
       const chromaUrl = process.env.CHROMA_URL || 'http://localhost:8000';
       logger.info('Initializing ChromaDB client', { url: chromaUrl });
 
+      // Lazy-load ChromaDB
+      const { ChromaClient } = await loadChromaDB();
       chromaClient = new ChromaClient({ path: chromaUrl });
 
       // Test connection
