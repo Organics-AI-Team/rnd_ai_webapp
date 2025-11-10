@@ -3,6 +3,7 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Brain, User } from 'lucide-react';
+import { MarkdownRenderer } from '@/ai/components/chat/markdown-renderer';
 
 /**
  * AI Chat Message Component
@@ -86,7 +87,13 @@ export function AIChatMessage({
             : 'bg-gray-100 text-gray-900'
         }`}
       >
-        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        {message.role === 'assistant' ? (
+          <div className="text-sm">
+            <MarkdownRenderer content={message.content} />
+          </div>
+        ) : (
+          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        )}
 
         {/* Enhanced features metadata */}
         {message.role === 'assistant' && message.metadata && (

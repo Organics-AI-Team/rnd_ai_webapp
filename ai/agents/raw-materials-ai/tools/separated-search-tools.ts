@@ -113,7 +113,7 @@ export const searchFDADataBaseTool = {
   รองรับ pagination และการยกเว้นผลลัพธ์ที่แสดงแล้ว`,
 
   parameters: z.object({
-    query: z.string().describe('คำค้นหาวัตถุดิบ ภาษาไทยหรืออังกฤษ เช่น "vitamin C", "ความชุ่มชื้น", "ลดริ้วรอย", "anti-aging"'),
+    query: z.string().describe('คำค้นหาวัตถุดิบ ภาษาไทยหรืออังกฤษ เช่น "vitamin C", "ความชุ่มชื้น", "ลดริ้วรอย", "anti-aging". รองรับ: รหัสเดี่ยว "RM001234", ช่วง "RM001000-RM002000" หรือ "RM001000 to RM002000", รูปแบบ "RM00*"'),
 
     benefit: z.string().optional().describe('ค้นหาตามประโยชน์เฉพาะเจาะจง เช่น "ความชุ่มชื้น", "ลดสิว", "ต้านอนุมูลอิสระ"'),
 
@@ -123,7 +123,11 @@ export const searchFDADataBaseTool = {
 
     exclude_codes: z.array(z.string()).optional().describe('รหัสวัตถุดิบที่ต้องการยกเว้น เช่น ["RM000943", "RM001127"]'),
 
-    category: z.string().optional().describe('หมวดหมู่วัตถุดิบ เช่น "peptides", "antioxidants", "moisturizers"')
+    category: z.string().optional().describe('หมวดหมู่วัตถุดิบ เช่น "peptides", "antioxidants", "moisturizers"'),
+
+    code_range_start: z.string().optional().describe('รหัสเริ่มต้นของช่วง เช่น "RM001000" (ใช้คู่กับ code_range_end)'),
+
+    code_range_end: z.string().optional().describe('รหัสสิ้นสุดของช่วง เช่น "RM002000" (ใช้คู่กับ code_range_start)')
   }),
 
   handler: async (params: {
@@ -133,6 +137,8 @@ export const searchFDADataBaseTool = {
     offset?: number;
     exclude_codes?: string[];
     category?: string;
+    code_range_start?: string;
+    code_range_end?: string;
   }) => {
     console.log('🔧 [search-fda-database] Called with:', params);
 
@@ -153,24 +159,71 @@ export const searchFDADataBaseTool = {
       const offset = params.offset || 0;
       const excludeCodes = params.exclude_codes || [];
 
-      // Build MongoDB query to search across ALL relevant fields
-      // Search in: INCI_name, Function, benefits, usecase, Chem_IUPAC_Name_Description
-      const searchRegex = new RegExp(searchQuery, 'i'); // Case-insensitive
+      // 🆕 Parse range from query if present
+      // Supports: "RM001000-RM002000", "RM001000 to RM002000", "RM001000 - RM002000"
+      let codeRangeStart = params.code_range_start;
+      let codeRangeEnd = params.code_range_end;
 
-      const mongoQuery: any = {
-        $or: [
-          { INCI_name: searchRegex },
+      const rangeMatch = searchQuery.match(/(RM\d+)\s*(?:-|to)\s*(RM\d+)/i);
+      if (rangeMatch) {
+        codeRangeStart = rangeMatch[1];
+        codeRangeEnd = rangeMatch[2];
+        console.log(`🔍 [search-fda-database] Detected range: ${codeRangeStart} to ${codeRangeEnd}`);
+      }
+
+      // 🆕 Parse wildcard pattern: "RM00*" or "RM00xxxx"
+      let wildcardPattern = null;
+      if (searchQuery.includes('*') || searchQuery.toLowerCase().includes('x')) {
+        // Convert wildcard to regex: "RM00*" → "^RM00"
+        wildcardPattern = searchQuery.replace(/\*/g, '').replace(/x+/gi, '');
+        console.log(`🔍 [search-fda-database] Detected wildcard pattern: ${wildcardPattern}`);
+      }
+
+      // Build MongoDB query
+      const mongoQuery: any = {};
+
+      // 🆕 Priority 1: Code range search
+      if (codeRangeStart && codeRangeEnd) {
+        mongoQuery.rm_code = {
+          $gte: codeRangeStart,
+          $lte: codeRangeEnd
+        };
+        console.log(`🔍 [search-fda-database] Range query: ${codeRangeStart} to ${codeRangeEnd}`);
+      }
+      // 🆕 Priority 2: Wildcard pattern search
+      else if (wildcardPattern) {
+        mongoQuery.rm_code = new RegExp(`^${wildcardPattern}`, 'i');
+        console.log(`🔍 [search-fda-database] Wildcard query: ${wildcardPattern}`);
+      }
+      // Priority 3: Regular text search across ALL possible columns
+      else {
+        const searchRegex = new RegExp(searchQuery, 'i');
+        mongoQuery.$or = [
+          // Core identification fields
+          { rm_code: searchRegex },
+          { trade_name: searchRegex },
+          { INCI_name: searchRegex },          // Uppercase variant (older documents)
+          { inci_name: searchRegex },          // Lowercase variant (newer documents)
+          // Supplier information
+          { supplier: searchRegex },
+          // Functional descriptions
           { Function: searchRegex },
-          { benefits: searchRegex },
-          { usecase: searchRegex },
           { Chem_IUPAC_Name_Description: searchRegex },
-          { trade_name: searchRegex }
-        ]
-      };
+          // Benefits fields (both live and cached)
+          { benefits: searchRegex },
+          { benefits_cached: searchRegex },
+          // Use case fields (both live and cached)
+          { usecase: searchRegex },
+          { usecase_cached: searchRegex }
+        ];
+        console.log(`🔍 [search-fda-database] Searching across 11 columns for: "${searchQuery}"`);
+      }
 
       // Exclude specified codes
       if (excludeCodes.length > 0) {
-        mongoQuery.rm_code = { $nin: excludeCodes };
+        mongoQuery.rm_code = mongoQuery.rm_code
+          ? { ...mongoQuery.rm_code, $nin: excludeCodes }
+          : { $nin: excludeCodes };
       }
 
       console.log('🔍 [search-fda-database] MongoDB query:', JSON.stringify(mongoQuery));

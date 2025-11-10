@@ -6,6 +6,7 @@ import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
 import { logProductActivity } from "@/lib/productLog";
 import { parseArrayField } from "@/lib/array-utils";
+import { auto_index_material, auto_delete_material } from "../services/auto-index-service";
 
 export const productsRouter = router({
   // Get all products for organization (from raw_materials_console collection)
@@ -218,7 +219,7 @@ export const productsRouter = router({
       const rmCode = `RM${String(maxNumber + 1).padStart(6, '0')}`;
 
       const now = new Date();
-      const result = await db.collection("raw_materials_console").insertOne({
+      const newMaterial = {
         rm_code: rmCode,
         trade_name: input.productName,
         inci_name: input.inciName || "",
@@ -230,7 +231,9 @@ export const productsRouter = router({
         usecase: input.details || "",
         benefits_cached: input.benefits || "",
         usecase_cached: input.details || "",
-      });
+      };
+
+      const result = await db.collection("raw_materials_console").insertOne(newMaterial);
 
       // Log create material activity
       await logActivity({
@@ -240,6 +243,21 @@ export const productsRouter = router({
         activity: "create material",
         refId: result.insertedId.toString(),
         organizationId: ctx.user.organizationId,
+      });
+
+      // 🔄 AUTO-SYNC: Index new material to ChromaDB for AI search
+      // This runs asynchronously without blocking the response
+      auto_index_material({
+        _id: result.insertedId,
+        ...newMaterial
+      }).then(success => {
+        if (success) {
+          console.log(`✅ [ProductsRouter] Auto-indexed material ${rmCode} to ChromaDB`);
+        } else {
+          console.warn(`⚠️  [ProductsRouter] Failed to auto-index material ${rmCode} to ChromaDB`);
+        }
+      }).catch(error => {
+        console.error(`❌ [ProductsRouter] Error auto-indexing material ${rmCode}:`, error);
       });
 
       return {
@@ -330,6 +348,24 @@ export const productsRouter = router({
         organizationId: ctx.user.organizationId,
       });
 
+      // 🔄 AUTO-SYNC: Re-index updated material to ChromaDB
+      // Get the full updated document
+      const updatedMaterial = await db.collection("raw_materials_console").findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (updatedMaterial) {
+        auto_index_material(updatedMaterial).then(success => {
+          if (success) {
+            console.log(`✅ [ProductsRouter] Auto-updated material ${updatedMaterial.rm_code} in ChromaDB`);
+          } else {
+            console.warn(`⚠️  [ProductsRouter] Failed to auto-update material ${updatedMaterial.rm_code} in ChromaDB`);
+          }
+        }).catch(error => {
+          console.error(`❌ [ProductsRouter] Error auto-updating material:`, error);
+        });
+      }
+
       return { success: true };
     }),
 
@@ -380,6 +416,17 @@ export const productsRouter = router({
       const client = await clientPromise;
       const db = client.db();
 
+      // Get material before deleting (need rm_code for ChromaDB deletion)
+      const material = await db.collection("raw_materials_console").findOne({
+        _id: new ObjectId(input.id),
+      });
+
+      if (!material) {
+        throw new Error("Material not found");
+      }
+
+      const rm_code = material.rm_code;
+
       const result = await db.collection("raw_materials_console").deleteOne({
         _id: new ObjectId(input.id),
       });
@@ -397,6 +444,19 @@ export const productsRouter = router({
         refId: input.id,
         organizationId: ctx.user.organizationId,
       });
+
+      // 🔄 AUTO-SYNC: Delete material from ChromaDB
+      if (rm_code) {
+        auto_delete_material(rm_code).then(success => {
+          if (success) {
+            console.log(`✅ [ProductsRouter] Auto-deleted material ${rm_code} from ChromaDB`);
+          } else {
+            console.warn(`⚠️  [ProductsRouter] Failed to auto-delete material ${rm_code} from ChromaDB`);
+          }
+        }).catch(error => {
+          console.error(`❌ [ProductsRouter] Error auto-deleting material ${rm_code}:`, error);
+        });
+      }
 
       return { success: true };
     }),
