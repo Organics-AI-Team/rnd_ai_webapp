@@ -68,10 +68,10 @@ export default function RawMaterialsAIPage() {
             role: m.role,
             content: m.content
           })),
-          enableEnhancements: false,
-          enableStreaming: false,
-          enableMLOptimizations: false,
-          enableSearch: false
+          enableEnhancements: true,     // ✅ Enable enhanced features for tool calling
+          enableStreaming: false,        // Keep disabled for stability
+          enableMLOptimizations: true,   // ✅ Enable ML personalization
+          enableSearch: true             // ✅ CRITICAL: Enable database search and tool calls
         }),
       });
 

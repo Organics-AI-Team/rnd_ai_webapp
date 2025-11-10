@@ -458,10 +458,30 @@ export class GeminiToolService extends BaseAIService {
             arguments: convertedArgs
           });
 
+          // Transform response to prioritize table_display if present
+          let responseData = toolResult.success ? toolResult.data : { error: toolResult.error };
+
+          if (toolResult.success && toolResult.data && toolResult.data.table_display) {
+            // 🔴 CRITICAL: Wrap table in special markers to prevent AI from modifying it
+            // Gemini was stripping pipe characters even when told not to
+            // Solution: Present as "pre-formatted output" that must be copied verbatim
+            const wrappedTable = `📊 **DATABASE QUERY RESULTS** (Output this section EXACTLY as shown below)\n\n${toolResult.data.table_display}\n\n*(End of database results - Add your expert analysis AFTER this point)*`;
+
+            responseData = {
+              // Single field: pre-formatted output ready to display
+              formatted_output: wrappedTable,
+              // Instruction embedded in the output itself
+              summary: `Found ${toolResult.data.returned || 0} materials from ${toolResult.data.database}. The table above is pre-formatted markdown - copy it EXACTLY to your response without modification.`,
+              // IMPORTANT: Do NOT include raw materials array
+            };
+
+            console.log(`🎯 [GeminiToolService] Transformed response to prioritize table_display with protection markers`);
+          }
+
           functionResults.push({
             functionResponse: {
               name: functionCall.name,
-              response: toolResult.success ? toolResult.data : { error: toolResult.error }
+              response: responseData
             }
           });
 

@@ -19,7 +19,10 @@
     "migrate": "tsx scripts/migrate-to-mongo.ts",
     "create-sales-index": "node scripts/create-sales-ai-index.js",
     "index-sales-data": "tsx scripts/index-sales-data.ts",
-    "index:chromadb": "tsx scripts/index-chromadb-railway.ts"
+    "index:chromadb": "tsx scripts/index-chromadb-simple.ts",
+    "index:chromadb:resume": "tsx scripts/index-chromadb-resume.ts",
+    "index:chromadb:fast": "tsx scripts/index-chromadb-resume-fast.ts",
+    "check:chromadb": "tsx scripts/check-chromadb-count.ts"
   },
   "keywords": [],
   "author": "",
