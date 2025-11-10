@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
 
     // Check current index stats to avoid re-indexing
     const currentStats = await embeddingService.getIndexStats();
-    const currentVectorCount = currentStats.totalVectorCount || 0;
+    const currentVectorCount = currentStats.totalRecordCount || 0;
 
     console.log(`Current vector count: ${currentVectorCount}`);
 

@@ -8,6 +8,8 @@ import { CosmeticQualityScorer } from '@/ai/services/quality/cosmetic-quality-sc
 import { CosmeticRegulatoryService } from '@/ai/services/regulatory/cosmetic-regulatory-sources';
 import { CosmeticCredibilityWeightingService } from '@/ai/services/credibility/cosmetic-credibility-weighting';
 import { ResponseReranker } from '@/ai/services/response/response-reranker';
+import { salesOrchestrator, OrchestratorResponse } from './orchestrator';
+import { followUpGeneratorTool, slideDrafterTool } from './tools';
 
 // Initialize services
 let knowledgeService: CosmeticKnowledgeService | null = null;
@@ -994,6 +996,31 @@ export class EnhancedSalesRndAgent {
     const startTime = Date.now();
 
     try {
+      // 🎯 STEP 0: Check if query should be delegated to sub-agent or tool
+      console.log('🎯 [EnhancedSalesRndAgent] Checking orchestrator for delegation...');
+      const orchestrationResult = await salesOrchestrator.processRequest(query, context);
+
+      // If orchestrator suggests delegation, handle it
+      if (orchestrationResult.requiresSubAgent) {
+        console.log(`📌 [EnhancedSalesRndAgent] Delegating to: ${orchestrationResult.delegatedTo}`);
+        return await this.handleDelegation(orchestrationResult, query, context, startTime);
+      }
+
+      // If tool generated a result directly, return it
+      if (orchestrationResult.result) {
+        console.log(`🔧 [EnhancedSalesRndAgent] Tool ${orchestrationResult.delegatedTo} generated result directly`);
+        return await this.formatToolResponse(orchestrationResult, query, context, startTime);
+      }
+
+      // If orchestrator requests more info, return guidance
+      if (orchestrationResult.action === 'request_info') {
+        console.log('📋 [EnhancedSalesRndAgent] More information needed from user');
+        return await this.formatInformationRequest(orchestrationResult, query, context, startTime);
+      }
+
+      // Continue with standard enhanced response for general queries
+      console.log('🤖 [EnhancedSalesRndAgent] Processing as general query with full enhancement pipeline');
+
       // Extract concepts and ingredients from query
       const concepts = extractProductConcepts(query);
       const ingredients = extractIngredientsFromQuery(query);
@@ -1125,6 +1152,177 @@ export class EnhancedSalesRndAgent {
         }
       };
     }
+  }
+
+  /**
+   * Handle delegation to sub-agents (e.g., Pitch Deck Creator)
+   */
+  private async handleDelegation(
+    orchestrationResult: OrchestratorResponse,
+    query: string,
+    context: any,
+    startTime: number
+  ): Promise<EnhancedSalesResponse> {
+    console.log(`📌 [EnhancedSalesRndAgent] Handling delegation to ${orchestrationResult.delegatedTo}`);
+
+    // For now, return instructions for sub-agent invocation
+    // In a full implementation, this would invoke the sub-agent directly
+    const response = `I've identified that your request requires specialized assistance from the **${orchestrationResult.delegatedTo}** sub-agent.\n\n${orchestrationResult.instructions}\n\nThe sub-agent will be invoked to handle this request.`;
+
+    return {
+      success: true,
+      response,
+      originalResponse: response,
+      metadata: {
+        processingTime: Date.now() - startTime,
+        userRole: context.userRole || 'unknown',
+        productType: context.productType || 'unknown',
+        queryType: 'delegated',
+        conceptsFound: 0,
+        ingredientsFound: 0,
+        sourcesUsed: 0,
+        overallConfidence: 0.9
+      },
+      optimizations: {
+        knowledgeRetrieval: { enabled: false, sourcesFound: 0, confidence: 0, marketIntelligence: 0, costAnalysis: 0 },
+        qualityScoring: { enabled: false, overallScore: 0, salesQualityScore: 0, meetsThresholds: false, commercialReadiness: 0 },
+        regulatoryCheck: { enabled: false, overallCompliant: false, marketReadiness: false, itemsChecked: 0 },
+        responseReranking: { enabled: false, rerankScore: 0, commercialViability: 0, improvedResponse: false }
+      },
+      quality: {},
+      salesQuality: {} as any,
+      compliance: {} as any,
+      knowledgeData: { delegationType: 'sub-agent', delegatedTo: orchestrationResult.delegatedTo },
+      marketData: [],
+      costData: {} as any,
+      regulatoryData: []
+    };
+  }
+
+  /**
+   * Format tool response (e.g., follow-up email, slide draft)
+   */
+  private async formatToolResponse(
+    orchestrationResult: OrchestratorResponse,
+    query: string,
+    context: any,
+    startTime: number
+  ): Promise<EnhancedSalesResponse> {
+    console.log(`🔧 [EnhancedSalesRndAgent] Formatting tool response from ${orchestrationResult.delegatedTo}`);
+
+    let formattedResponse = '';
+
+    // Format based on tool type
+    if (orchestrationResult.delegatedTo === 'follow_up_generator_tool') {
+      const result = orchestrationResult.result;
+      formattedResponse = `**Follow-up Email Generated**\n\n`;
+      formattedResponse += `**Subject:** ${result.subject}\n\n`;
+      formattedResponse += `**Body:**\n${result.body}\n\n`;
+      if (result.actionItems && result.actionItems.length > 0) {
+        formattedResponse += `**Action Items:**\n${result.actionItems.map((item: string, i: number) => `${i + 1}. ${item}`).join('\n')}\n\n`;
+      }
+      formattedResponse += `**Recommended Send Time:** ${result.sendTiming}`;
+    } else if (orchestrationResult.delegatedTo === 'slide_drafter_tool') {
+      const result = orchestrationResult.result;
+      formattedResponse = `**Slide Content Generated**\n\n`;
+      formattedResponse += `**Headline:** ${result.headline}\n\n`;
+      if (result.subheadline) {
+        formattedResponse += `**Subheadline:** ${result.subheadline}\n\n`;
+      }
+      if (result.bullets && result.bullets.length > 0) {
+        formattedResponse += `**Key Points:**\n${result.bullets.map((bullet: string, i: number) => `${i + 1}. ${bullet}`).join('\n')}\n\n`;
+      }
+      if (result.visual_direction) {
+        formattedResponse += `**Visual Direction:**\n${result.visual_direction}\n\n`;
+      }
+      if (result.speaker_notes) {
+        formattedResponse += `**Speaker Notes:**\n${result.speaker_notes}\n\n`;
+      }
+      if (result.estimated_duration) {
+        formattedResponse += `**Estimated Duration:** ${result.estimated_duration}`;
+      }
+    } else {
+      formattedResponse = `**Tool Result:**\n\n${JSON.stringify(orchestrationResult.result, null, 2)}`;
+    }
+
+    return {
+      success: true,
+      response: formattedResponse,
+      originalResponse: formattedResponse,
+      metadata: {
+        processingTime: Date.now() - startTime,
+        userRole: context.userRole || 'unknown',
+        productType: context.productType || 'unknown',
+        queryType: 'tool_execution',
+        conceptsFound: 0,
+        ingredientsFound: 0,
+        sourcesUsed: 1,
+        overallConfidence: 0.95
+      },
+      optimizations: {
+        knowledgeRetrieval: { enabled: false, sourcesFound: 0, confidence: 0, marketIntelligence: 0, costAnalysis: 0 },
+        qualityScoring: { enabled: false, overallScore: 0, salesQualityScore: 0, meetsThresholds: false, commercialReadiness: 0 },
+        regulatoryCheck: { enabled: false, overallCompliant: false, marketReadiness: false, itemsChecked: 0 },
+        responseReranking: { enabled: false, rerankScore: 0, commercialViability: 0, improvedResponse: false }
+      },
+      quality: {},
+      salesQuality: {} as any,
+      compliance: {} as any,
+      knowledgeData: { toolType: orchestrationResult.delegatedTo, toolResult: orchestrationResult.result },
+      marketData: [],
+      costData: {} as any,
+      regulatoryData: []
+    };
+  }
+
+  /**
+   * Format information request response
+   */
+  private async formatInformationRequest(
+    orchestrationResult: OrchestratorResponse,
+    query: string,
+    context: any,
+    startTime: number
+  ): Promise<EnhancedSalesResponse> {
+    console.log('📋 [EnhancedSalesRndAgent] Formatting information request');
+
+    const response = `I need a bit more information to help you with this request:\n\n${orchestrationResult.instructions}`;
+
+    return {
+      success: true,
+      response,
+      originalResponse: response,
+      metadata: {
+        processingTime: Date.now() - startTime,
+        userRole: context.userRole || 'unknown',
+        productType: context.productType || 'unknown',
+        queryType: 'information_request',
+        conceptsFound: 0,
+        ingredientsFound: 0,
+        sourcesUsed: 0,
+        overallConfidence: 1.0
+      },
+      optimizations: {
+        knowledgeRetrieval: { enabled: false, sourcesFound: 0, confidence: 0, marketIntelligence: 0, costAnalysis: 0 },
+        qualityScoring: { enabled: false, overallScore: 0, salesQualityScore: 0, meetsThresholds: false, commercialReadiness: 0 },
+        regulatoryCheck: { enabled: false, overallCompliant: false, marketReadiness: false, itemsChecked: 0 },
+        responseReranking: { enabled: false, rerankScore: 0, commercialViability: 0, improvedResponse: false }
+      },
+      quality: {},
+      salesQuality: {} as any,
+      compliance: {} as any,
+      knowledgeData: null,
+      marketData: [],
+      costData: {} as any,
+      regulatoryData: []
+    };
+  }
+
+  /**
+   * Get available tools schema for AI model integration
+   */
+  getToolsSchema(): any[] {
+    return salesOrchestrator.getToolsSchema();
   }
 
   /**

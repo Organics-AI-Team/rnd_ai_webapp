@@ -20,6 +20,7 @@
  */
 
 import { z } from 'zod';
+import { getUnifiedSearchService } from '@/ai/services/rag/unified-search-service';
 
 /**
  * Normalize array-like fields coming from MongoDB

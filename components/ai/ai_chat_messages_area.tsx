@@ -12,7 +12,7 @@ import type { Message } from './ai_chat_message';
  *
  * Displays the scrollable chat messages area with empty state, messages list, and loading indicator.
  * Renders as a separate, independent component for better modularity.
- * Calculates spacing from input box to prevent message overlap.
+ * Optimized for maximum space utilization with sticky input.
  *
  * @param messages - Array of chat messages to display
  * @param isLoading - Whether AI is currently processing
@@ -23,8 +23,8 @@ import type { Message } from './ai_chat_message';
  * @param loadingMessage - Loading indicator message
  * @param metadataIcon - Icon for message metadata badge
  * @param metadataLabel - Label for message metadata badge
- * @param inputAreaHeight - Height of input area in pixels (for bottom spacing calculation)
- * @param bottomPadding - Additional bottom padding in pixels (default: 16)
+ * @param inputAreaHeight - Height of input area in pixels (deprecated - no longer used)
+ * @param bottomPadding - Small gap between messages and sticky input (default: 16)
  */
 
 interface AIChatMessagesAreaProps {
@@ -55,17 +55,15 @@ export function AIChatMessagesArea({
   bottomPadding = 16
 }: AIChatMessagesAreaProps) {
   /**
-   * Calculate total bottom spacing to prevent overlap with input area
-   * Accounts for input area height plus additional padding
+   * Calculate minimal bottom spacing to prevent overlap with sticky input
+   * Since input is sticky with its own background, we only need small gap
    */
-  const calculated_bottom_spacing = inputAreaHeight > 0
-    ? inputAreaHeight + bottomPadding
-    : bottomPadding;
+  const calculated_bottom_spacing = bottomPadding;
 
   return (
-    <ScrollArea className="flex-1 p-4">
+    <ScrollArea className="flex-1 px-4 pt-4">
       <div
-        className="space-y-4"
+        className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "space-y-4"}
         style={{
           paddingBottom: `${calculated_bottom_spacing}px`
         }}

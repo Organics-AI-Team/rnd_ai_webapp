@@ -61,6 +61,47 @@ export const ProductLogSchema = z.object({
 export type ProductLog = z.infer<typeof ProductLogSchema>;
 
 // ============================================
+// STOCK ENTRY SCHEMAS
+// ============================================
+
+// Stock Entry Schema - tracks individual stock batches with expiration and pricing
+export const StockEntrySchema = z.object({
+  _id: z.string().optional(),
+  organizationId: z.string(),
+  materialId: z.string(), // Reference to raw_materials_console._id
+  materialCode: z.string(), // rm_code for display
+  materialName: z.string(), // trade_name for display
+  quantityKg: z.number().positive("Quantity must be positive"), // Stock quantity in kg
+  unitPrice: z.number().positive("Unit price must be positive"), // Price per kg
+  totalCost: z.number().positive("Total cost must be positive"), // quantityKg * unitPrice
+  expirationDate: z.date(), // Expiration date of this stock batch
+  batchNumber: z.string().optional(), // Optional batch/lot number
+  supplier: z.string().optional(), // Supplier for this batch
+  notes: z.string().optional(), // Additional notes
+  status: z.enum(["active", "expired", "depleted"]).default("active"),
+  createdBy: z.string(),
+  createdAt: z.date().default(() => new Date()),
+  updatedAt: z.date().default(() => new Date()),
+});
+
+export type StockEntry = z.infer<typeof StockEntrySchema>;
+
+// Stock Summary Schema - aggregated view of all stock for a material
+export const StockSummarySchema = z.object({
+  materialId: z.string(),
+  materialCode: z.string(),
+  materialName: z.string(),
+  totalQuantityKg: z.number(), // Total across all batches
+  totalValue: z.number(), // Total value across all batches
+  averagePrice: z.number(), // Average price per kg
+  batchCount: z.number(), // Number of active batches
+  nearestExpiration: z.date().optional(), // Earliest expiration date
+  oldestBatch: z.date().optional(), // Oldest batch date
+});
+
+export type StockSummary = z.infer<typeof StockSummarySchema>;
+
+// ============================================
 // FORMULA SCHEMAS
 // ============================================
 

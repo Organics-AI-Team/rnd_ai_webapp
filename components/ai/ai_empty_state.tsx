@@ -28,7 +28,7 @@ export function AIEmptyState({
   suggestions
 }: AIEmptyStateProps) {
   return (
-    <div className="text-center py-8">
+    <div className="text-center py-4">
       <div className="w-12 h-12 mx-auto mb-4 text-gray-300 flex items-center justify-center">
         {icon}
       </div>

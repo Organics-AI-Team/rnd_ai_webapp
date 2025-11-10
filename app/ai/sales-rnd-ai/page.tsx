@@ -154,8 +154,8 @@ export default function SalesRndAIPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 h-[calc(100vh-8rem)]">
-      <div className="flex flex-col h-full gap-4">
+    <div className="container mx-auto px-6 pt-6 pb-2 h-[calc(100vh-8rem)]">
+      <div className="flex flex-col h-full gap-2">
         {/* Header Section - Component */}
         <AIPageHeader
           icon={<TrendingUp className="w-8 h-8" />}
@@ -164,57 +164,59 @@ export default function SalesRndAIPage() {
           iconColor="text-purple-600"
         />
 
-        {/* Messages Container - Separate Component */}
-        <AIChatMessagesContainer
-          header={
-            <AIChatHeader
-              icon={<Brain className="w-5 h-5" />}
-              title="Sales R&D AI Chat"
-              iconColor="text-purple-600"
-              badgeText="Market Enhanced"
-              badgeColor="bg-purple-50 border-purple-300"
-            />
-          }
-          messagesArea={
-            <AIChatMessagesArea
-              messages={messages}
-              isLoading={isLoading}
-              themeColor="purple"
-              emptyStateIcon={<TrendingUp className="w-12 h-12" />}
-              emptyStateGreeting="Hello! I'm your Sales R&D AI assistant. Ask me about:"
-              emptyStateSuggestions={[
-                'Sales strategies and tactics',
-                'Market trends and analysis',
-                'Business development opportunities',
-                'Revenue growth strategies',
-                'Competitive intelligence'
-              ]}
-              loadingMessage="Analyzing market data..."
-              metadataIcon={<BarChart3 className="w-3 h-3" />}
-              metadataLabel="Market Intelligence"
-              inputAreaHeight={inputAreaHeight}
-              bottomPadding={16}
-            />
-          }
-        />
+        {/* Messages Container - Separate Component with overflow constraint */}
+        <div className="flex-1 min-h-0 flex flex-col relative">
+          <AIChatMessagesContainer
+            header={
+              <AIChatHeader
+                icon={<Brain className="w-5 h-5" />}
+                title="Sales R&D AI Chat"
+                iconColor="text-purple-600"
+                badgeText="Market Enhanced"
+                badgeColor="bg-purple-50 border-purple-300"
+              />
+            }
+            messagesArea={
+              <AIChatMessagesArea
+                messages={messages}
+                isLoading={isLoading}
+                themeColor="purple"
+                emptyStateIcon={<TrendingUp className="w-12 h-12" />}
+                emptyStateGreeting="Hello! I'm your Sales R&D AI assistant. Ask me about:"
+                emptyStateSuggestions={[
+                  'Sales strategies and tactics',
+                  'Market trends and analysis',
+                  'Business development opportunities',
+                  'Revenue growth strategies',
+                  'Competitive intelligence'
+                ]}
+                loadingMessage="Analyzing market data..."
+                metadataIcon={<BarChart3 className="w-3 h-3" />}
+                metadataLabel="Market Intelligence"
+                inputAreaHeight={inputAreaHeight}
+                bottomPadding={8}
+              />
+            }
+          />
 
-        {/* Input Container - Separate Component */}
-        <AIChatInputContainer
-          inputArea={
-            <AIChatInputArea
-              input={input}
-              onInputChange={setInput}
-              onSend={handle_send_message}
-              placeholder="Ask about sales strategies, market trends, or business development..."
-              disabled={isLoading}
-              messages={messages}
-              onFeedback={handle_feedback}
-              feedbackDisabled={feedbackSubmitted}
-              showFeedback={true}
-              onHeightChange={setInputAreaHeight}
-            />
-          }
-        />
+          {/* Input Container - Sticky at bottom within scroll context */}
+          <AIChatInputContainer
+            inputArea={
+              <AIChatInputArea
+                input={input}
+                onInputChange={setInput}
+                onSend={handle_send_message}
+                placeholder="Ask about sales strategies, market trends, or business development..."
+                disabled={isLoading}
+                messages={messages}
+                onFeedback={handle_feedback}
+                feedbackDisabled={feedbackSubmitted}
+                showFeedback={true}
+                onHeightChange={setInputAreaHeight}
+              />
+            }
+          />
+        </div>
       </div>
     </div>
   );

@@ -209,16 +209,14 @@ export class AgentManager {
         serviceName = 'rawMaterialsAI';
       }
 
-      // PineconeRAGService constructor signature: (serviceName, config, embeddingService)
-      const ragService = new PineconeRAGService(
-        serviceName,
-        {
-          topK: indexConfig.topK,
-          similarityThreshold: indexConfig.similarityThreshold,
-          includeMetadata: true,
-          filter: indexConfig.metadataFilters
-        }
-      );
+      // PineconeRAGService constructor signature: (config only)
+      const ragService = new PineconeRAGService({
+        index: indexConfig.pineconeIndex,
+        namespace: indexConfig.namespace || 'default',
+        topK: indexConfig.topK,
+        similarityThreshold: indexConfig.similarityThreshold,
+        includeMetadata: true
+      });
       this.ragServices.set(serviceKey, ragService);
     }
 

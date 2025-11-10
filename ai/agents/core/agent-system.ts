@@ -9,6 +9,54 @@
 import { UniversalEmbeddingService, createEmbeddingService } from "../../services/embeddings/universal-embedding-service";
 import { GeminiService } from "../../services/providers/gemini-service";
 import { OpenAIService } from "../../services/providers/openai-service";
+import { AIRequest as SharedAIRequest } from "../../types/ai-types";
+
+// Re-export the shared AIRequest for backward compatibility
+export type AIRequest = SharedAIRequest;
+
+export interface AIModelConfig {
+  provider: 'gemini' | 'openai';
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface PromptsConfig {
+  systemPromptPath?: string;
+  welcomeMessage?: string;
+  welcomeMessagePath?: string;
+  userInstructionsPath?: string;
+  ragInstructionsPath?: string;
+}
+
+export interface DatabaseConfig {
+  name: string;
+  collections: {
+    conversations: string;
+    feedback: string;
+    ragData: string;
+  };
+}
+
+export interface VectorDbConfig {
+  indexName: string;
+  dimensions: number;
+  metric: string;
+}
+
+export interface EmbeddingConfig {
+  provider: string;
+  model: string;
+  dimensions: number;
+}
+
+export interface RAGConfig {
+  enabled: boolean;
+  topK: number;
+  similarityThreshold: number;
+  includeMetadata: boolean;
+  filters?: Record<string, any>;
+}
 
 export interface SimpleAgentConfig {
   /** Basic Agent Info */
@@ -16,15 +64,25 @@ export interface SimpleAgentConfig {
   name: string;
   displayName: string;
   description: string;
-  version: string;
+  version?: string;
   /** Agent Capabilities */
-  capabilities: string[];
+  capabilities?: string[];
   /** AI Model Configuration */
-  aiModel: 'gemini' | 'openai';
-  /** Database Connections */
-  mongoConnection: string;
+  aiModel: 'gemini' | 'openai' | AIModelConfig;
+  /** Prompts Configuration */
+  prompts?: PromptsConfig;
+  /** Database Configuration */
+  database?: DatabaseConfig;
+  /** Vector Database Configuration */
+  vectorDb?: VectorDbConfig;
+  /** Embedding Configuration */
+  embedding?: EmbeddingConfig;
+  /** RAG Configuration */
+  rag?: RAGConfig;
+  /** Database Connections (backward compatibility) */
+  mongoConnection?: string;
   /** Agent-specific Settings */
-  settings: Record<string, any>;
+  settings?: Record<string, any>;
 }
 
 export interface AgentResponse {
@@ -49,29 +107,33 @@ export class BaseAgent {
   constructor(config: SimpleAgentConfig) {
     this.config = config;
     this.aiService = this.initializeAIService();
-    this.embeddingService = createEmbeddingService({
-      provider: 'gemini',
-      model: 'gemini-embedding-001',
-      dimensions: 3072,
-      batchSize: 96,
-      apiKey: process.env.GEMINI_API_KEY || ''
-    });
+    // createEmbeddingService expects no arguments, uses defaults
+    this.embeddingService = createEmbeddingService();
   }
 
   private initializeAIService(): GeminiService | OpenAIService {
-    switch (this.config.aiModel) {
-      case 'gemini':
-        return new GeminiService({
-          apiKey: process.env.GEMINI_API_KEY || '',
-          model: 'gemini-2.0-flash-exp'
-        });
-      case 'openai':
-        return new OpenAIService({
-          apiKey: process.env.OPENAI_API_KEY || '',
-          model: 'gpt-4'
-        });
-      default:
-        throw new Error(`Unsupported AI model: ${this.config.aiModel}`);
+    const aiModelConfig = this.config.aiModel;
+
+    if (typeof aiModelConfig === 'string') {
+      // Simple string config
+      switch (aiModelConfig) {
+        case 'gemini':
+          return new GeminiService(process.env.GEMINI_API_KEY || '');
+        case 'openai':
+          return new OpenAIService(process.env.OPENAI_API_KEY || '');
+        default:
+          throw new Error(`Unsupported AI model: ${aiModelConfig}`);
+      }
+    } else {
+      // Full config object
+      switch (aiModelConfig.provider) {
+        case 'gemini':
+          return new GeminiService(process.env.GEMINI_API_KEY || '');
+        case 'openai':
+          return new OpenAIService(process.env.OPENAI_API_KEY || '');
+        default:
+          throw new Error(`Unsupported AI model provider: ${aiModelConfig.provider}`);
+      }
     }
   }
 
@@ -135,12 +197,102 @@ export class BaseAgent {
   async healthCheck(): Promise<boolean> {
     try {
       // Basic health check - test AI service
-      await this.aiService.generateResponse("Health check");
+      await this.aiService.generateResponse({ prompt: "Health check", userId: "system" } as AIRequest);
       return true;
     } catch (error) {
       console.error(`❌ [${this.config.displayName}] Health check failed:`, error);
       return false;
     }
+  }
+
+  /**
+   * Get agent configuration
+   */
+  getConfig(): SimpleAgentConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * Get AI service instance
+   */
+  getAIService(): GeminiService | OpenAIService {
+    return this.aiService;
+  }
+
+  /**
+   * Get database collections
+   */
+  async getCollections(): Promise<any> {
+    // Stub implementation - override in subclasses
+    return {
+      conversations: null,
+      feedback: null,
+      ragData: null
+    };
+  }
+
+  /**
+   * Perform RAG search
+   */
+  async performRAGSearch(query: string): Promise<string> {
+    // Stub implementation - override in subclasses
+    console.log(`⚠️ [${this.config.displayName}] RAG search not implemented`);
+    return '';
+  }
+
+  /**
+   * Get enhanced system prompt
+   */
+  getEnhancedSystemPrompt(): string {
+    // Stub implementation - override in subclasses
+    return `You are ${this.config.displayName}, ${this.config.description}`;
+  }
+
+  /**
+   * Search vector database
+   */
+  async searchVectorDatabase(query: string, topK?: number): Promise<any[]> {
+    // Stub implementation - override in subclasses
+    console.log(`⚠️ [${this.config.displayName}] Vector search not implemented`);
+    return [];
+  }
+
+  /**
+   * Hybrid search (vector + keyword)
+   */
+  async hybridSearch(query: string, options?: any): Promise<any[]> {
+    // Stub implementation - override in subclasses
+    console.log(`⚠️ [${this.config.displayName}] Hybrid search not implemented`);
+    return [];
+  }
+
+  /**
+   * Format search results
+   */
+  formatSearchResults(results: any[]): string {
+    // Stub implementation - override in subclasses
+    return results.map((r, i) => `${i + 1}. ${JSON.stringify(r)}`).join('\n');
+  }
+
+  /**
+   * Get vector index (for stats)
+   */
+  getVectorIndex(): any {
+    // Stub implementation - override in subclasses
+    return {
+      describeIndexStats: async () => ({
+        totalRecordCount: 0,
+        namespaces: {}
+      })
+    };
+  }
+
+  /**
+   * Cleanup resources
+   */
+  async cleanup(): Promise<void> {
+    // Stub implementation - override in subclasses
+    console.log(`🧹 [${this.config.displayName}] Cleanup called`);
   }
 }
 
@@ -206,6 +358,33 @@ export const DEFAULT_AGENT_CONFIGS: Record<string, SimpleAgentConfig> = {
     settings: {
       maxResults: 5,
       similarityThreshold: 0.7
+    },
+    prompts: {
+      welcomeMessage: 'Welcome to Raw Materials AI'
+    },
+    database: {
+      name: 'raw_materials_db',
+      collections: {
+        conversations: 'conversations',
+        feedback: 'feedback',
+        ragData: 'knowledge_base'
+      }
+    },
+    vectorDb: {
+      indexName: 'raw-materials-vectors',
+      dimensions: 768,
+      metric: 'cosine'
+    },
+    embedding: {
+      provider: 'gemini',
+      model: 'gemini-embedding-001',
+      dimensions: 768
+    },
+    rag: {
+      enabled: true,
+      topK: 5,
+      similarityThreshold: 0.7,
+      includeMetadata: true
     }
   },
   'sales-rnd-ai': {
@@ -220,6 +399,33 @@ export const DEFAULT_AGENT_CONFIGS: Record<string, SimpleAgentConfig> = {
     settings: {
       maxResults: 8,
       similarityThreshold: 0.65
+    },
+    prompts: {
+      welcomeMessage: 'Welcome to Sales & R&D AI'
+    },
+    database: {
+      name: 'sales_rnd_db',
+      collections: {
+        conversations: 'conversations',
+        feedback: 'feedback',
+        ragData: 'knowledge_base'
+      }
+    },
+    vectorDb: {
+      indexName: 'sales-rnd-vectors',
+      dimensions: 768,
+      metric: 'cosine'
+    },
+    embedding: {
+      provider: 'gemini',
+      model: 'gemini-embedding-001',
+      dimensions: 768
+    },
+    rag: {
+      enabled: true,
+      topK: 8,
+      similarityThreshold: 0.65,
+      includeMetadata: true
     }
   }
 };

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Bot, Database, Sparkles } from "lucide-react";
+import { Package, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Bot, Database, Sparkles, Calculator } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,14 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       label: "เพิ่มสาร",
       labelEn: "Add Ingredient",
       icon: Plus,
+      adminOnly: true,
+    },
+    {
+      type: "link",
+      href: "/stock",
+      label: "เพิ่มสต็อก",
+      labelEn: "Add Stock",
+      icon: Package,
       adminOnly: true,
     },
     {
@@ -60,6 +68,13 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       label: "สูตร",
       labelEn: "Formulas",
       icon: Beaker,
+    },
+    {
+      type: "link",
+      href: "/calculation",
+      label: "คำนวนราคา",
+      labelEn: "Price Calculator",
+      icon: Calculator,
     },
     // Separator
     {
