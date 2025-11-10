@@ -119,7 +119,7 @@ export const ragRouter = router({
           success: true,
           mongoDBCount: mongoCount,
           pineconeStats,
-          indexedCount: pineconeStats.totalVectorCount || 0
+          indexedCount: pineconeStats.totalRecordCount || 0
         };
       } catch (error) {
         console.error('Error getting index stats:', error);
@@ -139,7 +139,7 @@ export const ragRouter = router({
 
         return {
           success: true,
-          count: stats.totalVectorCount || 0
+          count: stats.totalRecordCount || 0
         };
       } catch (error) {
         console.error('Error getting indexed count:', error);

@@ -182,10 +182,10 @@ async function createIndexAndEmbed() {
     // Check final stats
     try {
       const finalStats = await index.describeIndexStats();
-      console.log(`📈 Final Pinecone stats: ${finalStats.totalVectorCount} total vectors`);
+      console.log(`📈 Final Pinecone stats: ${finalStats.totalRecordCount} total vectors`);
 
       if (finalStats.namespaces && finalStats.namespaces[NAMESPACE]) {
-        console.log(`📈 Namespace ${NAMESPACE}: ${finalStats.namespaces[NAMESPACE].vectorCount} vectors`);
+        console.log(`📈 Namespace ${NAMESPACE}: ${finalStats.namespaces[NAMESPACE].recordCount} vectors`);
       }
     } catch (err) {
       console.log('⚠️ Could not get final Pinecone stats');

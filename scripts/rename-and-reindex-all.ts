@@ -37,7 +37,7 @@ const BATCH_SIZE = 100; // Process 100 documents at a time
 
 interface IndexStats {
   name: string;
-  vectorCount: number;
+  recordCount: number;
   startTime: Date;
   endTime?: Date;
   duration?: number;
@@ -184,7 +184,7 @@ async function indexRawMaterials(
 
   const stats: IndexStats = {
     name: indexName,
-    vectorCount: 0,
+    recordCount: 0,
     startTime: new Date()
   };
 
@@ -270,7 +270,7 @@ async function indexRawMaterials(
     console.log(`  ✓ Indexed ${processed}/${totalCount} documents (100%)`);
   }
 
-  stats.vectorCount = processed;
+  stats.recordCount = processed;
   stats.endTime = new Date();
   stats.duration = stats.endTime.getTime() - stats.startTime.getTime();
 
@@ -376,7 +376,7 @@ async function main() {
     console.log('\n📊 Final Statistics:');
     allStats.forEach(stat => {
       console.log(`\n  Index: ${stat.name}`);
-      console.log(`    Vectors: ${stat.vectorCount.toLocaleString()}`);
+      console.log(`    Vectors: ${stat.recordCount.toLocaleString()}`);
       console.log(`    Duration: ${stat.duration ? (stat.duration / 1000).toFixed(2) : 'N/A'} seconds`);
     });
 

@@ -88,12 +88,16 @@ export class AgentFactory {
       displayName: config.displayName,
       description: config.description || `${config.displayName} AI Assistant`,
 
-      aiModel: {
+      aiModel: (typeof config.aiModel === 'string' || !config.aiModel) ? {
         provider: 'gemini',
         model: 'gemini-2.5-flash',
         temperature: 0.7,
-        maxTokens: 9000,
-        ...config.aiModel
+        maxTokens: 9000
+      } : {
+        provider: config.aiModel.provider || 'gemini',
+        model: config.aiModel.model || 'gemini-2.5-flash',
+        temperature: config.aiModel.temperature ?? 0.7,
+        maxTokens: config.aiModel.maxTokens ?? 9000
       },
 
       prompts: {

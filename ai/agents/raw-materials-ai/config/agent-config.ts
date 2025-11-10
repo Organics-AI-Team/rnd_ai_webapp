@@ -14,7 +14,7 @@ export const RAW_MATERIALS_AI_CONFIG: SimpleAgentConfig = {
 
   // AI Model Settings
   aiModel: {
-    provider: 'gemini',
+    provider: 'gemini' as const,
     model: 'gemini-2.5-flash',
     temperature: 0.6,
     maxTokens: 9000

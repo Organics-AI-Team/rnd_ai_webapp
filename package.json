@@ -14,7 +14,7 @@
     "clean": "rm -rf .next",
     "clean-all": "rm -rf .next node_modules dist .cache .turbo .vite coverage .nyc_output .pytest_cache __pycache__ *.log .DS_Store npm-debug.log* yarn-debug.log* yarn-error.log* pnpm-debug.log* lerna-debug.log* .pnpm-debug.log* .vercel .netlify .wrangler .sst .output .tmp .temp .swc .parcel-cache .eslintcache && npm cache clean --force && find . -name '*.tsbuildinfo' -delete && find . -name '.DS_Store' -delete && find . -name 'Thumbs.db' -delete && echo '✅ All cache, build artifacts, and temporary files have been removed aggressively! Environment files preserved.'",
     "clean-aggressive": "./scripts/clean-all-aggressive.sh",
-    "reset": "npm run clean-all && npm install",
+    "reset": "npm run clean-all && npm install --legacy-peer-deps",
     "seed-admin": "tsx scripts/seed-admin.ts",
     "migrate": "tsx scripts/migrate-to-mongo.ts",
     "create-sales-index": "node scripts/create-sales-ai-index.js",

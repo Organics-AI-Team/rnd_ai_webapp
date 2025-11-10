@@ -422,6 +422,15 @@ export class ChromaService {
   }
 
   /**
+   * Delete documents by IDs (alias for delete method)
+   * Provided for backward compatibility
+   */
+  async deleteDocuments(collectionName: string, ids: string[]): Promise<void> {
+    logger.debug('deleteDocuments (alias for delete)', { collectionName, idCount: ids.length });
+    return this.delete(collectionName, ids);
+  }
+
+  /**
    * Get documents by IDs
    */
   async get(

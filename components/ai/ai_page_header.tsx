@@ -28,7 +28,7 @@ export function AIPageHeader({
   iconColor = 'text-blue-600'
 }: AIPageHeaderProps) {
   return (
-    <div className="flex items-center gap-3 mb-4">
+    <div className="flex items-center gap-3">
       <div className={`w-8 h-8 ${iconColor}`}>
         {icon}
       </div>

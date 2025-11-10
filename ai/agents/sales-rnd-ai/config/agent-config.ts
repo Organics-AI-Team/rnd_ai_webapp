@@ -38,18 +38,18 @@ export const SALES_RND_AI_CONFIG: SimpleAgentConfig = {
     }
   },
 
-  // Vector Database
+  // Vector Database (SHARED with Raw Materials AI)
   vectorDb: {
-    indexName: 'sales-rnd-intelligence-vectors',
-    dimensions: 768,
+    indexName: 'raw-materials-stock-vectors',
+    dimensions: 3072,
     metric: 'cosine'
   },
 
-  // Embedding Settings
+  // Embedding Settings (SHARED with Raw Materials AI)
   embedding: {
     provider: 'gemini',
-    model: 'gemini-embedding-001',
-    dimensions: 768
+    model: 'text-embedding-004',
+    dimensions: 3072
   },
 
   // RAG Settings

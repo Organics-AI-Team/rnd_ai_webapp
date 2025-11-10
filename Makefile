@@ -5,8 +5,10 @@ dev:
 	npm run dev
 
 # Install dependencies
+# Using --legacy-peer-deps to handle conflict between chromadb@1.8.1 (requires @google/generative-ai@^0.1.1)
+# and @langchain/google-genai (requires @google/generative-ai@^0.24.0)
 install:
-	npm install
+	npm install --legacy-peer-deps
 
 # Build for production
 build:

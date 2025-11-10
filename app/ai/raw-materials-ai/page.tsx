@@ -154,8 +154,8 @@ export default function RawMaterialsAIPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 h-[calc(100vh-8rem)]">
-      <div className="flex flex-col h-full gap-4">
+    <div className="container mx-auto px-6 pt-6 pb-2 h-[calc(100vh-8rem)]">
+      <div className="flex flex-col h-full gap-2">
         {/* Header Section - Component */}
         <AIPageHeader
           icon={<Package className="w-8 h-8" />}
@@ -164,57 +164,59 @@ export default function RawMaterialsAIPage() {
           iconColor="text-blue-600"
         />
 
-        {/* Messages Container - Separate Component */}
-        <AIChatMessagesContainer
-          header={
-            <AIChatHeader
-              icon={<Brain className="w-5 h-5" />}
-              title="Raw Materials AI Chat"
-              iconColor="text-blue-600"
-              badgeText="RAG Enhanced"
-              badgeColor="bg-green-50 border-green-300"
-            />
-          }
-          messagesArea={
-            <AIChatMessagesArea
-              messages={messages}
-              isLoading={isLoading}
-              themeColor="blue"
-              emptyStateIcon={<Package className="w-12 h-12" />}
-              emptyStateGreeting="Hello! I'm your Raw Materials AI assistant. Ask me about:"
-              emptyStateSuggestions={[
-                'Raw materials and ingredients',
-                'Formulation guidance',
-                'Regulatory compliance (FDA)',
-                'Supplier information',
-                'Material safety and usage'
-              ]}
-              loadingMessage="Searching database..."
-              metadataIcon={<Search className="w-3 h-3" />}
-              metadataLabel="Database Enhanced"
-              inputAreaHeight={inputAreaHeight}
-              bottomPadding={16}
-            />
-          }
-        />
+        {/* Messages Container - Separate Component with overflow constraint */}
+        <div className="flex-1 min-h-0 flex flex-col relative">
+          <AIChatMessagesContainer
+            header={
+              <AIChatHeader
+                icon={<Brain className="w-5 h-5" />}
+                title="Raw Materials AI Chat"
+                iconColor="text-blue-600"
+                badgeText="RAG Enhanced"
+                badgeColor="bg-green-50 border-green-300"
+              />
+            }
+            messagesArea={
+              <AIChatMessagesArea
+                messages={messages}
+                isLoading={isLoading}
+                themeColor="blue"
+                emptyStateIcon={<Package className="w-12 h-12" />}
+                emptyStateGreeting="Hello! I'm your Raw Materials AI assistant. Ask me about:"
+                emptyStateSuggestions={[
+                  'Raw materials and ingredients',
+                  'Formulation guidance',
+                  'Regulatory compliance (FDA)',
+                  'Supplier information',
+                  'Material safety and usage'
+                ]}
+                loadingMessage="Searching database..."
+                metadataIcon={<Search className="w-3 h-3" />}
+                metadataLabel="Database Enhanced"
+                inputAreaHeight={inputAreaHeight}
+                bottomPadding={8}
+              />
+            }
+          />
 
-        {/* Input Container - Separate Component */}
-        <AIChatInputContainer
-          inputArea={
-            <AIChatInputArea
-              input={input}
-              onInputChange={setInput}
-              onSend={handle_send_message}
-              placeholder="Ask about raw materials, ingredients, formulations, or regulatory information..."
-              disabled={isLoading}
-              messages={messages}
-              onFeedback={handle_feedback}
-              feedbackDisabled={feedbackSubmitted}
-              showFeedback={true}
-              onHeightChange={setInputAreaHeight}
-            />
-          }
-        />
+          {/* Input Container - Sticky at bottom within scroll context */}
+          <AIChatInputContainer
+            inputArea={
+              <AIChatInputArea
+                input={input}
+                onInputChange={setInput}
+                onSend={handle_send_message}
+                placeholder="Ask about raw materials, ingredients, formulations, or regulatory information..."
+                disabled={isLoading}
+                messages={messages}
+                onFeedback={handle_feedback}
+                feedbackDisabled={feedbackSubmitted}
+                showFeedback={true}
+                onHeightChange={setInputAreaHeight}
+              />
+            }
+          />
+        </div>
       </div>
     </div>
   );

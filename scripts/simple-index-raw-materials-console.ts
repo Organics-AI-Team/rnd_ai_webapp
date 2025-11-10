@@ -85,7 +85,7 @@ async function indexRawMaterialsConsole() {
     // Check current Pinecone stats
     try {
       const stats = await index.describeIndexStats();
-      console.log(`📈 Current Pinecone stats: ${stats.totalVectorCount} total vectors`);
+      console.log(`📈 Current Pinecone stats: ${stats.totalRecordCount} total vectors`);
     } catch (err) {
       console.log('⚠️ Could not get Pinecone stats, continuing anyway');
     }
@@ -154,7 +154,7 @@ async function indexRawMaterialsConsole() {
     // Check final stats
     try {
       const finalStats = await index.describeIndexStats();
-      console.log(`📈 Final Pinecone stats: ${finalStats.totalVectorCount} total vectors`);
+      console.log(`📈 Final Pinecone stats: ${finalStats.totalRecordCount} total vectors`);
     } catch (err) {
       console.log('⚠️ Could not get final Pinecone stats');
     }

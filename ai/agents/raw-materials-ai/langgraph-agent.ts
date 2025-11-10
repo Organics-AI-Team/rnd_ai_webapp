@@ -66,7 +66,6 @@ export class LangGraphRawMaterialsAgent {
 
     // Add nodes
     workflow.addNode('classify_query', this.classifyQuery.bind(this));
-    workflow.addNode('route_query', this.routeQuery.bind(this));
     workflow.addNode('search_database', this.searchDatabase.bind(this));
     workflow.addNode('check_stock', this.checkStock.bind(this));
     workflow.addNode('get_profile', this.getProfile.bind(this));
@@ -75,28 +74,20 @@ export class LangGraphRawMaterialsAgent {
     workflow.addNode('generate_response', this.generateResponse.bind(this));
     workflow.addNode('handle_error', this.handleError.bind(this));
 
-    // Set entry point
-    workflow.addEdge(START, 'classify_query');
+    // Set entry point - connect START to classify_query
+    workflow.setEntryPoint('classify_query');
 
-    // Add conditional edges for routing
+    // Add conditional edges for routing directly from classify_query
     workflow.addConditionalEdges(
       'classify_query',
-      this.shouldUseTools.bind(this),
-      {
-        use_tools: 'route_query',
-        direct_response: 'generate_response'
-      }
-    );
-
-    workflow.addConditionalEdges(
-      'route_query',
       this.routeBasedOnType.bind(this),
       {
         search: 'search_database',
         stock_check: 'check_stock',
         profile: 'get_profile',
         usecase_search: 'search_usecase',
-        general: 'search_database'
+        general: 'search_database',
+        direct_response: 'generate_response'
       }
     );
 
@@ -120,7 +111,7 @@ export class LangGraphRawMaterialsAgent {
     workflow.addEdge('generate_response', END);
     workflow.addEdge('handle_error', END);
 
-    return workflow.compile();
+    return workflow.compile() as any;
   }
 
   /**
@@ -180,6 +171,11 @@ Respond with just the category name.
    * Route to appropriate tool based on query type
    */
   private async routeBasedOnType(state: RawMaterialsState): Promise<string> {
+    // If tools are not needed, go directly to response generation
+    if (!state.needsTools) {
+      return 'direct_response';
+    }
+
     const routing = {
       'search': 'search',
       'stock_check': 'stock_check',
@@ -519,7 +515,7 @@ ${this.formatResultsForLLM(results)}
         query: message
       };
 
-      const result = await this.graph.invoke(initialState);
+      const result = await (this.graph as any).invoke(initialState);
 
       return {
         response: result.response || 'ขออภัยค่ะ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่ค่ะ',
@@ -527,12 +523,11 @@ ${this.formatResultsForLLM(results)}
         toolCalls: result.toolCalls,
         results: result.searchResults
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ [LangGraphAgent] Workflow execution failed:', error);
       return {
         response: 'ขออภัยค่ะ ระบบขัดข้องชั่วคราว กรุณาลองใหม่ภายหลังค่ะ',
-        confidence: 0.1,
-        error: error.message
+        confidence: 0.1
       };
     }
   }

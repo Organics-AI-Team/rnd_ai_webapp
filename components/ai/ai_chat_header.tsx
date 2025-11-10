@@ -33,8 +33,8 @@ export function AIChatHeader({
   badgeColor = 'bg-green-50 border-green-300'
 }: AIChatHeaderProps) {
   return (
-    <CardHeader className="pb-4">
-      <CardTitle className="flex items-center gap-2">
+    <CardHeader className="px-4 py-3">
+      <CardTitle className="flex items-center gap-2 text-base">
         <div className={`w-5 h-5 ${iconColor}`}>
           {icon}
         </div>

@@ -522,4 +522,13 @@ export class DynamicChunkingService {
 
     return stats;
   }
+
+  /**
+   * Chunk a single document (alias for chunk_raw_material_document)
+   * Provided for backward compatibility with existing code
+   */
+  chunkDocument(material: any): Chunk[] {
+    console.log('📄 [dynamic-chunking] chunkDocument called (alias for chunk_raw_material_document)');
+    return this.chunk_raw_material_document(material);
+  }
 }

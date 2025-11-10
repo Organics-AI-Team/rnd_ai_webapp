@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 interface IndexStats {
   dimension?: number;
   indexFullness?: number;
-  totalVectorCount?: number;
+  totalRecordCount?: number;
   namespaces?: Record<string, any>;
 }
 
@@ -184,7 +184,7 @@ export default function AIIndexingPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-sm">จำนวนข้อมูล:</span>
                     <Badge variant="secondary">
-                      {indexStats?.totalVectorCount?.toLocaleString() || '0'}
+                      {indexStats?.totalRecordCount?.toLocaleString() || '0'}
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
@@ -311,7 +311,7 @@ export default function AIIndexingPage() {
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm font-medium">จำนวน Vectors ทั้งหมด</span>
                   <Badge variant="secondary">
-                    {indexStats.totalVectorCount?.toLocaleString() || '0'}
+                    {indexStats.totalRecordCount?.toLocaleString() || '0'}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
@@ -337,7 +337,7 @@ export default function AIIndexingPage() {
                       {Object.entries(indexStats.namespaces).map(([namespace, stats]: [string, any]) => (
                         <div key={namespace} className="flex justify-between items-center p-2 bg-gray-50 rounded text-xs">
                           <span className="font-mono">{namespace}</span>
-                          <Badge variant="outline">{stats.vectorCount} vectors</Badge>
+                          <Badge variant="outline">{stats.recordCount} vectors</Badge>
                         </div>
                       ))}
                     </div>
