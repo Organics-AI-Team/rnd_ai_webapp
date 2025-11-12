@@ -51,7 +51,7 @@ export const productsRouter = router({
       .collection("raw_materials_console")
       .countDocuments(searchFilter);
 
-    // Build sort object
+    // Build sort object with secondary sort by _id for consistency
     const sortObj: any = {};
     const dbSortField = sortField === "productCode" ? "rm_code" :
                         sortField === "productName" ? "trade_name" :
@@ -59,9 +59,22 @@ export const productsRouter = router({
                         sortField === "supplier" ? "supplier" : "_id";
     sortObj[dbSortField] = sortDirection === "asc" ? 1 : -1;
 
-    const rawMaterials = await db
+    // Add secondary sort by _id to ensure consistent ordering for duplicates/nulls
+    if (dbSortField !== "_id") {
+      sortObj["_id"] = 1; // Always secondary sort by _id ascending
+    }
+
+    // Apply collation only for text fields (not for numeric fields like price)
+    const isNumericField = dbSortField === "rm_cost";
+    const queryBuilder = db
       .collection("raw_materials_console")
-      .find(searchFilter)
+      .find(searchFilter);
+
+    // Use collation for case-insensitive sorting on text fields
+    const rawMaterials = await (isNumericField
+      ? queryBuilder
+      : queryBuilder.collation({ locale: "en", strength: 2 })
+    )
       .sort(sortObj)
       .skip(offset)
       .limit(limit)
@@ -355,7 +368,7 @@ export const productsRouter = router({
       });
 
       if (updatedMaterial) {
-        auto_index_material(updatedMaterial).then(success => {
+        auto_index_material(updatedMaterial as any).then(success => {
           if (success) {
             console.log(`✅ [ProductsRouter] Auto-updated material ${updatedMaterial.rm_code} in ChromaDB`);
           } else {
