@@ -21,9 +21,11 @@ export {
 // Pre-configured connections
 export {
   main_client_promise,
-  raw_materials_client_promise,
-  default as client_promise
+  raw_materials_client_promise
 } from './mongodb/connections';
 
 // Utilities
 export { parseArrayField } from './utils/array-utils';
+
+// Default export for backward compatibility
+export { default } from './mongodb/connections';

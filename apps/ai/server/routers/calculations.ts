@@ -3,7 +3,10 @@ import { router, protectedProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
-import { logger } from "@/lib/logger";
+import { Logger } from "@rnd-ai/shared-utils";
+
+// Create scoped logger for this module
+const logger = Logger.scope('CalculationsRouter');
 
 /**
  * Price Calculation Router

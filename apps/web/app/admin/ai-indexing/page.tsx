@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Database, Search, CheckCircle, AlertCircle, Activity, Info } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@rnd-ai/shared-utils';
 
 interface IndexStats {
   dimension?: number;

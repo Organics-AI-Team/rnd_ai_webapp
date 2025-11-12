@@ -11,7 +11,7 @@
  * @module ai/utils/error-handler
  */
 
-import Logger, { LogContext } from './logger';
+import Logger, { LogContext } from '@rnd-ai/shared-utils';
 
 /**
  * Standard error types for classification
