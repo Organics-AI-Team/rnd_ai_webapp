@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { OrderSchema, OrderStatus } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
@@ -11,7 +11,7 @@ export const ordersRouter = router({
   create: publicProcedure
     .input(OrderSchema.omit({ _id: true, createdAt: true, updatedAt: true }))
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // If productId is provided, reduce stock from inventory
@@ -116,7 +116,7 @@ export const ordersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // If productId is provided, check stock and reduce
@@ -179,7 +179,7 @@ export const ordersRouter = router({
   list: publicProcedure
     .input(z.object({ organizationId: z.string().optional() }).optional())
     .query(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const filter: any = {};
@@ -230,7 +230,7 @@ export const ordersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Get the current order
@@ -361,7 +361,7 @@ export const ordersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Get the order to calculate total

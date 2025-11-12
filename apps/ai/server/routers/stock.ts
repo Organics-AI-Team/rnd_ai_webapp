@@ -5,7 +5,7 @@
 
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { StockEntrySchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
@@ -28,7 +28,7 @@ export const stockRouter = router({
     .query(async ({ ctx, input }) => {
       console.log('🔍 [stock.list] Starting stock list query', { input });
 
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const limit = input?.limit || 50;
@@ -97,7 +97,7 @@ export const stockRouter = router({
     .query(async ({ ctx, input }) => {
       console.log('📊 [stock.summary] Calculating stock summary', { input });
 
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const matchStage: any = {
@@ -166,7 +166,7 @@ export const stockRouter = router({
     .mutation(async ({ ctx, input }) => {
       console.log('➕ [stock.create] Creating new stock entry', { input });
 
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const totalCost = input.quantityKg * input.unitPrice;
@@ -229,7 +229,7 @@ export const stockRouter = router({
     .mutation(async ({ ctx, input }) => {
       console.log('✏️ [stock.update] Updating stock entry', { input });
 
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const updateData: any = {
@@ -304,7 +304,7 @@ export const stockRouter = router({
     .mutation(async ({ ctx, input }) => {
       console.log('🗑️ [stock.delete] Deleting stock entry', { input });
 
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Get entry details before deleting
@@ -355,7 +355,7 @@ export const stockRouter = router({
     .query(async ({ ctx, input }) => {
       console.log('📦 [stock.getMaterials] Fetching materials for selection', { input });
 
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const searchTerm = input?.searchTerm || "";

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Package, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Bot, Database, Sparkles, Calculator } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@rnd-ai/shared-utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";

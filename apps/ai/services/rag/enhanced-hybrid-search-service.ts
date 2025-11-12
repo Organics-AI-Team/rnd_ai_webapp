@@ -9,7 +9,7 @@ import { getChromaService, ChromaService } from '../vector/chroma-service';
 import { MongoClient, Db, Collection } from 'mongodb';
 import { HybridSearchResult } from './hybrid-search-service';
 import { createEmbeddingService } from '../embeddings/universal-embedding-service';
-import { Logger } from '@/ai/utils/logger';
+import { Logger } from '@rnd-ai/shared-utils';
 import { ErrorHandler, ErrorType } from '@/ai/utils/error-handler';
 
 const logger = Logger.scope('EnhancedHybridSearch');

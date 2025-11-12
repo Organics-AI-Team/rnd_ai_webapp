@@ -16,7 +16,7 @@
  * @date 2025-11-07
  */
 
-import { Logger } from '@/ai/utils/logger';
+import { Logger } from '@rnd-ai/shared-utils';
 import { ErrorHandler, ErrorType } from '@/ai/utils/error-handler';
 
 const logger = Logger.scope('ChromaService');

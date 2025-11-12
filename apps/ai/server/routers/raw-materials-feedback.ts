@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import rawMaterialsClientPromise from "@/lib/raw-materials-mongodb";
+import { raw_materials_client_promise } from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 
 const FeedbackSchema = z.object({
@@ -18,7 +18,7 @@ export const rawMaterialsFeedbackRouter = router({
   submit: protectedProcedure
     .input(FeedbackSchema)
     .mutation(async ({ ctx, input }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const feedback = {
@@ -37,7 +37,7 @@ export const rawMaterialsFeedbackRouter = router({
   // Get feedback statistics for a user
   getStats: protectedProcedure
     .query(async ({ ctx }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const totalFeedback = await db.collection("raw_materials_feedback")
@@ -73,7 +73,7 @@ export const rawMaterialsFeedbackRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const feedback = await db.collection("raw_materials_feedback")

@@ -15,7 +15,7 @@
  * - Dry-run mode for testing
  */
 
-import mongoClientPromise from '@/lib/mongodb';
+import client_promise from '@rnd-ai/shared-database';
 import { PineconeRAGService } from '@/ai/services/rag/pinecone-service-stub';
 import { DynamicChunkingService } from '@/ai/services/rag/dynamic-chunking-service';
 
@@ -72,7 +72,7 @@ async function migrate_to_dynamic_chunking(config: MigrationConfig): Promise<Mig
 
     // Step 2: Connect to MongoDB and fetch documents
     console.log('\n📂 Step 2/5: Fetching documents from MongoDB...');
-    const mongo_client = await mongoClientPromise;
+    const mongo_client = await client_promise;
     const db = mongo_client.db();
     const collection = db.collection('raw_materials_real_stock');
 

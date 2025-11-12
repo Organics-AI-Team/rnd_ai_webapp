@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { FormulaSchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
@@ -9,7 +9,7 @@ export const formulasRouter = router({
   // Get next auto-generated formula code
   getNextCode: protectedProcedure
     .query(async ({ ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Get total count of formulas
@@ -58,7 +58,7 @@ export const formulasRouter = router({
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const formula = await db.collection("formulas").findOne({
@@ -99,7 +99,7 @@ export const formulasRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Auto-generate formula code: Get total count and use as next number
@@ -181,7 +181,7 @@ export const formulasRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const { id, ...updateData } = input;
@@ -220,7 +220,7 @@ export const formulasRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const result = await db.collection("formulas").deleteOne({

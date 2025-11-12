@@ -11,7 +11,7 @@
  * - Type-safe error handling
  * - Clear error messages for missing configuration
  *
- * @module create-mongodb-client
+ * @module client-factory
  */
 
 import { MongoClient } from "mongodb";

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../trpc";
-import rawMaterialsClientPromise from "@/lib/raw-materials-mongodb";
+import { raw_materials_client_promise } from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 
 export const rawMaterialsConversationRouter = router({
@@ -17,7 +17,7 @@ export const rawMaterialsConversationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const message = {
@@ -51,7 +51,7 @@ export const rawMaterialsConversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const messages = await db.collection("raw_materials_conversations")
@@ -81,7 +81,7 @@ export const rawMaterialsConversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const messages = await db.collection("raw_materials_conversations")
@@ -100,7 +100,7 @@ export const rawMaterialsConversationRouter = router({
   // Clear raw materials conversation history for a user
   clearHistory: protectedProcedure
     .mutation(async ({ ctx }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const result = await db.collection("raw_materials_conversations")
@@ -121,7 +121,7 @@ export const rawMaterialsConversationRouter = router({
   // Get raw materials conversation statistics
   getStats: protectedProcedure
     .query(async ({ ctx }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const totalMessages = await db.collection("raw_materials_conversations")
@@ -163,7 +163,7 @@ export const rawMaterialsConversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await rawMaterialsClientPromise;
+      const client = await raw_materials_client_promise;
       const db = client.db();
 
       const conversations = await db.collection("raw_materials_conversations")

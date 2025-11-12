@@ -15,7 +15,7 @@
 
 import { getChromaService, ChromaService } from '../vector/chroma-service';
 import { createEmbeddingService, UniversalEmbeddingService } from '../embeddings/universal-embedding-service';
-import { Logger } from '@/ai/utils/logger';
+import { Logger } from '@rnd-ai/shared-utils';
 import { ErrorHandler, ErrorType } from '@/ai/utils/error-handler';
 
 const logger = Logger.scope('ChromaRAGService');

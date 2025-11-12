@@ -13,7 +13,7 @@
  *   Logger.error('Database connection failed', error, { service: 'PineconeService' });
  *   Logger.debug('Cache hit', { key: 'embedding:abc123' });
  *
- * @module ai/utils/logger
+ * @module logger
  */
 
 export enum LogLevel {

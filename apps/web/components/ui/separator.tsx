@@ -1,6 +1,6 @@
 import * as React from "react"
 
-import { cn } from "@/lib/utils"
+import { cn } from "@rnd-ai/shared-utils"
 
 const Separator = React.forwardRef<
   HTMLDivElement,

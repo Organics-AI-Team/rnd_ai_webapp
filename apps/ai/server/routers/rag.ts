@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import rawMaterialsClientPromise from "@/lib/raw-materials-mongodb";
+import { raw_materials_client_promise } from "@rnd-ai/shared-database";
 import { PineconeRAGService, RawMaterialDocument } from "@/ai/services/rag/pinecone-service-stub";
 import { ObjectId } from "mongodb";
 import { getRAGConfig, RAGServicesConfig } from "@/ai/config/rag-config";
@@ -55,7 +55,7 @@ export const ragRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const client = await rawMaterialsClientPromise;
+        const client = await raw_materials_client_promise;
         const db = client.db();
         const pineconeService = new PineconeRAGService();
 
@@ -105,7 +105,7 @@ export const ragRouter = router({
   getIndexStats: protectedProcedure
     .query(async ({ ctx }) => {
       try {
-        const client = await rawMaterialsClientPromise;
+        const client = await raw_materials_client_promise;
         const db = client.db();
         const pineconeService = new PineconeRAGService();
 
@@ -162,7 +162,7 @@ export const ragRouter = router({
     )
     .query(async ({ ctx, input }) => {
       try {
-        const client = await rawMaterialsClientPromise;
+        const client = await raw_materials_client_promise;
         const db = client.db();
         const pineconeService = new PineconeRAGService();
 

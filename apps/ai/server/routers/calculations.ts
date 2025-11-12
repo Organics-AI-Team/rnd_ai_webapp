@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
 import { logger } from "@/lib/logger";
@@ -108,7 +108,7 @@ export const calculationsRouter = router({
 
       try {
         // Get database connection for logging
-        const client = await clientPromise;
+        const client = await client_promise;
         const db = client.db();
 
         // Calculate material costs
@@ -219,7 +219,7 @@ export const calculationsRouter = router({
       });
 
       try {
-        const client = await clientPromise;
+        const client = await client_promise;
         const db = client.db();
 
         const calculation = {
@@ -263,7 +263,7 @@ export const calculationsRouter = router({
       });
 
       try {
-        const client = await clientPromise;
+        const client = await client_promise;
 
         if (!client) {
           logger.error("MongoDB client is undefined");
@@ -313,7 +313,7 @@ export const calculationsRouter = router({
       });
 
       try {
-        const client = await clientPromise;
+        const client = await client_promise;
         const db = client.db();
 
         const calculation = await db.collection("price_calculations").findOne({
@@ -355,7 +355,7 @@ export const calculationsRouter = router({
       });
 
       try {
-        const client = await clientPromise;
+        const client = await client_promise;
         const db = client.db();
 
         const result = await db.collection("price_calculations").deleteOne({

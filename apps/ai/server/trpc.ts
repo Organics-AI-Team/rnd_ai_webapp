@@ -1,7 +1,7 @@
 import { initTRPC } from "@trpc/server";
 import { cache } from "react";
 import { cookies } from "next/headers";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 
 export const createTRPCContext = cache(async () => {
   const cookieStore = await cookies();
@@ -13,7 +13,7 @@ export const createTRPCContext = cache(async () => {
 
   if (token) {
     try {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
       const session = await db.collection("sessions").findOne({
         token,

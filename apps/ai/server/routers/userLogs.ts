@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 
 export const userLogsRouter = router({
   // Get all logs for organization
@@ -16,7 +16,7 @@ export const userLogsRouter = router({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const filter: any = {
@@ -70,7 +70,7 @@ export const userLogsRouter = router({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const logs = await db
@@ -95,7 +95,7 @@ export const userLogsRouter = router({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const filter: any = {
@@ -145,7 +145,7 @@ export const userLogsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Only allow admin role

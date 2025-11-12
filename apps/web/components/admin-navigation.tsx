@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Database, Settings, ChevronLeft, ChevronRight, LogOut } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@rnd-ai/shared-utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";

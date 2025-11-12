@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { CreditTransactionType } from "@/lib/types";
 import { ObjectId } from "mongodb";
 
 export const organizationsRouter = router({
   // List all organizations (admin only in production)
   list: publicProcedure.query(async () => {
-    const client = await clientPromise;
+    const client = await client_promise;
     const db = client.db();
     const organizations = await db
       .collection("organizations")
@@ -24,7 +24,7 @@ export const organizationsRouter = router({
   getById: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
       const org = await db.collection("organizations").findOne({ _id: new ObjectId(input.id) });
       if (!org) {
@@ -48,7 +48,7 @@ export const organizationsRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const org = await db.collection("organizations").findOne({ _id: new ObjectId(input.organizationId) });
@@ -102,7 +102,7 @@ export const organizationsRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const org = await db.collection("organizations").findOne({ _id: new ObjectId(input.organizationId) });
@@ -149,7 +149,7 @@ export const organizationsRouter = router({
   getTransactions: publicProcedure
     .input(z.object({ organizationId: z.string() }))
     .query(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
       const transactions = await db
         .collection("credit_transactions")
@@ -164,7 +164,7 @@ export const organizationsRouter = router({
 
   // Get all credit transactions (for admin)
   getAllTransactions: publicProcedure.query(async () => {
-    const client = await clientPromise;
+    const client = await client_promise;
     const db = client.db();
     const transactions = await db
       .collection("credit_transactions")

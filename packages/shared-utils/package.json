@@ -1,0 +1,25 @@
+{
+  "name": "@rnd-ai/shared-utils",
+  "version": "1.0.0",
+  "description": "Shared utility functions for RND AI Management",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "clsx": "^2.0.0",
+    "tailwind-merge": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "utilities",
+    "logger",
+    "shared",
+    "helpers"
+  ],
+  "author": "RND AI Team",
+  "license": "MIT"
+}

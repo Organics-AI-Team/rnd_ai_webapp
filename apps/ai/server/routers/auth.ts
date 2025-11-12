@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { SignupInputSchema, LoginInputSchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import bcrypt from "bcryptjs";
@@ -12,7 +12,7 @@ export const authRouter = router({
   signup: publicProcedure
     .input(SignupInputSchema)
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Check if account already exists
@@ -100,7 +100,7 @@ export const authRouter = router({
   login: publicProcedure
     .input(LoginInputSchema)
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Find account
@@ -164,7 +164,7 @@ export const authRouter = router({
   logout: publicProcedure
     .input(z.object({ token: z.string(), userId: z.string().optional(), userName: z.string().optional(), organizationId: z.string().optional() }))
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Log logout activity before deleting session
@@ -188,7 +188,7 @@ export const authRouter = router({
   me: publicProcedure
     .input(z.object({ token: z.string() }))
     .query(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Find session

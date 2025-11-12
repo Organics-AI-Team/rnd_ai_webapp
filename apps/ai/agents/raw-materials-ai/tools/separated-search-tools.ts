@@ -145,8 +145,8 @@ export const searchFDADataBaseTool = {
 
     try {
       // Direct MongoDB search instead of vector search
-      const mongoClientPromise = require('@/lib/mongodb').default;
-      const client = await mongoClientPromise;
+      const { default: client_promise } = await import('@rnd-ai/shared-database');
+      const client = await client_promise;
       const db = client.db('rnd_ai');
       const collection = db.collection('raw_materials_console');
 
@@ -369,8 +369,8 @@ export const checkStockAvailabilityTool = {
 
     try {
       // Direct MongoDB search
-      const mongoClientPromise = require('@/lib/mongodb').default;
-      const client = await mongoClientPromise;
+      const { default: client_promise } = await import('@rnd-ai/shared-database');
+      const client = await client_promise;
       const db = client.db('rnd_ai');
       const collection = db.collection('raw_materials_console');
 

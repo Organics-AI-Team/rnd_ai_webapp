@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 
 export const conversationRouter = router({
@@ -17,7 +17,7 @@ export const conversationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const message = {
@@ -51,7 +51,7 @@ export const conversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const messages = await db.collection("conversations")
@@ -81,7 +81,7 @@ export const conversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const messages = await db.collection("conversations")
@@ -100,7 +100,7 @@ export const conversationRouter = router({
   // Clear conversation history for a user
   clearHistory: protectedProcedure
     .mutation(async ({ ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const result = await db.collection("conversations")
@@ -121,7 +121,7 @@ export const conversationRouter = router({
   // Get conversation statistics
   getStats: protectedProcedure
     .query(async ({ ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const totalMessages = await db.collection("conversations")
@@ -163,7 +163,7 @@ export const conversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const conversations = await db.collection("conversations")

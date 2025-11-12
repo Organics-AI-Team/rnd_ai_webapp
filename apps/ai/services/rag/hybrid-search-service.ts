@@ -18,7 +18,7 @@
 
 import { PineconeRAGService, RAGConfig, RawMaterialDocument } from './pinecone-service-stub';
 import { classify_query, QueryClassification, fuzzy_match_score } from '../../utils/query-classifier';
-import mongoClientPromise from '@/lib/mongodb';
+import client_promise from '@rnd-ai/shared-database';
 
 export interface HybridSearchResult {
   document: any;
@@ -64,7 +64,7 @@ export class HybridSearchService extends PineconeRAGService {
    */
   private async init_mongodb(): Promise<void> {
     try {
-      this.mongodb_client = await mongoClientPromise;
+      this.mongodb_client = await client_promise;
       console.log('✅ [hybrid-search] MongoDB initialized for exact match searches');
     } catch (error) {
       console.warn('⚠️ [hybrid-search] MongoDB initialization failed:', error.message);

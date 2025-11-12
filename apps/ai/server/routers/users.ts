@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { UserSchema, CreditTransactionSchema, CreditTransactionType } from "@/lib/types";
 import { ObjectId } from "mongodb";
 
 export const usersRouter = router({
   // List all users with their organization credits (filtered by user's organization)
   list: publicProcedure.query(async ({ ctx }) => {
-    const client = await clientPromise;
+    const client = await client_promise;
     const db = client.db();
 
     const filter: any = {};
@@ -46,7 +46,7 @@ export const usersRouter = router({
   getById: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
       const user = await db.collection("users").findOne({ _id: new ObjectId(input.id) });
       if (!user) {
@@ -62,7 +62,7 @@ export const usersRouter = router({
   create: publicProcedure
     .input(UserSchema.omit({ _id: true, createdAt: true, updatedAt: true }))
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Check if user already exists
@@ -90,7 +90,7 @@ export const usersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const user = await db.collection("users").findOne({ _id: new ObjectId(input.userId) });
@@ -153,7 +153,7 @@ export const usersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const user = await db.collection("users").findOne({ _id: new ObjectId(input.userId) });
@@ -211,7 +211,7 @@ export const usersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const user = await db.collection("users").findOne({ _id: new ObjectId(input.userId) });
@@ -267,7 +267,7 @@ export const usersRouter = router({
   getTransactions: publicProcedure
     .input(z.object({ userId: z.string() }))
     .query(async ({ input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
       const transactions = await db
         .collection("credit_transactions")
@@ -282,7 +282,7 @@ export const usersRouter = router({
 
   // Get all credit transactions (filtered by user's organization)
   getAllTransactions: publicProcedure.query(async ({ ctx }) => {
-    const client = await clientPromise;
+    const client = await client_promise;
     const db = client.db();
 
     const filter: any = {};

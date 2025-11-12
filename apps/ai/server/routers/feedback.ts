@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise from "@rnd-ai/shared-database";
 import { FeedbackSchema, StoredAIResponseSchema } from "@/ai/types/feedback-types";
 import { ObjectId } from "mongodb";
 
@@ -29,7 +29,7 @@ export const feedbackRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       console.log('📝 [feedback.submit] Submitting feedback:', {
@@ -91,7 +91,7 @@ export const feedbackRouter = router({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const timeRange = input?.timeRange || '30d';
@@ -307,7 +307,7 @@ export const feedbackRouter = router({
   getForResponse: protectedProcedure
     .input(z.object({ responseId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const feedback = await db.collection("feedback")
@@ -332,7 +332,7 @@ export const feedbackRouter = router({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Build filter - use userId from input or context

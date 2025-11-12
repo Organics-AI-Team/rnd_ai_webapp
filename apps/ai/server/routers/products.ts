@@ -1,11 +1,10 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import clientPromise from "@/lib/mongodb";
+import client_promise, { parseArrayField } from "@rnd-ai/shared-database";
 import { ProductSchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
 import { logProductActivity } from "@/lib/productLog";
-import { parseArrayField } from "@/lib/array-utils";
 import { auto_index_material, auto_delete_material } from "../services/auto-index-service";
 
 export const productsRouter = router({
@@ -126,7 +125,7 @@ export const productsRouter = router({
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const material: any = await db.collection("raw_materials_console").findOne({
@@ -162,7 +161,7 @@ export const productsRouter = router({
   // Get next auto-generated product code
   getNextCode: protectedProcedure
     .query(async ({ ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Get total count of materials
@@ -206,7 +205,7 @@ export const productsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Always auto-generate rm_code: Get total count and use as next number
@@ -298,7 +297,7 @@ export const productsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const { id, ...updateData } = input;
@@ -391,7 +390,7 @@ export const productsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       const result = await db.collection("products").updateOne(
@@ -426,7 +425,7 @@ export const productsRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Get material before deleting (need rm_code for ChromaDB deletion)
@@ -499,7 +498,7 @@ export const productsRouter = router({
   toggleFavorite: protectedProcedure
     .input(z.object({ ingredientId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Get organization's current favorites
@@ -546,7 +545,7 @@ export const productsRouter = router({
   duplicate: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
-      const client = await clientPromise;
+      const client = await client_promise;
       const db = client.db();
 
       // Get original material
