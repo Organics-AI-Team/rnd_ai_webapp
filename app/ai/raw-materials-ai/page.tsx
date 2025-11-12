@@ -154,8 +154,8 @@ export default function RawMaterialsAIPage() {
   }
 
   return (
-    <div className="container mx-auto px-6 pt-6 pb-2 h-[calc(100vh-8rem)]">
-      <div className="flex flex-col h-full gap-2">
+    <div className="container mx-auto px-6 pt-2 pb-1 h-[calc(100vh-1rem)]">
+      <div className="flex flex-col h-full gap-1">
         {/* Header Section - Component */}
         <AIPageHeader
           icon={<Package className="w-8 h-8" />}
