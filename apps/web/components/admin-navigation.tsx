@@ -62,8 +62,8 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-red-600 border-b">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-2">
-            <Settings size={24} className="text-white" />
-            <h1 className="text-base font-bold text-white">
+            <Settings size={20} className="text-white" />
+            <h1 className="text-sm font-bold text-white">
               Admin Panel
             </h1>
           </div>
@@ -89,33 +89,56 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
       <aside
         className={cn(
           "fixed lg:static inset-y-0 left-0 z-40 bg-red-50 border-r border-red-200 flex flex-col transition-all duration-300 lg:translate-x-0",
-          isMobileMenuOpen ? "translate-x-0 w-64" : "-translate-x-full lg:translate-x-0",
-          isSidebarCollapsed ? "lg:w-20" : "lg:w-64"
+          isMobileMenuOpen ? "translate-x-0 w-56" : "-translate-x-full lg:translate-x-0",
+          isSidebarCollapsed ? "lg:w-20" : "lg:w-56"
         )}
       >
         {/* Header - Desktop only */}
-        <div className="hidden lg:block p-6 border-b border-red-200 bg-red-600">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <Settings size={28} className="text-white flex-shrink-0" />
+        <div className={cn(
+          "hidden lg:block border-b border-red-200 bg-red-600",
+          isSidebarCollapsed ? "p-3" : "p-6"
+        )}>
+          <div className={cn(
+            "flex items-center gap-3",
+            isSidebarCollapsed ? "flex-col" : "justify-between"
+          )}>
+            <div className={cn(
+              "flex items-center gap-3 overflow-hidden",
+              isSidebarCollapsed && "justify-center"
+            )}>
+              <Settings size={24} className="text-white flex-shrink-0" />
               {!isSidebarCollapsed && (
-                <h1 className="text-lg font-bold text-white whitespace-nowrap">
+                <h1 className="text-base font-bold text-white whitespace-nowrap">
                   Admin Panel
                 </h1>
               )}
             </div>
-            <button
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="p-1.5 hover:bg-red-700 rounded-lg transition-colors flex-shrink-0"
-              aria-label="Toggle sidebar"
-            >
-              {isSidebarCollapsed ? <ChevronRight size={20} className="text-white" /> : <ChevronLeft size={20} className="text-white" />}
-            </button>
+            {!isSidebarCollapsed && (
+              <button
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                className="p-1.5 hover:bg-red-700 rounded-lg transition-colors flex-shrink-0"
+                aria-label="Toggle sidebar"
+              >
+                <ChevronLeft size={20} className="text-white" />
+              </button>
+            )}
+            {isSidebarCollapsed && (
+              <button
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                className="p-1.5 hover:bg-red-700 rounded-lg transition-colors flex-shrink-0"
+                aria-label="Toggle sidebar"
+              >
+                <ChevronRight size={16} className="text-white" />
+              </button>
+            )}
           </div>
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex-1 p-4 overflow-y-auto mt-16 lg:mt-0">
+        <nav className={cn(
+          "flex-1 overflow-y-auto mt-16 lg:mt-0",
+          isSidebarCollapsed ? "p-2" : "p-4"
+        )}>
           <div className="space-y-1">
             {adminNavigationItems.map((item: any, index: number) => {
               // Section Title
@@ -132,8 +155,9 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
 
               // Separator
               if (item.type === "separator") {
+                if (isSidebarCollapsed) return null; // Hide separators when collapsed
                 return (
-                  <div key={`separator-${index}`} className="my-2">
+                  <div key={`separator-${index}`} className="my-2 -mx-4">
                     <div className="border-t border-red-200" />
                   </div>
                 );
@@ -151,14 +175,14 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
                     onClick={closeMobileMenu}
                     title={isSidebarCollapsed ? item.label : undefined}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors",
+                      "flex items-center gap-3 rounded-lg font-medium transition-colors text-sm",
+                      isSidebarCollapsed ? "px-3 py-2.5 justify-center" : "px-4 py-2.5",
                       isActive
                         ? "bg-red-600 text-white"
-                        : "text-red-700 hover:bg-red-100",
-                      isSidebarCollapsed && "justify-center"
+                        : "text-red-700 hover:bg-red-100"
                     )}
                   >
-                    <Icon size={20} className="flex-shrink-0" />
+                    <Icon size={18} className="flex-shrink-0" />
                     {!isSidebarCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
                   </Link>
                 );
@@ -175,18 +199,18 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
             {!isSidebarCollapsed ? (
               <>
                 {/* User Info */}
-                <div className="mb-3 p-3 bg-white rounded-lg border border-red-200">
+                <div className="mb-3 p-2.5 bg-white rounded-lg border border-red-200">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center font-semibold">
+                    <div className="w-7 h-7 rounded-full bg-red-600 text-white flex items-center justify-center font-semibold text-xs">
                       {user.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                      <p className="text-xs font-medium text-gray-900 truncate">{user.name}</p>
+                      <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
                     </div>
                   </div>
-                  <div className="mt-2">
-                    <span className="inline-block px-2 py-1 text-xs font-medium rounded-full bg-red-600 text-white">
+                  <div className="mt-1.5">
+                    <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-red-600 text-white">
                       ผู้ดูแลระบบ
                     </span>
                   </div>
@@ -197,9 +221,9 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
                   variant="ghost"
                   size="sm"
                   onClick={logout}
-                  className="w-full flex items-center justify-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                  className="w-full flex items-center justify-center gap-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
-                  <LogOut size={16} />
+                  <LogOut size={14} />
                   ออกจากระบบ
                 </Button>
               </>
@@ -207,7 +231,7 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
               <>
                 {/* Collapsed User Avatar */}
                 <div className="flex flex-col items-center gap-2">
-                  <div className="w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center font-semibold">
+                  <div className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center font-semibold text-xs">
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                   <Button
@@ -215,9 +239,9 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
                     size="sm"
                     onClick={logout}
                     title="ออกจากระบบ"
-                    className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50"
                   >
-                    <LogOut size={16} />
+                    <LogOut size={14} />
                   </Button>
                 </div>
               </>
