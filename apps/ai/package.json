@@ -1,0 +1,49 @@
+{
+  "name": "@rnd-ai/ai",
+  "version": "1.0.0",
+  "description": "R&D AI Management - AI Backend Service",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "tsx server/index.ts",
+    "build": "tsc",
+    "start": "node dist/server/index.js",
+    "lint": "eslint .",
+    "clean": "rm -rf dist",
+    "seed-admin": "tsx scripts/seed-admin.ts",
+    "migrate": "tsx scripts/migrate-to-mongo.ts",
+    "create-sales-index": "node scripts/create-sales-ai-index.js",
+    "index-sales-data": "tsx scripts/index-sales-data.ts",
+    "index:chromadb": "tsx scripts/index-chromadb-simple.ts",
+    "index:chromadb:resume": "tsx scripts/index-chromadb-resume.ts",
+    "index:chromadb:fast": "tsx scripts/index-chromadb-resume-fast.ts",
+    "check:chromadb": "tsx scripts/check-chromadb-count.ts"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/core": "^0.3.43",
+    "@langchain/google-genai": "^0.1.4",
+    "@langchain/langgraph": "^0.2.74",
+    "@langchain/openai": "^0.4.9",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "@pinecone-database/pinecone": "^6.1.2",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@trpc/server": "^11.6.0",
+    "bcryptjs": "^3.0.2",
+    "chromadb": "1.8.1",
+    "csv-parser": "^3.2.0",
+    "langchain": "^0.3.9",
+    "langchainhub": "^0.0.11",
+    "mongodb": "^6.20.0",
+    "openai": "^6.7.0",
+    "socket.io": "^4.8.1",
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^24.6.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

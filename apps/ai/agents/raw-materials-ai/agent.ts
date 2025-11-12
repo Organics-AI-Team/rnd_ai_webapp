@@ -84,6 +84,7 @@ MANDATORY TOOL USAGE:
    - "RM001000-RM002000"
    - "RM001000 to RM002000"
    - "RM001000 - RM002000"
+   - "รหัส 0001 ถึง 0005"
    → Returns all materials in range
 3. **Wildcard pattern**:
    - "RM00*" → Finds all RM00xxxx

@@ -1,6 +1,5 @@
-# Multi-stage Dockerfile for Next.js Web App (Monorepo - Root Level)
+# Multi-stage Dockerfile for Next.js Web App (Monorepo)
 # This creates an optimized production build with minimal image size
-# NOTE: For production, it's recommended to use apps/web/Dockerfile directly
 
 # Stage 1: Dependencies
 # Install all dependencies needed for building
@@ -14,6 +13,7 @@ WORKDIR /app
 
 # Copy root workspace package files
 COPY package.json package-lock.json ./
+# Copy workspace package files
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
@@ -47,8 +47,7 @@ ENV NODE_ENV=production
 # Disable Next.js telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Accept build arguments from Railway (these are injected during build)
-# These are needed for Next.js to build properly
+# Accept build arguments from Railway
 ARG MONGODB_URI
 ARG RAW_MATERIALS_REAL_STOCK_MONGODB_URI
 ARG ADMIN_EMAIL
@@ -73,7 +72,6 @@ ENV NEXT_PUBLIC_OPENAI_API_KEY=$NEXT_PUBLIC_OPENAI_API_KEY
 # Build the Next.js app from web workspace
 WORKDIR /app/apps/web
 RUN npm run build
-WORKDIR /app
 
 # Stage 3: Runner
 # Final stage with minimal size for running the app
@@ -88,12 +86,10 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create non-root user for security
-# Running as root in containers is a security risk
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy Next.js build output
-# Set correct permissions for nextjs user
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
@@ -104,16 +100,13 @@ RUN mkdir -p ./apps/web/public
 USER nextjs
 
 # Expose port 3000
-# Railway will map this to a public URL
 EXPOSE 3000
 
 # Set port environment variable
 ENV PORT=3000
 
 # Set hostname to listen on all network interfaces
-# Required for Railway to properly route traffic
 ENV HOSTNAME="0.0.0.0"
 
 # Start the Next.js application
-# Uses the standalone output from build for faster cold starts
 CMD ["node", "apps/web/server.js"]

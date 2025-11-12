@@ -24,9 +24,14 @@ __pycache__/
 # next.js
 /.next/
 /out/
+apps/web/.next/
+apps/web/out/
 
 # production
 /build
+/dist
+apps/*/dist
+apps/*/.next
 
 # misc
 .DS_Store
@@ -49,3 +54,7 @@ next-env.d.ts
 
 # ChromaDB local database
 .chromadb/
+
+# Archive and backup files
+_archive/
+*.backup

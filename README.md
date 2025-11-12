@@ -1,365 +1,365 @@
 # R&D AI Management System
 
-A comprehensive multi-tenant order and logistics management web application built with Next.js 15, TypeScript, MongoDB, and tRPC. Features user authentication, organization-based access control, credit system for shipping costs, and complete order lifecycle management.
+> **A comprehensive AI-powered R&D management platform with intelligent chatbots, vector search, and analytics**
 
-## Features
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)](https://nextjs.org/)
+[![License](https://img.shields.io/badge/license-ISC-green.svg)](LICENSE)
 
-### Authentication & User Management
-- **User Registration & Login**: Secure authentication with bcrypt password hashing
-- **Multi-tenant Architecture**: Organization-based user isolation
-- **Role-based Access**: Owner, Admin, and Member roles
-- **Session Management**: Token-based authentication with middleware protection
+**Monorepo architecture with separate Web (frontend) and AI (backend) services for scalability and maintainability.**
 
-### Order Management
-- **Order Entry**: Create orders with product details, pricing, and customer information
-- **Multi-Channel Support**: Track orders from LINE, Shopee, Lazada, and other channels
-- **Dashboard**: View all orders with real-time statistics and analytics
-- **Status Management**: Update order status (pending, processing, sent to logistic, delivered, cancelled)
-- **Order Filtering**: Filter orders by user and organization for data isolation
-- **PDF Export**: Export orders to PDF with detailed information
+---
 
-### Shipping & Logistics
-- **Shipping Cost Calculator**: Detailed cost breakdown including:
-  - Pick & Pack costs (per order)
-  - Bubble wrap (per item)
-  - Paper inside (per item)
-  - Cancel order fees
-  - COD fees (percentage-based)
-  - Box costs (per item)
-  - Delivery fees (per item)
-- **Configurable Rates**: Adjust shipping rates in real-time
-- **Cost Preview**: Preview shipping costs before confirming
-- **Shipping Workflow**: Manage pending → shipped → delivered workflow
+## 📋 Table of Contents
 
-### Credit System
-- **Organization Credits**: Each organization has a credit balance for shipping costs
-- **Credit Management**: Admin can add or adjust credits for organizations
-- **Transaction History**: Complete audit trail of all credit transactions
-- **Credit Deduction**: Automatic credit deduction when shipping costs are confirmed
-- **Insufficient Balance Handling**: Prevents orders from proceeding without adequate credits
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Development](#development)
+- [Deployment](#deployment)
+- [Documentation](#documentation)
+- [Tech Stack](#tech-stack)
 
-### Analytics & Reporting
-- **Real-time Statistics**: Track total orders, pending items, and total revenue
-- **Channel Analytics**: Breakdown of orders by sales channel
-- **Status Overview**: Visual representation of order statuses
-- **Transaction Reports**: Detailed credit transaction history
+---
 
-## Tech Stack
+## 🎯 Overview
 
-- **Frontend**: Next.js 15 (App Router), React 19, TypeScript
-- **Styling**: Tailwind CSS, shadcn/ui components, Lucide icons
-- **Backend**: tRPC for type-safe API
-- **Database**: MongoDB with native driver
-- **Authentication**: bcrypt, custom session management
-- **Validation**: Zod schemas
-- **State Management**: TanStack Query (React Query)
-- **PDF Generation**: jsPDF with autotable plugin
+R&D AI Management is a multi-tenant platform for cosmetic R&D teams, featuring:
 
-## Prerequisites
+- **AI-Powered Chatbots**: Raw Materials AI and Sales R&D AI with RAG (Retrieval Augmented Generation)
+- **Vector Search**: ChromaDB and Pinecone integration for semantic search
+- **Order Management**: Complete order lifecycle with multi-channel support
+- **Analytics Dashboard**: Real-time insights and reporting
+- **Credit System**: Organization-based credit management for shipping
 
-- Node.js 18+ installed
-- MongoDB running locally or a MongoDB connection string
+---
 
-## Getting Started
+## ✨ Features
 
-### 1. Install Dependencies
+### 🤖 AI Capabilities
+
+- **Raw Materials AI Agent**
+  - Intelligent ingredient search and recommendations
+  - Regulatory compliance checking
+  - Material compatibility analysis
+  - Real-time stock information
+
+- **Sales R&D AI Agent**
+  - Market intelligence gathering
+  - Pitch deck generation
+  - Product formulation suggestions
+  - Trend analysis
+
+- **Vector Search (RAG)**
+  - Semantic search across knowledge base
+  - ChromaDB for local/Railway deployment
+  - Pinecone for cloud deployment
+  - Hybrid search (vector + keyword)
+
+### 📊 Management Features
+
+- **Multi-Tenant Architecture**: Organization-based isolation
+- **Role-Based Access**: Owner, Admin, Member roles
+- **Order Management**: Complete lifecycle tracking
+- **Formula Management**: Create and manage formulations
+- **Stock Tracking**: Real-time inventory monitoring
+- **Credit System**: Shipping cost management
+
+### 📈 Analytics & Reporting
+
+- **AI Chat Analytics**: Conversation metrics and feedback
+- **Sales Dashboard**: Revenue and channel analytics
+- **Stock Reports**: Inventory levels and alerts
+- **PDF Export**: Generate detailed reports
+
+---
+
+## 🏗️ Architecture
+
+### Monorepo Structure
+
+```
+rnd_ai_management/
+├── apps/
+│   ├── web/                # Next.js Frontend (Port 3000)
+│   │   ├── app/            # Pages & API routes
+│   │   ├── components/     # React components
+│   │   ├── hooks/          # React hooks
+│   │   └── lib/            # Utilities
+│   │
+│   └── ai/                 # AI Backend Service (Port 3001)
+│       ├── agents/         # AI agents & logic
+│       ├── server/         # tRPC routers
+│       ├── scripts/        # Indexing scripts
+│       └── lib/            # AI utilities
+│
+├── packages/
+│   ├── shared-types/       # Shared TypeScript types
+│   └── shared-config/      # Shared configurations
+│
+├── config/                 # Deployment configs
+├── docs/                   # Documentation
+└── _archive/               # Legacy files
+```
+
+### Key Technologies
+
+**Frontend (apps/web)**
+- Next.js 14 with App Router
+- React 19
+- Tailwind CSS + shadcn/ui
+- tRPC Client
+- TanStack Query
+
+**Backend (apps/ai)**
+- Node.js + TypeScript
+- tRPC Server
+- LangChain & LangGraph
+- Google Gemini AI
+- OpenAI
+- ChromaDB / Pinecone
+- MongoDB
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js 18+
+- MongoDB (local or Atlas)
+- npm or pnpm
+
+### Installation
 
 ```bash
-npm install
+# Clone the repository
+git clone <repository-url>
+cd rnd_ai_management
+
+# Install dependencies
+npm install --legacy-peer-deps
+
+# Copy environment variables
+cp .env.example .env
+# Edit .env with your values
 ```
 
-### 2. Configure Environment
+### Environment Setup
 
-Create a `.env.local` file in the root directory:
+Create `.env` in root with:
 
 ```env
-MONGODB_URI=mongodb://localhost:27017/rnd_ai
+# Database
+MONGODB_URI=mongodb+srv://...
+RAW_MATERIALS_REAL_STOCK_MONGODB_URI=mongodb+srv://...
+
+# AI Keys
+GEMINI_API_KEY=AIza...
+OPENAI_API_KEY=sk-...
+PINECONE_API_KEY=pcsk_... # Optional
+
+# Admin Credentials
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=your_secure_password
+
+# Vector DB Provider
+VECTOR_DB_PROVIDER=chroma  # or pinecone
 ```
 
-### 3. Seed Admin Account (Optional)
+### Run Development Server
 
-Create an admin account for testing:
+```bash
+# Run web app (frontend)
+npm run dev
+
+# Or run specific apps
+npm run dev:web    # Web app on http://localhost:3000
+npm run dev:ai     # AI service on http://localhost:3001
+```
+
+### Seed Admin Account
 
 ```bash
 npm run seed-admin
 ```
 
-This creates a test admin account with:
+Creates test account:
 - Email: admin@test.com
 - Password: admin123
-- Organization: Test Organization
-- Initial Credits: 1000 THB
+- Credits: 1000 THB
 
-### 4. Run Development Server
+---
+
+## 💻 Development
+
+### Available Scripts
+
+**Development**
+```bash
+npm run dev        # Run web app
+npm run dev:web    # Run web app explicitly
+npm run dev:ai     # Run AI service
+```
+
+**Build**
+```bash
+npm run build      # Build all apps
+npm run build:web  # Build web app only
+npm run build:ai   # Build AI service only
+```
+
+**AI Operations**
+```bash
+npm run seed-admin           # Seed admin user
+npm run migrate              # Run migrations
+npm run index:chromadb       # Index to ChromaDB
+npm run index:chromadb:resume # Resume indexing
+npm run check:chromadb       # Check ChromaDB stats
+```
+
+**Maintenance**
+```bash
+npm run clean      # Clean build artifacts
+npm run clean-all  # Aggressive clean
+npm run reset      # Clean and reinstall
+npm run lint       # Run linters
+```
+
+### Project Structure
+
+See [docs/MONOREPO_README.md](docs/MONOREPO_README.md) for detailed architecture documentation.
+
+---
+
+## 🐳 Docker & Deployment
+
+### Docker Compose (Local Development)
 
 ```bash
-npm run dev
+# Build and start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f web
+docker-compose logs -f ai
+
+# Stop services
+docker-compose down
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+Services:
+- **Web**: http://localhost:3000
+- **AI**: http://localhost:3001
+- **ChromaDB**: http://localhost:8000
 
-### 5. Build for Production
+### Railway Deployment
 
 ```bash
-npm run build
-npm start
+# Deploy using root Dockerfile
+railway up
+
+# Or use web-specific config
+railway up --config config/railway.web.json
 ```
 
-## Project Structure
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
 
-```
-├── app/                      # Next.js app directory
-│   ├── api/                 # API routes
-│   │   ├── auth/           # Authentication endpoints (login, logout, verify)
-│   │   └── trpc/           # tRPC API routes
-│   ├── admin/              # Admin-only pages
-│   │   └── credits/        # Credit management page
-│   ├── dashboard/          # Dashboard page
-│   ├── shipping/           # Shipping management page
-│   ├── login/              # Login page
-│   ├── signup/             # Signup page
-│   ├── layout.tsx          # Root layout with navigation
-│   ├── page.tsx            # Home page (order form)
-│   ├── providers.tsx       # React Query & tRPC providers
-│   └── globals.css         # Global styles
-├── components/             # React components
-│   ├── ui/                # shadcn/ui components
-│   ├── conditional-layout.tsx  # Auth-based layout switcher
-│   ├── dashboard.tsx      # Order dashboard with analytics
-│   ├── navigation.tsx     # Top navigation bar
-│   └── order-form.tsx     # Order entry form
-├── lib/                   # Utilities and configurations
-│   ├── auth-context.tsx   # Auth context provider
-│   ├── mongodb.ts         # MongoDB client
-│   ├── trpc-client.ts     # tRPC client setup
-│   ├── types.ts           # TypeScript types and Zod schemas
-│   └── utils.ts           # Utility functions
-├── server/                # tRPC server
-│   ├── index.ts          # Main router
-│   ├── trpc.ts           # tRPC initialization with context
-│   └── routers/          # API route handlers
-│       ├── auth.ts       # Authentication API
-│       ├── orders.ts     # Orders API
-│       ├── users.ts      # Users API
-│       └── organizations.ts  # Organizations API
-├── scripts/              # Utility scripts
-│   ├── cleanup-admin.ts  # Clean up test data
-│   └── test-password.ts  # Test password hashing
-├── middleware.ts         # Auth middleware for protected routes
-└── docs/                 # Documentation
-    └── prd.md           # Product requirements document
-```
+---
 
-## Database Schema
+## 📚 Documentation
 
-### Accounts Collection
-```typescript
-{
-  _id: ObjectId,
-  email: string,
-  passwordHash: string,
-  isVerified: boolean,
-  isActive: boolean,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
+- **[MONOREPO_README.md](docs/MONOREPO_README.md)** - Architecture & workspace guide
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment strategies
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history & changes
+- **[AI_RESPONSE_OPTIMIZATION_TH.md](docs/AI_RESPONSE_OPTIMIZATION_TH.md)** - AI optimization guide
 
-### Users Collection
-```typescript
-{
-  _id: ObjectId,
-  accountId: string,
-  organizationId: string,
-  email: string,
-  name: string,
-  role: "owner" | "admin" | "member",
-  isActive: boolean,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
+---
 
-### Organizations Collection
-```typescript
-{
-  _id: ObjectId,
-  name: string,
-  credits: number,
-  ownerId: string,
-  isActive: boolean,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
+## 🛠️ Tech Stack
 
-### Orders Collection
-```typescript
-{
-  _id: ObjectId,
-  organizationId: string,
-  productName: string,
-  price: number,
-  quantity: number,
-  channel: "line" | "shopee" | "lazada" | "other",
-  customerName: string,
-  customerContact: string,
-  shippingAddress: string,
-  status: "pending" | "processing" | "sent_to_logistic" | "delivered" | "cancelled",
-  createdBy: string,
-  // Shipping cost fields
-  pickPackCost: number,
-  bubbleCost: number,
-  paperInsideCost: number,
-  cancelOrderCost: number,
-  codCost: number,
-  boxCost: number,
-  deliveryFeeCost: number,
-  totalShippingCost: number,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
+### Frontend
+- **Framework**: Next.js 14 (App Router)
+- **UI**: React 19, Tailwind CSS, shadcn/ui, Radix UI
+- **State**: TanStack Query (React Query)
+- **API**: tRPC Client
+- **Charts**: Recharts
+- **PDF**: jsPDF
+- **Icons**: Lucide React
 
-### Credit Transactions Collection
-```typescript
-{
-  _id: ObjectId,
-  organizationId: string,
-  organizationName: string,
-  type: "add" | "deduct" | "adjust" | "refund",
-  amount: number,
-  balanceBefore: number,
-  balanceAfter: number,
-  description: string,
-  orderId?: string,
-  performedBy?: string,
-  performedByName?: string,
-  createdAt: Date
-}
-```
+### Backend
+- **Runtime**: Node.js + TypeScript
+- **API**: tRPC Server
+- **AI**: LangChain, LangGraph
+- **LLMs**: Google Gemini, OpenAI
+- **Vector DB**: ChromaDB, Pinecone
+- **Database**: MongoDB
+- **Real-time**: Socket.IO
+- **ML**: TensorFlow.js
 
-### Sessions Collection
-```typescript
-{
-  _id: ObjectId,
-  accountId: string,
-  token: string,
-  expiresAt: Date,
-  createdAt: Date
-}
-```
+### DevOps
+- **Monorepo**: npm workspaces
+- **Containerization**: Docker, Docker Compose
+- **Deployment**: Railway
+- **CI/CD**: Git hooks
 
-## Available Scripts
+---
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm start` - Start production server
-- `npm run lint` - Run ESLint
-- `npm run seed-admin` - Create test admin account
+## 🎯 Use Cases
 
-## Features Breakdown
+### For R&D Teams
+- Research ingredient compatibility
+- Get regulatory compliance information
+- Find alternative materials
+- Access real-time stock data
 
-### Authentication
-- Signup page with email, password, name, and organization name
-- Login page with email and password
-- Session-based authentication with tokens
-- Protected routes using Next.js middleware
-- Auth context provider for accessing user data throughout the app
-- Logout functionality
+### For Sales Teams
+- Generate market intelligence
+- Create pitch decks
+- Analyze product trends
+- Get formulation recommendations
 
-### Order Form
-- Product name and pricing input
-- Quantity selection
-- Sales channel dropdown (LINE, Shopee, Lazada, Other)
-- Customer information (name, contact, shipping address)
-- Real-time form validation using Zod
-- Organization validation before order creation
+### For Management
+- Track orders and inventory
+- Monitor AI chat analytics
+- Manage team credits
+- Generate reports
 
-### Dashboard
-- Statistics cards showing:
-  - Total orders
-  - Pending orders
-  - Sent to logistic count
-  - Total revenue
-- Orders table with:
-  - Product and customer details
-  - Channel badges (color-coded)
-  - Status dropdown for quick updates
-  - Total price calculation
-  - Shipping cost display
-  - Order date
-  - PDF export functionality
-- Filter orders by organization and user
+---
 
-### Shipping Management
-- Pending orders section with:
-  - Configurable shipping rate settings
-  - Real-time cost calculation
-  - Detailed cost breakdown view
-  - Confirmation modal before processing
-  - Credit balance validation
-- Shipped orders section for tracking deliveries
-- Status update workflow
+## 🤝 Contributing
 
-### Admin Credit Management
-- View all users and their organizations
-- Display current credit balances
-- Add credits with description
-- Adjust credits to specific amounts
-- Transaction history with:
-  - Date and time
-  - User information
-  - Transaction type (add, deduct, adjust, refund)
-  - Amount and balance changes
-  - Description
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-### Badge Component
-- Variant-based styling for channels (line, shopee, lazada, other)
-- Variant-based styling for order statuses
-- Consistent color scheme across the application
+---
 
-## Customization
+## 📄 License
 
-### Colors
-LINE brand color (#00B900) is used as primary. Update in `tailwind.config.ts`:
+This project is licensed under the ISC License.
 
-```typescript
-colors: {
-  line: {
-    DEFAULT: "#00B900",
-    dark: "#009900",
-  },
-}
-```
+---
 
-### Adding More Channels
-Update `lib/types.ts`:
+## 🙋 Support
 
-```typescript
-export const Channel = z.enum(["line", "shopee", "lazada", "other", "facebook"]);
-```
+For issues and questions:
+- Check [docs/](docs/) for detailed guides
+- Review [CHANGELOG.md](CHANGELOG.md) for recent changes
+- Open an issue on GitHub
 
-Then update badge variants in `components/ui/badge.tsx` to include the new channel styling.
+---
 
-### Shipping Cost Configuration
-Default shipping rates can be adjusted in the shipping page:
-- Pick & Pack: 20 THB per order
-- Bubble: 5 THB per item
-- Paper inside: 3 THB per item
-- Cancel order: 10 THB per order
-- COD: 3% of order total
-- Box: Configurable per item
-- Delivery fee: Configurable per item
+## 🔗 Links
 
-## Security Considerations
+- **Documentation**: [docs/MONOREPO_README.md](docs/MONOREPO_README.md)
+- **Deployment Guide**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- **API Reference**: Coming soon
+- **Component Library**: shadcn/ui + Radix UI
 
-- Passwords are hashed using bcrypt before storage
-- Sessions expire after a set period
-- Middleware protects authenticated routes
-- Organization-based data isolation prevents cross-tenant data access
-- Credit transactions are logged for audit purposes
+---
 
-## License
-
-ISC
+**Built with ❤️ for the R&D community**

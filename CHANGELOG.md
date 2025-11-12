@@ -2,6 +2,239 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-11-12] - REFACTOR: Monorepo Architecture Implementation
+
+### 🏗️ **MONOREPO REFACTORING: Complete Project Restructure**
+- **Status**: ✅ COMPLETED
+- **Date**: 2025-11-12
+- **Impact**: Transformed single Next.js application into monorepo structure with separate Web and AI services
+- **Benefit**: Improved code organization, separation of concerns, independent scaling, and team collaboration
+
+### 📋 **PROJECT RESTRUCTURE OVERVIEW**
+
+#### **Previous Structure**
+```
+rnd_ai_management/
+├── app/                    # Next.js pages & API routes
+├── components/             # React components
+├── ai/                     # AI agents & services
+├── server/                 # tRPC server
+├── lib/                    # Mixed utilities
+├── scripts/                # AI scripts
+└── package.json            # Single package.json
+```
+
+#### **New Monorepo Structure**
+```
+rnd_ai_management/
+├── apps/
+│   ├── web/                # Next.js Frontend Application
+│   │   ├── app/            # Next.js app router & API routes
+│   │   ├── components/     # React UI components
+│   │   ├── hooks/          # React hooks
+│   │   ├── lib/            # Web-specific utilities
+│   │   └── package.json    # Web dependencies
+│   │
+│   └── ai/                 # AI Backend Service
+│       ├── agents/         # AI agents (raw-materials, sales)
+│       ├── server/         # tRPC routers
+│       ├── scripts/        # Indexing scripts
+│       ├── lib/            # AI utilities
+│       └── package.json    # AI service dependencies
+│
+├── packages/
+│   ├── shared-types/       # Shared TypeScript types
+│   └── shared-config/      # Shared configurations
+│
+└── package.json            # Root workspace config
+```
+
+### 🔧 **TECHNICAL IMPLEMENTATION**
+
+#### **1. Workspace Configuration**
+- **Tool**: npm workspaces
+- **Root package.json**: Configured with workspace references to `apps/*` and `packages/*`
+- **Benefits**: Shared dependency management, faster installs, linked packages
+
+#### **2. Application Split**
+
+**apps/web (Frontend)**
+- Moved: `app/`, `components/`, `hooks/`
+- Dependencies: React, Next.js, Tailwind, Radix UI, tRPC Client
+- Configuration: Updated `tsconfig.json`, `next.config.js`, `.env.example`
+- Path Aliases:
+  - `@/*` → `apps/web/*`
+  - `@/ai/*` → `apps/ai/*`
+  - `@/server/*` → `apps/ai/server/*`
+
+**apps/ai (Backend)**
+- Moved: `ai/` → `agents/`, `server/`, `scripts/`, `chromadb-service/`, `.chromadb/`
+- Dependencies: LangChain, Google Gemini, OpenAI, ChromaDB, MongoDB, tRPC Server
+- Configuration: Updated `tsconfig.json`, `.env.example`
+- Structure: Flattened AI directory to maintain import compatibility
+
+#### **3. Shared Packages**
+
+**packages/shared-types**
+- Extracted: Common TypeScript types and interfaces from `lib/types.ts`
+- Usage: Imported by both web and AI apps
+- Benefits: Single source of truth for types, prevents duplication
+
+**packages/shared-config**
+- Created: `tsconfig.base.json` for shared TypeScript configuration
+- Extended by: Both `apps/web/tsconfig.json` and `apps/ai/tsconfig.json`
+- Benefits: Consistent TypeScript settings across all packages
+
+### 📝 **FILES MODIFIED**
+
+#### **Root Level**
+1. **package.json** - Converted to monorepo root with workspaces configuration
+2. **.gitignore** - Added monorepo-specific ignore patterns
+3. **MONOREPO_README.md** - Created comprehensive monorepo documentation
+
+#### **Web App (apps/web/)**
+4. **tsconfig.json** - Added path aliases for cross-app imports
+5. **next.config.js** - Added webpack aliases for AI service and server
+6. **package.json** - Created with frontend dependencies only
+
+#### **AI Service (apps/ai/)**
+7. **tsconfig.json** - Configured for Node.js backend service
+8. **package.json** - Created with AI/backend dependencies only
+
+#### **Shared Packages**
+9. **packages/shared-types/src/index.ts** - Extracted shared types
+10. **packages/shared-config/tsconfig.base.json** - Base TypeScript configuration
+
+### 🔍 **IMPORT PATH RESOLUTION**
+
+#### **Challenge**
+Web app API routes needed to import AI agents and tRPC server from the AI service, but paths changed after restructure.
+
+#### **Solution**
+Updated both TypeScript and Webpack configurations:
+
+**TypeScript Path Aliases** (`apps/web/tsconfig.json`):
+```json
+{
+  "paths": {
+    "@/*": ["./*"],
+    "@/ai/*": ["../ai/*"],
+    "@/server/*": ["../ai/server/*"],
+    "@/server": ["../ai/server"]
+  }
+}
+```
+
+**Webpack Aliases** (`apps/web/next.config.js`):
+```javascript
+config.resolve.alias = {
+  ...config.resolve.alias,
+  '@/ai': require('path').resolve(__dirname, '../ai'),
+  '@/server': require('path').resolve(__dirname, '../ai/server')
+};
+```
+
+### 🚀 **WORKSPACE SCRIPTS**
+
+All scripts updated to work with monorepo structure:
+
+**Development**
+- `npm run dev` - Run web app
+- `npm run dev:web` - Run web app explicitly
+- `npm run dev:ai` - Run AI service
+
+**Build**
+- `npm run build` - Build all apps
+- `npm run build:web` - Build web app
+- `npm run build:ai` - Build AI service
+
+**AI Operations** (proxied to apps/ai)
+- `npm run seed-admin` - Seed admin user
+- `npm run migrate` - Run migrations
+- `npm run index:chromadb` - Index to ChromaDB
+- `npm run check:chromadb` - Check ChromaDB stats
+
+**Maintenance**
+- `npm run clean` - Clean all build artifacts
+- `npm run clean-all` - Aggressive clean including node_modules
+- `npm run reset` - Clean and reinstall dependencies
+
+### ✅ **TESTING & VALIDATION**
+
+#### **Build Tests**
+- ✅ Successfully installed all dependencies with `npm install --legacy-peer-deps`
+- ✅ Web app builds successfully with `npm run build:web`
+- ✅ All TypeScript imports resolve correctly
+- ✅ Webpack bundles without errors
+- ✅ All 35 static pages generated
+- ✅ All API routes compiled
+
+#### **Import Resolution**
+- ✅ `@/ai/*` imports resolve to `apps/ai/`
+- ✅ `@/server/*` imports resolve to `apps/ai/server/`
+- ✅ `@rnd-ai/shared-types` imports resolve to shared package
+- ✅ Cross-app imports work in both TypeScript and webpack
+
+### 📊 **BUILD OUTPUT**
+
+```
+Route (app)                              Size     First Load JS
+├ ○ /                                    3.2 kB          120 kB
+├ ○ /admin/ai-indexing                   6.23 kB         102 kB
+├ ○ /ai/raw-materials-ai                 2.21 kB         175 kB
+├ ○ /ai/sales-rnd-ai                     2.13 kB         175 kB
+├ ƒ /api/trpc/[trpc]                     0 B                0 B
+├ ○ /dashboard                           10.4 kB         157 kB
+└ ... (35 routes total)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+### 🎯 **BENEFITS ACHIEVED**
+
+1. **Separation of Concerns**: Clear boundary between frontend and backend
+2. **Independent Scaling**: AI service can be deployed and scaled separately
+3. **Better Code Organization**: Cleaner structure, easier navigation
+4. **Shared Code Reuse**: Types and configs shared via packages
+5. **Development Speed**: Run only needed services during development
+6. **Team Collaboration**: Frontend and AI teams can work independently
+7. **Type Safety**: Shared types ensure consistency across apps
+8. **Deployment Flexibility**: Can deploy apps together or separately
+
+### 📚 **DOCUMENTATION**
+
+Created comprehensive documentation:
+- **MONOREPO_README.md**: Complete guide to monorepo structure, scripts, and workflows
+- **Updated .gitignore**: Monorepo-specific ignore patterns
+- **Package.json comments**: Detailed script descriptions
+
+### 🔄 **MIGRATION PATH**
+
+For developers:
+1. Pull latest changes
+2. Run `npm install --legacy-peer-deps` from root
+3. Use new workspace scripts (e.g., `npm run dev:web`)
+4. Update import paths if working on cross-app features
+5. Read MONOREPO_README.md for detailed information
+
+### 🚨 **BREAKING CHANGES**
+
+- ⚠️ All npm scripts now run from root directory
+- ⚠️ Individual app directories (`apps/web`, `apps/ai`) have their own `node_modules`
+- ⚠️ Import paths updated to use workspace structure
+- ⚠️ Environment variables must be in respective app directories
+
+### 📝 **NEXT STEPS**
+
+1. Update CI/CD pipelines for monorepo structure
+2. Configure separate deployments for web and AI services
+3. Add Turborepo for optimized builds (optional)
+4. Extract more shared utilities to packages if needed
+5. Add integration tests between web and AI services
+
+---
+
 ## [2025-11-10] - API MIGRATION: Pinecone API Property Updates
 
 ### 🔄 **API MIGRATION: Pinecone API Property Name Changes**

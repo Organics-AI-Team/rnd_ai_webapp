@@ -1,0 +1,10 @@
+{
+  "name": "@rnd-ai/shared-config",
+  "version": "1.0.0",
+  "description": "Shared configuration files",
+  "private": true,
+  "files": [
+    "tsconfig.base.json",
+    "eslint.base.js"
+  ]
+}

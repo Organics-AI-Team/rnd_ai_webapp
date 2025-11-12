@@ -1,0 +1,23 @@
+{
+  "extends": "../../packages/shared-config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2017", "DOM"],
+    "noEmit": true,
+    "module": "esnext",
+    "jsx": "preserve",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"],
+      "@rnd-ai/shared-types": ["../../packages/shared-types/src"],
+      "@/ai/*": ["../ai/*"],
+      "@/server/*": ["../ai/server/*"],
+      "@/server": ["../ai/server"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next"]
+}

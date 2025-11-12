@@ -22,6 +22,13 @@ const nextConfig = {
   // Fix for Pinecone fs module issue and MongoDB browser compatibility
   // Prevents bundling Node.js modules in client-side code
   webpack: (config, { isServer }) => {
+    // Add path aliases for monorepo AI service and server
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@/ai': require('path').resolve(__dirname, '../ai'),
+      '@/server': require('path').resolve(__dirname, '../ai/server')
+    };
+
     // ChromaDB and optional dependencies exclusion (both server and client)
     // ChromaDB has optional peer dependencies that cause build issues
     config.externals = config.externals || [];

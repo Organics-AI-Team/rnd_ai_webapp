@@ -10,5 +10,12 @@
     "restartPolicyMaxRetries": 10,
     "healthcheckPath": "/",
     "healthcheckTimeout": 100
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "NODE_ENV": "production"
+      }
+    }
   }
 }
