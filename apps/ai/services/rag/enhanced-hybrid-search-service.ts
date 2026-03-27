@@ -1,11 +1,12 @@
 /**
  * Enhanced Hybrid Search Service with Semantic Reranking
- * Implements advanced search with multiple strategies using ChromaDB
+ * Implements advanced search with multiple strategies using Qdrant
  *
  * Updated: 2025-11-07 - Migrated from Pinecone to ChromaDB
+ * Updated: 2026-03-27 - Migrated from ChromaDB to Qdrant
  */
 
-import { getChromaService, ChromaService } from '../vector/chroma-service';
+import { get_qdrant_service, QdrantService } from '../vector/qdrant-service';
 import { MongoClient, Db, Collection } from 'mongodb';
 import { HybridSearchResult } from './hybrid-search-service';
 import { createEmbeddingService } from '../embeddings/universal-embedding-service';
@@ -42,17 +43,17 @@ interface SearchResultWithScore {
 }
 
 /**
- * Enhanced Hybrid Search with ChromaDB Integration
+ * Enhanced Hybrid Search with Qdrant Integration
  */
 export class EnhancedHybridSearchService {
-  private chromaService: ChromaService;
+  private qdrantService: QdrantService;
   private embeddingService: any;
   private mongoClient: MongoClient;
   private db: Db;
   private collection: Collection;
   private isInitialized = false;
   private collectionName: string;
-  private chromaCollectionName: string;
+  private qdrantCollectionName: string;
 
   // Performance metrics
   private searchMetrics = {
@@ -64,19 +65,19 @@ export class EnhancedHybridSearchService {
   };
 
   constructor(
-    chromaApiKey: string, // Kept for backward compatibility, not used
+    _apiKey: string, // Kept for backward compatibility, not used
     mongoUri: string,
     dbName: string,
     collectionName: string,
-    chromaCollectionName: string
+    qdrantCollectionName: string
   ) {
     logger.debug('constructor', {
       dbName,
       collectionName,
-      chromaCollectionName
+      qdrantCollectionName
     });
 
-    this.chromaService = getChromaService();
+    this.qdrantService = get_qdrant_service();
     this.embeddingService = createEmbeddingService({
       provider: 'gemini',
       model: 'gemini-embedding-001',
@@ -86,7 +87,7 @@ export class EnhancedHybridSearchService {
     });
     this.mongoClient = new MongoClient(mongoUri);
     this.collectionName = collectionName;
-    this.chromaCollectionName = chromaCollectionName;
+    this.qdrantCollectionName = qdrantCollectionName;
 
     logger.info('Enhanced hybrid search service created');
   }
@@ -111,14 +112,14 @@ export class EnhancedHybridSearchService {
       this.collection = this.db.collection(this.collectionName);
       logger.info('MongoDB connected', { collection: this.collectionName });
 
-      // Initialize ChromaDB
-      await this.chromaService.initialize();
+      // Initialize Qdrant
+      await this.qdrantService.ensure_initialised();
 
-      // Verify ChromaDB collection exists
-      const stats = await this.chromaService.getCollectionStats(this.chromaCollectionName);
-      logger.info('ChromaDB collection ready', {
-        collection: this.chromaCollectionName,
-        vectorCount: stats.count
+      // Verify Qdrant collection exists
+      const stats = await this.qdrantService.get_collection_info(this.qdrantCollectionName);
+      logger.info('Qdrant collection ready', {
+        collection: this.qdrantCollectionName,
+        vectorCount: stats.pointsCount
       });
 
       this.isInitialized = true;
@@ -290,7 +291,7 @@ export class EnhancedHybridSearchService {
   }
 
   /**
-   * Semantic search using ChromaDB with enhanced filtering
+   * Semantic search using Qdrant with enhanced filtering
    */
   private async semanticSearch(
     options: EnhancedSearchOptions
@@ -301,25 +302,37 @@ export class EnhancedHybridSearchService {
       // Generate query embedding
       const queryEmbedding = await this.embeddingService.createEmbeddings([options.query]);
 
-      // Build metadata filter
-      const where: any = {};
+      // Build Qdrant must-match filter from legacy where conditions
+      const must_conditions: Record<string, unknown>[] = [];
       if (options.category) {
-        where.category = options.category;
+        must_conditions.push({ key: 'category', match: { value: options.category } });
       }
       if (options.userId) {
-        where.userId = { $ne: options.userId }; // Exclude own content
+        // Exclude own content — Qdrant uses must_not for negation
+      }
+      const must_not_conditions: Record<string, unknown>[] = [];
+      if (options.userId) {
+        must_not_conditions.push({ key: 'userId', match: { value: options.userId } });
       }
 
-      // Search ChromaDB
-      const matches = await this.chromaService.query(
-        this.chromaCollectionName,
+      const qdrant_filter: Record<string, unknown> | undefined =
+        must_conditions.length > 0 || must_not_conditions.length > 0
+          ? {
+              ...(must_conditions.length > 0 ? { must: must_conditions } : {}),
+              ...(must_not_conditions.length > 0 ? { must_not: must_not_conditions } : {}),
+            }
+          : undefined;
+
+      // Search Qdrant
+      const matches = await this.qdrantService.search(
+        this.qdrantCollectionName,
         queryEmbedding[0],
         {
           topK: options.topK || 20,
-          where: Object.keys(where).length > 0 ? where : undefined,
-          includeMetadata: true,
-          includeDocuments: true,
-          includeDistances: true
+          scoreThreshold: options.threshold || 0,
+          filter: qdrant_filter,
+          ef: 128,
+          withPayload: true,
         }
       );
 
@@ -327,11 +340,11 @@ export class EnhancedHybridSearchService {
         matchesCount: matches.length
       });
 
-      return matches.map((match: any) => ({
+      return matches.map((match) => ({
         id: match.id,
         score: match.score || 0,
-        content: match.document || match.metadata?.content || '',
-        metadata: match.metadata || {},
+        content: (match.payload?.details as string) || (match.payload?.content as string) || '',
+        metadata: match.payload || {},
         strategy: 'semantic' as SearchStrategy,
       }));
 
@@ -504,7 +517,7 @@ export class EnhancedHybridSearchService {
 
   /**
    * Apply simple reranking based on content relevance
-   * Note: This is a simplified version as ChromaDB doesn't have built-in reranking like Pinecone
+   * Note: This is a simplified version — Qdrant does not have built-in reranking
    */
   private async applySimpleReranking(
     results: SearchResultWithScore[],
