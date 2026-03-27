@@ -89,8 +89,8 @@ Use this table to map user phrases to the correct tool:
 |--------------------------------------------------------|---------------------|-----------------------------------------|
 | "RM001234", "รหัส RM..."                               | mongo_query         | filter: {rm_code: "RM001234"}           |
 | "หาสาร...", "แนะนำ...", "ค้นหา..."                      | qdrant_search       | query, collection                       |
-| "สารสำหรับลดริ้วรอย", "moisturizing active"             | qdrant_search       | query, collection=raw_materials_fda     |
-| "มีไหม", "สั่งได้ไหม", "เรามีอะไร"                      | qdrant_search       | collection=raw_materials_stock          |
+| "สารสำหรับลดริ้วรอย", "moisturizing active"             | qdrant_search       | query, collection=raw_materials_myskin  |
+| "มีไหม", "สั่งได้ไหม", "เรามีอะไร"                      | qdrant_search       | collection=raw_materials_myskin         |
 | "สารจาก MySkin", "MySkin วัตถุดิบ", "หาจาก myskin"      | qdrant_search       | collection=raw_materials_myskin         |
 | "หมวดหมู่ MySkin", "เปรียบเทียบสาร myskin"               | mongo_query         | database=rnd_ai, collection=raw_materials_myskin |
 | "เท่าไหร่", "ราคา batch", "คำนวณต้นทุน"                 | formula_calculate   | operation=batch_cost                    |
@@ -101,11 +101,10 @@ Use this table to map user phrases to the correct tool:
 | "เปรียบเทียบแล้วคำนวณ", "หาแล้วดูราคา"                  | MULTI_STEP          | qdrant_search -> formula_calculate      |
 
 **Collection selection for qdrant_search:**
-- General ingredient search -> raw_materials_fda (~31K items)
-- Stock / availability check -> raw_materials_stock (~3K items)
-- Merged console data -> raw_materials_console
-- MySkin cosmetic ingredients -> raw_materials_myskin (~4.6K items with benefits, CAS/EC numbers, usage %)
-- Sales & R&D data -> sales_rnd
+- ALWAYS USE raw_materials_myskin as the PRIMARY collection (~4.6K cosmetic ingredients with benefits, CAS/EC, usage %)
+- raw_materials_myskin covers: ingredient search, availability, cosmetic formulation, safety data
+- Other collections (raw_materials_fda, raw_materials_stock, raw_materials_console, sales_rnd) are NOT yet indexed — do NOT use them
+- If a query needs data not in MySkin, use mongo_query as fallback
 
 **Database selection for mongo_query:**
 - Ingredient & material records -> raw_materials
