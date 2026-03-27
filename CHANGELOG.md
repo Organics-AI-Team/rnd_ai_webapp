@@ -1,5 +1,31 @@
 # Changelog
 
+## [2026-03-27] Task 3: Create QdrantService (Low-Level Vector Client)
+
+### Summary
+- Created `apps/ai/services/vector/qdrant-service.ts` as a drop-in replacement for `chroma-service.ts`.
+- Singleton pattern (`get_qdrant_service()` / `reset_qdrant_service()`) mirrors ChromaService's architecture.
+- Lazy initialisation via `ensure_initialised()` reads connection config from qdrant-config.
+
+### Details
+- **Types exported**: `QdrantPoint`, `QdrantSearchOptions`, `QdrantSearchResult`, `QdrantCollectionInfo`
+- **Collection mgmt**: `ensure_collection(schema)` creates collection with HNSW config + payload indexes;
+  `ensure_all_collections()` iterates all QDRANT_COLLECTIONS; `delete_collection(name)` drops a collection
+- **Upsert**: Batched at UPSERT_BATCH_SIZE (100) with `wait: true` for durability
+- **Search**: Merges caller options with per-collection QDRANT_SEARCH_DEFAULTS; supports pre-filter,
+  scoreThreshold, HNSW ef override, and selective withPayload
+- **Delete**: Accepts either string[] of IDs or a Qdrant filter object
+- **Info**: `get_collection_info()` returns pointsCount/status/config; `health_check()` verifies connectivity;
+  `scroll()` provides paginated point reads with optional filter and offset
+- All functions use snake_case, have docstrings, and include console.log entry/exit logging
+- Imports `QdrantClient` from `@qdrant/js-client-rest`, config from `../../config/qdrant-config`
+- Uses same Logger + ErrorHandler patterns as chroma-service.ts
+
+### Files Changed
+- `apps/ai/services/vector/qdrant-service.ts` — NEW: Low-level Qdrant vector client with typed payloads
+
+---
+
 ## [2026-03-27] Task 2: Create Qdrant Configuration
 
 ### Summary
