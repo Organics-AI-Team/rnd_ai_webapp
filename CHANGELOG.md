@@ -1,5 +1,23 @@
 # Changelog
 
+## [2026-03-27] Refactor: Update auto-index service to target Qdrant
+
+### Summary
+- Migrated `apps/ai/server/services/auto-index-service.ts` from ChromaDB to Qdrant.
+- Removed all ChromaDB/GoogleGenerativeAI embedding logic; delegated to `QdrantRAGService` and `get_qdrant_service`.
+
+### Details
+- **Import swap**: `getChromaService` replaced with `get_qdrant_service` and `QdrantRAGService`
+- **Removed**: `GoogleGenerativeAI` import, `CHROMA_COLLECTION` constant, `EMBEDDING_MODEL` constant, `format_document()`, `generate_embedding()` helpers (now owned by `QdrantRAGService`)
+- **`auto_index_material`**: Constructs `QdrantRAGService('rawMaterialsAI')`, calls `prepare_raw_material_document()` then `upsert_documents()` — identical public signature
+- **`auto_delete_material`**: Uses `get_qdrant_service()` → `ensure_initialised()` → `delete('raw_materials_console', [rm_code])` — identical public signature
+- Log format standardised to `[auto-index] <fn_name>: rm_code=<x>, start|success|error`
+
+### Files Changed
+- `apps/ai/server/services/auto-index-service.ts` — MODIFIED: ChromaDB -> Qdrant migration
+
+---
+
 ## [2026-03-27] Tasks 14 & 15: Replace ChromaDB with Qdrant in docker-compose + env
 
 ### Summary

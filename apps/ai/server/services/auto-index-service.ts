@@ -1,6 +1,6 @@
 /**
  * Auto-Index Service
- * Automatically indexes new MongoDB documents to ChromaDB
+ * Automatically indexes new MongoDB documents to Qdrant
  *
  * Called whenever:
  * - New material is added via products.create
@@ -9,11 +9,8 @@
  * Ensures AI search always has latest data
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getChromaService } from '@/ai/services/vector/chroma-service';
-
-const CHROMA_COLLECTION = 'raw_materials_fda';
-const EMBEDDING_MODEL = 'text-embedding-004';
+import { get_qdrant_service } from '../../services/vector/qdrant-service';
+import { QdrantRAGService } from '../../services/rag/qdrant-rag-service';
 
 interface MaterialDocument {
   _id?: any;
@@ -32,108 +29,41 @@ interface MaterialDocument {
 }
 
 /**
- * Format material document for embedding
- */
-function format_document(doc: MaterialDocument): string {
-  const parts = [
-    `Code: ${doc.rm_code}`,
-    doc.trade_name ? `Trade Name: ${doc.trade_name}` : '',
-    doc.INCI_name || doc.inci_name ? `INCI: ${doc.INCI_name || doc.inci_name}` : '',
-    doc.Function ? `Function: ${doc.Function}` : '',
-    doc.benefits || doc.benefits_cached ? `Benefits: ${Array.isArray(doc.benefits) ? doc.benefits.join(', ') : (doc.benefits || doc.benefits_cached)}` : '',
-    doc.usecase || doc.usecase_cached ? `Use Cases: ${Array.isArray(doc.usecase) ? doc.usecase.join(', ') : (doc.usecase || doc.usecase_cached)}` : '',
-    doc.Chem_IUPAC_Name_Description ? `Description: ${doc.Chem_IUPAC_Name_Description}` : '',
-    doc.supplier ? `Supplier: ${doc.supplier}` : ''
-  ].filter(Boolean);
-
-  return parts.join('\n');
-}
-
-/**
- * Generate embedding using Gemini
- */
-async function generate_embedding(text: string): Promise<number[]> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not found in environment');
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: EMBEDDING_MODEL });
-
-  const result = await model.embedContent(text);
-  return result.embedding.values;
-}
-
-/**
- * Auto-index a single material to ChromaDB
+ * Auto-index a single material to Qdrant via QdrantRAGService.
  *
  * @param material - Material document from MongoDB
  * @returns Promise<boolean> - Success status
  */
 export async function auto_index_material(material: MaterialDocument): Promise<boolean> {
+  console.log(`[auto-index] auto_index_material: rm_code=${material.rm_code}, start`);
   try {
-    console.log(`🔄 [AutoIndex] Starting auto-index for material: ${material.rm_code}`);
-
-    // Step 1: Format document text
-    const documentText = format_document(material);
-
-    // Step 2: Generate embedding
-    console.log(`🧠 [AutoIndex] Generating embedding for: ${material.rm_code}`);
-    const embedding = await generate_embedding(documentText);
-
-    // Step 3: Upsert to ChromaDB
-    console.log(`💾 [AutoIndex] Upserting to ChromaDB collection: ${CHROMA_COLLECTION}`);
-    const chromaService = getChromaService();
-    await chromaService.initialize();
-
-    await chromaService.upsert(CHROMA_COLLECTION, [{
-      id: material.rm_code,
-      text: documentText,
-      values: embedding,
-      metadata: {
-        rm_code: material.rm_code,
-        trade_name: material.trade_name || '',
-        inci_name: material.inci_name || material.INCI_name || '',
-        supplier: material.supplier || '',
-        rm_cost: material.rm_cost || 0,
-        Function: material.Function || '',
-        benefits: typeof material.benefits === 'string' ? material.benefits : (material.benefits_cached || ''),
-        usecase: typeof material.usecase === 'string' ? material.usecase : (material.usecase_cached || '')
-      }
-    }]);
-
-    console.log(`✅ [AutoIndex] Successfully indexed material: ${material.rm_code}`);
+    const ragService = new QdrantRAGService('rawMaterialsAI');
+    const doc = QdrantRAGService.prepare_raw_material_document(material);
+    await ragService.upsert_documents([doc]);
+    console.log(`[auto-index] auto_index_material: rm_code=${material.rm_code}, success`);
     return true;
-
-  } catch (error) {
-    console.error(`❌ [AutoIndex] Failed to index material: ${material.rm_code}`, error);
-    // Don't throw - we don't want to break the main flow if indexing fails
+  } catch (err) {
+    console.error(`[auto-index] auto_index_material: rm_code=${material.rm_code}, error`, err);
     return false;
   }
 }
 
 /**
- * Auto-delete a material from ChromaDB
+ * Auto-delete a material from Qdrant.
  *
  * @param rm_code - Material code to delete
  * @returns Promise<boolean> - Success status
  */
 export async function auto_delete_material(rm_code: string): Promise<boolean> {
+  console.log(`[auto-index] auto_delete_material: rm_code=${rm_code}, start`);
   try {
-    console.log(`🗑️  [AutoIndex] Deleting from ChromaDB: ${rm_code}`);
-
-    const chromaService = getChromaService();
-    await chromaService.initialize();
-
-    await chromaService.deleteDocuments(CHROMA_COLLECTION, [rm_code]);
-
-    console.log(`✅ [AutoIndex] Successfully deleted from ChromaDB: ${rm_code}`);
+    const qdrant = get_qdrant_service();
+    await qdrant.ensure_initialised();
+    await qdrant.delete('raw_materials_console', [rm_code]);
+    console.log(`[auto-index] auto_delete_material: rm_code=${rm_code}, success`);
     return true;
-
-  } catch (error) {
-    console.error(`❌ [AutoIndex] Failed to delete from ChromaDB: ${rm_code}`, error);
+  } catch (err) {
+    console.error(`[auto-index] auto_delete_material: rm_code=${rm_code}, error`, err);
     return false;
   }
 }
