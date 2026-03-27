@@ -3,7 +3,7 @@
 
 # Stage 1: Dependencies
 # Install all dependencies needed for building
-FROM node:18-alpine AS deps
+FROM node:20-alpine AS deps
 
 # Add libc6-compat for compatibility with certain npm packages on Alpine Linux
 RUN apk add --no-cache libc6-compat
@@ -15,15 +15,18 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # Copy workspace package files
 COPY apps/web/package.json ./apps/web/
+COPY apps/ai/package.json ./apps/ai/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
+COPY packages/shared-utils/package.json ./packages/shared-utils/
+COPY packages/shared-database/package.json ./packages/shared-database/
 
 # Install all workspace dependencies
 RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder
 # Build the Next.js application
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -47,27 +50,15 @@ ENV NODE_ENV=production
 # Disable Next.js telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Accept build arguments from Railway
-ARG MONGODB_URI
-ARG RAW_MATERIALS_REAL_STOCK_MONGODB_URI
-ARG ADMIN_EMAIL
-ARG ADMIN_PASSWORD
-ARG GEMINI_API_KEY
-ARG OPENAI_API_KEY
-ARG PINECONE_API_KEY
+# Only NEXT_PUBLIC_* variables are needed at build time (inlined by Next.js)
+# Server-side secrets are injected at runtime via docker-compose or env vars
 ARG NEXT_PUBLIC_GEMINI_API_KEY
 ARG NEXT_PUBLIC_OPENAI_API_KEY
+ARG NEXT_PUBLIC_API_URL
 
-# Make build args available as environment variables during build
-ENV MONGODB_URI=$MONGODB_URI
-ENV RAW_MATERIALS_REAL_STOCK_MONGODB_URI=$RAW_MATERIALS_REAL_STOCK_MONGODB_URI
-ENV ADMIN_EMAIL=$ADMIN_EMAIL
-ENV ADMIN_PASSWORD=$ADMIN_PASSWORD
-ENV GEMINI_API_KEY=$GEMINI_API_KEY
-ENV OPENAI_API_KEY=$OPENAI_API_KEY
-ENV PINECONE_API_KEY=$PINECONE_API_KEY
 ENV NEXT_PUBLIC_GEMINI_API_KEY=$NEXT_PUBLIC_GEMINI_API_KEY
 ENV NEXT_PUBLIC_OPENAI_API_KEY=$NEXT_PUBLIC_OPENAI_API_KEY
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Build the Next.js app from web workspace
 WORKDIR /app/apps/web
@@ -75,7 +66,7 @@ RUN npm run build
 
 # Stage 3: Runner
 # Final stage with minimal size for running the app
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 

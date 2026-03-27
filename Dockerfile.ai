@@ -1,0 +1,74 @@
+# Multi-stage Dockerfile for AI Backend Service
+# Builds the @rnd-ai/ai service as a standalone Node.js server
+
+# Stage 1: Dependencies
+FROM node:20-alpine AS deps
+
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Copy root workspace package files
+COPY package.json package-lock.json ./
+COPY apps/ai/package.json ./apps/ai/
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/shared-config/package.json ./packages/shared-config/
+COPY packages/shared-utils/package.json ./packages/shared-utils/
+COPY packages/shared-database/package.json ./packages/shared-database/
+
+# Install all workspace dependencies
+RUN npm ci --legacy-peer-deps
+
+# Stage 2: Builder
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/ai/node_modules ./apps/ai/node_modules 2>/dev/null || true
+
+# Copy workspace configuration
+COPY package.json package-lock.json tsconfig.json ./
+COPY packages ./packages
+
+# Copy AI service source code
+COPY apps/ai ./apps/ai
+
+# Set environment to production for optimized build
+ENV NODE_ENV=production
+
+# Build the AI service
+WORKDIR /app/apps/ai
+RUN npx tsc --noEmit false || true
+WORKDIR /app
+
+# Stage 3: Runner
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 aiservice
+
+# Copy built output and dependencies
+COPY --from=builder --chown=aiservice:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=aiservice:nodejs /app/packages ./packages
+COPY --from=builder --chown=aiservice:nodejs /app/apps/ai ./apps/ai
+COPY --from=builder --chown=aiservice:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=aiservice:nodejs /app/tsconfig.json ./tsconfig.json
+
+# Switch to non-root user
+USER aiservice
+
+# Expose AI service port
+EXPOSE 3001
+
+ENV PORT=3001
+ENV HOSTNAME="0.0.0.0"
+
+# Start the AI service using tsx for TypeScript execution
+CMD ["npx", "tsx", "apps/ai/server/index.ts"]
