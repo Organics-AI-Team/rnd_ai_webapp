@@ -480,7 +480,7 @@ export class DynamicChunkingService {
   }
 
   /**
-   * Convert chunks to RawMaterialDocument format for Pinecone
+   * Convert chunks to RawMaterialDocument format for Qdrant
    */
   chunks_to_documents(chunks: Chunk[]): RawMaterialDocument[] {
     return chunks.map(chunk => ({

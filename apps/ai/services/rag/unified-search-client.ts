@@ -30,7 +30,7 @@ export interface UnifiedSearchResult {
   match_type: 'exact' | 'fuzzy' | 'semantic' | 'metadata' | 'hybrid';
   confidence: number;
   matched_fields: string[];
-  source: 'mongodb' | 'pinecone';
+  source: 'mongodb' | 'qdrant';
   source_collection: 'in_stock' | 'all_fda';
   availability: 'in_stock' | 'fda_only';
   is_prioritized?: boolean;

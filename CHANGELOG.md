@@ -1,5 +1,39 @@
 # Changelog
 
+## [2026-03-27] cleanup: Remove legacy Pinecone scripts and update source types to Qdrant
+
+### Summary
+- Deleted 6 legacy Pinecone migration/indexing scripts that used `@pinecone-database/pinecone` directly
+- Deleted `apps/ai/lib/services/embedding.ts` (Pinecone-backed EmbeddingService, no active importers)
+- Updated `source` type literal from `'pinecone'` to `'qdrant'` in `HybridSearchResult` and `UnifiedSearchResult` interfaces in the client wrappers
+- Renamed `pinecone_namespaces` field to `qdrant_collections` throughout `collection-router.ts` (interface + all return sites); values updated to real Qdrant collection names (`raw_materials_stock`, `raw_materials_fda`)
+- Updated consumer `unified-search-service.ts` to use `routing.qdrant_collections`; local var `namespace` -> `qdrant_collection`
+- Updated JSDoc comment in `dynamic-chunking-service.ts` (`chunks_to_documents`) from "Pinecone" to "Qdrant"
+
+### Root Cause / Context
+After the Qdrant migration (Tasks 1-4, 18-19), several script files and type literals still referenced Pinecone. This was dead code and misleading naming that would confuse future contributors and cause TypeScript type errors if a Qdrant-sourced result is passed to a consumer expecting `source: 'mongodb' | 'pinecone'`.
+
+### Files Deleted (git rm)
+- `apps/ai/scripts/migrate-unified-collections.ts`
+- `apps/ai/scripts/migrate-unified-collections-ultra-fast.ts`
+- `apps/ai/scripts/verify-migration.ts`
+- `apps/ai/scripts/create-sales-ai-index.js`
+- `apps/ai/scripts/migrate-to-dynamic-chunking.ts`
+- `apps/ai/scripts/index-sample-data.ts`
+- `apps/ai/lib/services/embedding.ts`
+
+### Files Modified
+- `apps/ai/services/rag/hybrid-search-client.ts` — `source: 'mongodb' | 'pinecone'` -> `'qdrant'`
+- `apps/ai/services/rag/unified-search-client.ts` — Same
+- `apps/ai/utils/collection-router.ts` — Interface + all return sites renamed `pinecone_namespaces` -> `qdrant_collections`; values mapped to real Qdrant collection names
+- `apps/ai/services/rag/unified-search-service.ts` — Updated to use `routing.qdrant_collections`; local var renamed `namespace` -> `qdrant_collection`
+- `apps/ai/services/rag/dynamic-chunking-service.ts` — JSDoc updated at `chunks_to_documents`
+
+### Not Deleted
+- `apps/web/lib/services/embedding.ts` — Still imported by `apps/web/app/api/ai-chat/route.ts` and `apps/web/app/api/index-data/route.ts`; left in place
+
+---
+
 ## [2026-03-27] fix: Update web RAG routes from Pinecone to Qdrant env checks
 
 ### Summary

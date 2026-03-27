@@ -1,17 +1,17 @@
 /**
  * Collection Router for Multi-Source RAG
- * Routes queries to appropriate MongoDB collections and Pinecone namespaces
+ * Routes queries to appropriate MongoDB collections and Qdrant collections
  *
  * Collections:
- * 1. raw_materials_real_stock (3,111 items) - Materials we actually have in stock
- * 2. raw_materials_console (31,179 items) - All FDA-registered ingredients
+ * 1. raw_materials_stock (3,111 items) - Materials we actually have in stock
+ * 2. raw_materials_fda  (31,179 items) - All FDA-registered ingredients
  */
 
 export type CollectionType = 'in_stock' | 'all_fda' | 'both';
 
 export interface CollectionRoutingResult {
   collections: CollectionType[];
-  pinecone_namespaces: string[];
+  qdrant_collections: string[];
   confidence: number;
   reasoning: string;
   search_mode: 'stock_only' | 'fda_only' | 'unified' | 'prioritize_stock';
@@ -91,7 +91,7 @@ export function route_query_to_collections(
     if (explicit_collection === 'both') {
       return {
         collections: ['in_stock', 'all_fda'],
-        pinecone_namespaces: ['in_stock', 'all_fda'],
+        qdrant_collections: ['raw_materials_stock', 'raw_materials_fda'],
         confidence: 1.0,
         reasoning: 'Explicitly requested both collections',
         search_mode: 'unified'
@@ -100,7 +100,7 @@ export function route_query_to_collections(
 
     return {
       collections: [explicit_collection],
-      pinecone_namespaces: [explicit_collection],
+      qdrant_collections: [explicit_collection === 'in_stock' ? 'raw_materials_stock' : 'raw_materials_fda'],
       confidence: 1.0,
       reasoning: `Explicitly requested ${explicit_collection} collection`,
       search_mode: explicit_collection === 'in_stock' ? 'stock_only' : 'fda_only'
@@ -126,7 +126,7 @@ export function route_query_to_collections(
   if (has_stock_keywords && !has_fda_keywords) {
     return {
       collections: ['in_stock'],
-      pinecone_namespaces: ['in_stock'],
+      qdrant_collections: ['raw_materials_stock'],
       confidence: 0.9,
       reasoning: 'Query explicitly mentions stock/inventory',
       search_mode: 'stock_only'
@@ -136,7 +136,7 @@ export function route_query_to_collections(
   if (has_fda_keywords && !has_stock_keywords) {
     return {
       collections: ['all_fda'],
-      pinecone_namespaces: ['all_fda'],
+      qdrant_collections: ['raw_materials_fda'],
       confidence: 0.9,
       reasoning: 'Query asks for all FDA ingredients',
       search_mode: 'fda_only'
@@ -147,7 +147,7 @@ export function route_query_to_collections(
     // For availability queries, search both but prioritize stock
     return {
       collections: ['in_stock', 'all_fda'],
-      pinecone_namespaces: ['in_stock', 'all_fda'],
+      qdrant_collections: ['raw_materials_stock', 'raw_materials_fda'],
       confidence: 0.85,
       reasoning: 'Availability query - checking stock first, then FDA database',
       search_mode: 'prioritize_stock'
@@ -158,9 +158,9 @@ export function route_query_to_collections(
   // Use stock-only when explicitly requested
   return {
     collections: ['all_fda'],
-    pinecone_namespaces: ['all_fda'],
+    qdrant_collections: ['raw_materials_fda'],
     confidence: 0.7,
-    reasoning: 'Default search using comprehensive FDA database (raw_materials_console)',
+    reasoning: 'Default search using comprehensive FDA database (raw_materials_fda)',
     search_mode: 'fda_only'
   };
 }

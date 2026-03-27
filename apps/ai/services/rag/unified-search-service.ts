@@ -58,18 +58,18 @@ export class UnifiedSearchService extends HybridSearchService {
 
     // Search each routed collection
     for (const collection of routing.collections) {
-      const namespace = routing.pinecone_namespaces[routing.collections.indexOf(collection)];
+      const qdrant_collection = routing.qdrant_collections[routing.collections.indexOf(collection)];
 
-      console.log(`🔍 [unified-search] Searching ${collection} (namespace: ${namespace})...`);
+      console.log(`🔍 [unified-search] Searching ${collection} (qdrant_collection: ${qdrant_collection})...`);
 
       try {
-        // Perform hybrid search with namespace filter
+        // Perform hybrid search with Qdrant collection filter
         const collection_results = await this.hybrid_search(query, {
           ...options,
-          pinecone_namespace: namespace,
+          pinecone_namespace: qdrant_collection, // field kept for interface compat; maps to Qdrant collection
           metadata_filters: {
             ...options.metadata_filters,
-            namespace: namespace,
+            namespace: qdrant_collection,
             source: collection === 'in_stock' ? 'raw_materials_real_stock' : 'raw_materials_console'
           }
         });

@@ -21,7 +21,7 @@ export interface HybridSearchResult {
   match_type: 'exact' | 'fuzzy' | 'semantic' | 'metadata' | 'hybrid';
   confidence: number;
   matched_fields: string[];
-  source: 'mongodb' | 'pinecone';
+  source: 'mongodb' | 'qdrant';
 }
 
 export interface HybridSearchResponse {
