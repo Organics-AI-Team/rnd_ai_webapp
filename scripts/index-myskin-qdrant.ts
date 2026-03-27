@@ -28,7 +28,7 @@ const QDRANT_API_KEY = process.env.QDRANT_API_KEY || undefined;
 const MONGO_DB = 'rnd_ai';
 const MONGO_COLLECTION = 'raw_materials_myskin';
 const QDRANT_COLLECTION = 'raw_materials_myskin';
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 20;
 const EMBEDDING_MODEL = 'gemini-embedding-001';
 const VECTOR_SIZE = 768;
 
@@ -189,6 +189,10 @@ async function process_batch(
 
     const vectors: number[][] = embed_result.embeddings.map(e => e.values);
 
+    if (processed_so_far === 0) {
+      console.log(`[index-myskin] DEBUG: vectors count=${vectors.length}, dim=${vectors[0]?.length}, batch=${batch.length}`);
+    }
+
     // Build Qdrant points
     const points = batch.map((doc, i) => ({
       id: uuidv4(),
@@ -227,7 +231,7 @@ async function process_batch(
 
     return { success: batch.length, errors: 0 };
   } catch (err: any) {
-    console.error(`[index-myskin] Batch error:`, err.message);
+    console.error(`[index-myskin] Batch error:`, err.message, err.response?.data || '');
     return { success: 0, errors: batch.length };
   }
 }
