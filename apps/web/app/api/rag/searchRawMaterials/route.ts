@@ -13,23 +13,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if Pinecone credentials are available
-    if (!process.env.PINECONE_API_KEY) {
-      console.warn('⚠️ Pinecone API key not configured. RAG search unavailable.');
+    // Check if Qdrant is available (required for vector/RAG search)
+    if (!process.env.QDRANT_URL) {
+      console.warn('[searchRawMaterials-api] QDRANT_URL not configured. RAG search unavailable.');
       return NextResponse.json({
         success: true,
         matches: [],
         query,
         totalResults: 0,
-        warning: 'Vector search is not configured. Please set PINECONE_API_KEY environment variable.'
+        warning: 'Vector search is not configured. Please set QDRANT_URL environment variable.'
       });
     }
 
-    // Initialize RAG service
+    // Initialize RAG service (PineconeRAGService is an alias for QdrantRAGService)
     const ragService = new PineconeRAGService();
 
-    // Search for similar materials
-    const matches = await ragService.searchSimilar(query, {
+    // Search for similar materials using snake_case method per QdrantRAGService convention
+    const matches = await ragService.search_similar(query, {
       topK,
       similarityThreshold
     });

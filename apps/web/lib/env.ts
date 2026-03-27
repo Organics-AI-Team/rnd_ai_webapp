@@ -30,7 +30,9 @@ type OptionalEnvVar =
   | 'RAW_MATERIALS_REAL_STOCK_MONGODB_URI'
   | 'GEMINI_API_KEY'
   | 'OPENAI_API_KEY'
-  | 'PINECONE_API_KEY'
+  | 'QDRANT_URL'
+  | 'QDRANT_API_KEY'
+  | 'PINECONE_API_KEY'  // @deprecated — use QDRANT_URL; kept for backward compat only
   | 'NEXT_PUBLIC_APP_URL'
   | 'NEXT_PUBLIC_API_URL'
   | 'NODE_ENV'
@@ -152,10 +154,37 @@ export const env = {
     return key;
   },
 
+  /**
+   * Qdrant vector database connection URL
+   * Required for all vector search / RAG operations on Qdrant deployments.
+   *
+   * @returns The QDRANT_URL env value or throws if not set
+   * @throws {Error} If QDRANT_URL is not set
+   */
+  qdrant_url: () => {
+    const url = process.env.QDRANT_URL;
+    if (!url) {
+      throw new Error('QDRANT_URL is not set in environment variables');
+    }
+    return url;
+  },
+
+  /**
+   * Optional Qdrant API key for authenticated clusters.
+   * Returns empty string when running without auth (e.g. local docker-compose).
+   *
+   * @returns The QDRANT_API_KEY env value or empty string
+   */
+  qdrant_api_key: () => get_optional_env('QDRANT_API_KEY', ''),
+
+  /**
+   * @deprecated Use qdrant_url() instead. Kept for backward compatibility only.
+   * Will be removed once apps/web/lib/services/embedding.ts is migrated to Qdrant.
+   */
   pinecone_api_key: () => {
     const key = process.env.PINECONE_API_KEY;
     if (!key) {
-      throw new Error('PINECONE_API_KEY is not set in environment variables');
+      throw new Error('PINECONE_API_KEY is not set in environment variables (deprecated — migrate to QDRANT_URL)');
     }
     return key;
   },
@@ -205,7 +234,9 @@ export function get_env_status(): Record<string, string> {
     'RAW_MATERIALS_REAL_STOCK_MONGODB_URI',
     'GEMINI_API_KEY',
     'OPENAI_API_KEY',
-    'PINECONE_API_KEY',
+    'QDRANT_URL',
+    'QDRANT_API_KEY',
+    'PINECONE_API_KEY',  // deprecated
     'NEXT_PUBLIC_APP_URL',
     'NODE_ENV',
     'DEBUG_AI',

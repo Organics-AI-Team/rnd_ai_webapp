@@ -1,6 +1,13 @@
 /**
- * API Route to Index Raw Materials into Pinecone
- * This will process the raw_materials_console collection and create embeddings
+ * API Route to Index Raw Materials into Qdrant
+ *
+ * NOTE: The underlying EmbeddingService (apps/web/lib/services/embedding.ts) was built
+ * for Pinecone and has not yet been migrated to Qdrant. On the new Qdrant-based
+ * deployment this route will return a 503 with a clear migration notice rather than
+ * crashing with a Pinecone SDK error.
+ *
+ * TODO: Replace getEmbeddingService() with QdrantRAGService.batch_process_documents()
+ *       once apps/web/lib/services/embedding.ts is migrated.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -79,6 +86,19 @@ async function fetchFormulas(db: Db) {
 }
 
 export async function POST(req: NextRequest) {
+  // Guard: embedding service still depends on Pinecone SDK; not available on Qdrant deployment
+  if (!process.env.PINECONE_API_KEY) {
+    console.warn('[index-data] PINECONE_API_KEY not set — indexing via this route is unavailable on Qdrant deployment. Use apps/ai/scripts/index-qdrant.ts instead.');
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Indexing via this route requires migration to QdrantRAGService. Use the index-qdrant script for Qdrant deployments.',
+        migrationNote: 'Run: pnpm --filter @rnd/ai index:qdrant'
+      },
+      { status: 503 }
+    );
+  }
+
   try {
     const { indexType = 'all', forceReindex = false } = await req.json();
 
@@ -173,6 +193,19 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  // Guard: embedding service still depends on Pinecone SDK; not available on Qdrant deployment
+  if (!process.env.PINECONE_API_KEY) {
+    console.warn('[index-data] PINECONE_API_KEY not set — stats via this route unavailable on Qdrant deployment.');
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Stats via this route require migration to QdrantRAGService. Use the Qdrant admin panel or index-qdrant script.',
+        migrationNote: 'Run: pnpm --filter @rnd/ai index:qdrant'
+      },
+      { status: 503 }
+    );
+  }
+
   try {
     const embeddingService = getEmbeddingService();
     const stats = await embeddingService.getIndexStats();

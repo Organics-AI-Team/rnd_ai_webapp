@@ -1,5 +1,34 @@
 # Changelog
 
+## [2026-03-27] fix: Update web RAG routes from Pinecone to Qdrant env checks
+
+### Summary
+- Replaced all `PINECONE_API_KEY` env guards in web RAG API routes with `QDRANT_URL` checks.
+- Fixed `searchRawMaterials/route.ts` calling `ragService.searchSimilar` (camelCase) to `ragService.search_similar` (snake_case) to match the actual `QdrantRAGService` method signature.
+- Added `QDRANT_URL` / `QDRANT_API_KEY` entries to `apps/web/lib/env.ts` type union and `env` object.
+- Kept `pinecone_api_key` in `env.ts` as `@deprecated` for backward compat.
+- Added clear 503 guards in `index-data/route.ts` since its underlying `EmbeddingService` still uses Pinecone SDK directly — prevents a runtime crash on Qdrant deployments and surfaces a migration note.
+
+### Root Cause
+Routes in `apps/web/app/api/rag/` and `apps/web/app/api/index-data/` still checked `PINECONE_API_KEY` which was removed from the Qdrant-based deployment environment (Task 15). This meant hybrid-search and searchRawMaterials would silently return empty results on every call to the new droplet even though Qdrant was running.
+
+Additionally `searchRawMaterials/route.ts` called `ragService.searchSimilar` (camelCase) which does not exist on `QdrantRAGService` — it would throw a `TypeError: ragService.searchSimilar is not a function` at runtime.
+
+### Planning / Approach
+1. Read CHANGELOG.md for migration context.
+2. Read all 4 target files before any edits.
+3. Read `qdrant-rag-service.ts` to confirm `PineconeRAGService` alias exists and method is `search_similar`.
+4. Made minimal targeted edits — no full-file rewrites.
+5. `index-data/route.ts` is NOT wired to Qdrant yet (its `EmbeddingService` uses Pinecone SDK); added 503 guard + TODO comment instead of silently crashing.
+
+### Files Changed
+- `apps/web/app/api/rag/hybrid-search/route.ts` — MODIFIED: `PINECONE_API_KEY` check -> `QDRANT_URL`, updated log messages
+- `apps/web/app/api/rag/searchRawMaterials/route.ts` — MODIFIED: `PINECONE_API_KEY` check -> `QDRANT_URL`, `searchSimilar` -> `search_similar`, updated comments
+- `apps/web/app/api/index-data/route.ts` — MODIFIED: Updated JSDoc, added 503 guard for POST/GET with migration note to `index:qdrant` script
+- `apps/web/lib/env.ts` — MODIFIED: Added `QDRANT_URL`/`QDRANT_API_KEY` to `OptionalEnvVar` type, added `qdrant_url()` and `qdrant_api_key()` getters, marked `pinecone_api_key()` as `@deprecated`, updated `get_env_status()`
+
+---
+
 ## [2026-03-27] Add ReAct Agent Tool Handlers (qdrant, mongo, formula, web, memory)
 
 ### Summary

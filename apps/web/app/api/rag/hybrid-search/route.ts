@@ -29,13 +29,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if Pinecone credentials are available
-    if (!process.env.PINECONE_API_KEY) {
-      console.warn('⚠️ Pinecone API key not configured. Hybrid search unavailable.');
+    // Check if Qdrant is available (required for vector/hybrid search)
+    if (!process.env.QDRANT_URL) {
+      console.warn('[hybrid-search-api] QDRANT_URL not configured. Hybrid search unavailable.');
       return NextResponse.json({
         success: true,
         results: [],
-        formatted: '\n\n❌ Vector search is not configured. Please set PINECONE_API_KEY environment variable.',
+        formatted: '\n\n❌ Vector search is not configured. Please set QDRANT_URL environment variable.',
         query,
         totalResults: 0,
         warning: 'Vector search is not configured.'
