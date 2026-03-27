@@ -1,5 +1,35 @@
 # Changelog
 
+## [2026-03-27] Tasks 5 & 7: ReAct Agent Tool Definitions and System Prompt
+
+### Summary
+- Created `apps/ai/agents/react/tool-definitions.ts` with Gemini function calling declarations for 5 tools.
+- Created `apps/ai/agents/react/react-system-prompt.ts` with full ReAct system prompt.
+
+### Details — Tool Definitions (Task 5)
+- **qdrant_search**: Semantic similarity search across 4 Qdrant collections (raw_materials_console, raw_materials_fda, raw_materials_stock, sales_rnd). Params: query, collection (enum), top_k, score_threshold, filters.
+- **mongo_query**: Read-only MongoDB queries against rnd_ai or raw_materials databases. Params: collection, database (enum), operation (enum: find/findOne/aggregate/count), filter, projection, sort, limit.
+- **formula_calculate**: Batch cost, scaling, unit conversion, ingredient percentage. Params: operation (enum), ingredients (array of objects), batch_size, target_unit (enum), formula_id.
+- **web_search**: External web search for regulatory/market info. Params: query, max_results.
+- **context_memory**: Conversation history look-back. Params: session_id, lookback.
+- Exported: `get_react_tool_declarations()` returning `GeminiFunctionDeclaration[]`, type `ReactToolName`.
+- Declarations use plain-object format compatible with `@google/generative-ai` (STRING/NUMBER/OBJECT/ARRAY types), aligned with existing `gemini-tool-service.ts` patterns.
+
+### Details — System Prompt (Task 7)
+- 7 composable sections: persona, classification, tool selection guide, execution flow, synthesis, safety rules, domain context.
+- **Intent classification**: 6 categories (EXACT_LOOKUP, SEMANTIC_SEARCH, CALCULATION, EXTERNAL_INFO, CONTEXTUAL, MULTI_STEP) with clear routing rules.
+- **Tool selection guide**: Thai/English phrase-to-tool mapping table with key parameters.
+- **ReAct loop**: Thought -> Action -> Observation -> Repeat, max 5 tool calls per query.
+- **Safety rules**: Read-only only, max 20 results, no secret exposure, no hallucinated data, PII handling, prompt injection defense.
+- **Domain context**: INCI terminology, data field descriptions, Thai cosmetic keyword dictionary, formulation context.
+- Exported: `get_react_system_prompt()` returning assembled string.
+
+### Files Changed
+- `apps/ai/agents/react/tool-definitions.ts` — NEW: Gemini function declarations for 5 ReAct tools
+- `apps/ai/agents/react/react-system-prompt.ts` — NEW: ReAct agent system prompt with 7 sections
+
+---
+
 ## [2026-03-27] Task 3: Create QdrantService (Low-Level Vector Client)
 
 ### Summary
