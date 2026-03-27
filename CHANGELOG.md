@@ -1,5 +1,27 @@
 # Changelog
 
+## [2026-03-27] Task 8: Create ReactAgentService (Main Reasoning Loop)
+
+### Summary
+- Created `apps/ai/agents/react/react-agent-service.ts` — the main ReAct agent that uses Gemini function calling to implement a Thought -> Action -> Observation -> Answer loop.
+
+### Details
+- **Types exported**: `ReactAgentConfig`, `ReactAgentRequest`, `ReactAgentResponse`
+- **ReactAgentConfig**: model (default 'gemini-2.0-flash'), temperature (0.7), max_tokens (9000), max_iterations (5)
+- **Constructor**: accepts optional api_key and config_override; falls back to GEMINI_API_KEY / NEXT_PUBLIC_GEMINI_API_KEY env vars
+- **execute(request)**: Main entry point — builds Gemini model with tool declarations from `get_react_tool_declarations()` and system prompt from `get_react_system_prompt()`, converts conversation history to Gemini Content format, runs the ReAct loop up to max_iterations
+- **ReAct loop logic**: Each iteration calls `model.generateContent()`, checks for functionCall parts (execute tools, feed results back) or text parts (final answer, break). If max iterations hit, synthesises a partial answer from accumulated tool results.
+- **_execute_tool(name, args, session_id)**: Routes tool calls through TOOL_HANDLER_MAP to handler functions: qdrant_search -> handle_qdrant_search, mongo_query -> handle_mongo_query, formula_calculate -> handle_formula_calculate, web_search -> handle_web_search, context_memory -> handle_context_memory
+- **_build_contents(request)**: Converts conversation_history + current prompt to Gemini Content[] format
+- **_synthesise_partial_answer(tool_calls)**: Best-effort markdown summary when max iterations exhausted
+- All functions use snake_case, have docstrings, and include console.log entry/exit logging
+- Follows existing patterns from `gemini-tool-service.ts` (GoogleGenerativeAI init, tool iteration loop, function response handling)
+
+### Files Changed
+- `apps/ai/agents/react/react-agent-service.ts` — NEW: ReAct reasoning loop with Gemini function calling
+
+---
+
 ## [2026-03-27] Task 4: Create QdrantRAGService (High-Level RAG)
 
 ### Summary
