@@ -52,8 +52,8 @@ export default function FormulasPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent mx-auto"></div>
-          <p className="mt-3 text-xs text-muted-foreground">Loading...</p>
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-900 border-t-transparent mx-auto"></div>
+          <p className="mt-3 text-xs text-gray-500">Loading...</p>
         </div>
       </div>
     );
@@ -65,8 +65,8 @@ export default function FormulasPage() {
         <Card className="max-w-sm">
           <CardContent className="pt-4">
             <div className="text-center">
-              <p className="text-sm font-medium text-foreground mb-2">Sign in required</p>
-              <p className="text-xs text-muted-foreground mb-3">You need to be authenticated to view this page.</p>
+              <p className="text-sm font-medium text-gray-900 mb-2">Sign in required</p>
+              <p className="text-xs text-gray-500 mb-3">You need to be authenticated to view this page.</p>
               <Button onClick={() => router.push("/login")} size="sm">Sign in</Button>
             </div>
           </CardContent>
@@ -128,8 +128,8 @@ export default function FormulasPage() {
         </Button>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Formulas</h1>
-            <p className="text-xs text-muted-foreground">Manage product formulas</p>
+            <h1 className="text-lg font-semibold text-gray-900">Formulas</h1>
+            <p className="text-xs text-gray-500">Manage product formulas</p>
           </div>
           {user.role === "admin" && (
             <Button onClick={() => router.push("/formulas/create")} size="sm">
@@ -155,7 +155,7 @@ export default function FormulasPage() {
           {/* Search */}
           <div className="mt-3">
             <div className="relative max-w-sm">
-              <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-gray-500" />
               <Input
                 placeholder="Search code, name, client..."
                 value={searchTerm}
@@ -183,7 +183,7 @@ export default function FormulasPage() {
               <TableBody>
                 {filteredFormulas.map((formula: any) => (
                   <TableRow key={formula._id}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
+                    <TableCell className="font-mono text-xs text-gray-500">
                       {formula.formulaCode}
                     </TableCell>
                     <TableCell className="font-medium text-sm">
@@ -207,7 +207,7 @@ export default function FormulasPage() {
                             <Badge key={idx} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">{benefit}</Badge>
                           ))
                         ) : (
-                          <span className="text-2xs text-muted-foreground">-</span>
+                          <span className="text-2xs text-gray-500">-</span>
                         )}
                         {formula.targetBenefits && formula.targetBenefits.length > 2 && (
                           <Badge variant="outline">+{formula.targetBenefits.length - 2}</Badge>
@@ -240,8 +240,8 @@ export default function FormulasPage() {
             </Table>
           ) : (
             <div className="text-center py-8">
-              <Beaker className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No formulas found</p>
+              <Beaker className="h-8 w-8 text-gray-500/30 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">No formulas found</p>
             </div>
           )}
         </CardContent>
@@ -265,7 +265,7 @@ export default function FormulasPage() {
                   { label: "Batch Size", value: `${viewingFormula.totalAmount || 0} g/ml` },
                 ].map((field, i) => (
                   <div key={i}>
-                    <p className="text-2xs text-muted-foreground mb-0.5">{field.label}</p>
+                    <p className="text-2xs text-gray-500 mb-0.5">{field.label}</p>
                     {field.badge ? (
                       <div className="mt-0.5">{getStatusBadge(field.value)}</div>
                     ) : (
@@ -277,7 +277,7 @@ export default function FormulasPage() {
 
               {viewingFormula.targetBenefits && viewingFormula.targetBenefits.length > 0 && (
                 <div>
-                  <p className="text-2xs text-muted-foreground mb-1.5">Target Benefits</p>
+                  <p className="text-2xs text-gray-500 mb-1.5">Target Benefits</p>
                   <div className="flex flex-wrap gap-1">
                     {viewingFormula.targetBenefits.map((benefit: string, idx: number) => (
                       <Badge key={idx} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">{benefit}</Badge>
@@ -287,7 +287,7 @@ export default function FormulasPage() {
               )}
 
               <div>
-                <p className="text-2xs text-muted-foreground mb-1.5">
+                <p className="text-2xs text-gray-500 mb-1.5">
                   Ingredients ({viewingFormula.ingredients?.length || 0})
                 </p>
                 <Table>
@@ -307,7 +307,7 @@ export default function FormulasPage() {
                         <TableCell className="text-sm">{ing.productName}</TableCell>
                         <TableCell className="text-xs">{ing.amount}</TableCell>
                         <TableCell className="text-xs">{ing.percentage?.toFixed(2) || 0}%</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{ing.notes || "-"}</TableCell>
+                        <TableCell className="text-xs text-gray-500">{ing.notes || "-"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -316,8 +316,8 @@ export default function FormulasPage() {
 
               {viewingFormula.remarks && (
                 <div>
-                  <p className="text-2xs text-muted-foreground mb-1">Remarks</p>
-                  <p className="text-xs bg-muted p-2.5 rounded-md">{viewingFormula.remarks}</p>
+                  <p className="text-2xs text-gray-500 mb-1">Remarks</p>
+                  <p className="text-xs bg-gray-50 p-2.5 rounded-md">{viewingFormula.remarks}</p>
                 </div>
               )}
             </div>

@@ -4,7 +4,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 
 /**
- * AI Chat Messages Container - Clean card wrapper for chat area
+ * AI Chat Messages Container - Card wrapper for chat messages area
  *
  * @param header - Header component (AIChatHeader)
  * @param messagesArea - Messages area component (AIChatMessagesArea)
@@ -20,7 +20,7 @@ export function AIChatMessagesContainer({
   messagesArea
 }: AIChatMessagesContainerProps) {
   return (
-    <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-border">
+    <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {header}
       <CardContent className="flex-1 flex flex-col p-0 min-h-0 overflow-hidden">
         {messagesArea}
@@ -43,7 +43,7 @@ export function AIChatInputContainer({
   inputArea
 }: AIChatInputContainerProps) {
   return (
-    <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm z-10 border-t border-border">
+    <div className="sticky bottom-0 bg-white/95 backdrop-blur-sm z-10 border-t border-gray-200">
       {inputArea}
     </div>
   );

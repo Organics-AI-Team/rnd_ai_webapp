@@ -5,12 +5,12 @@ import { CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 /**
- * AI Chat Header Component - Compact, Cloudflare-style
+ * AI Chat Header - Compact header with icon, title, and optional badge
  *
- * @param icon - Icon element to display
- * @param title - Chat title text
+ * @param icon - Icon element
+ * @param title - Chat title
  * @param iconColor - Tailwind color class for icon
- * @param badgeText - Optional status badge text
+ * @param badgeText - Optional badge text
  * @param badgeColor - Badge color classes
  */
 
@@ -30,12 +30,12 @@ export function AIChatHeader({
   badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200'
 }: AIChatHeaderProps) {
   return (
-    <CardHeader className="px-4 py-2.5 border-b border-border">
+    <CardHeader className="px-4 py-2.5 border-b border-gray-200">
       <CardTitle className="flex items-center gap-2 text-sm">
         <div className={`w-4 h-4 ${iconColor}`}>
           {icon}
         </div>
-        <span className="font-medium">{title}</span>
+        <span className="font-medium text-gray-900">{title}</span>
         {badgeText && (
           <Badge variant="outline" className={`text-2xs ${badgeColor}`}>
             {badgeText}

@@ -4,10 +4,10 @@ import React from 'react';
 import { Bot } from 'lucide-react';
 
 /**
- * AI Loading Indicator Component - Subtle, clean typing indicator
+ * AI Loading Indicator - Subtle typing indicator with bouncing dots
  *
- * @param message - Loading message text
- * @param themeColor - Theme color for the bot avatar
+ * @param message - Loading text
+ * @param themeColor - Theme color for avatar
  */
 
 interface AILoadingIndicatorProps {
@@ -35,11 +35,11 @@ export function AILoadingIndicator({
       </div>
       <div className="flex items-center gap-2 pt-1">
         <div className="flex space-x-1">
-          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce"></div>
-          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{animationDelay: '0.15s'}}></div>
-          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{animationDelay: '0.3s'}}></div>
+          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce"></div>
+          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce" style={{animationDelay: '0.15s'}}></div>
+          <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce" style={{animationDelay: '0.3s'}}></div>
         </div>
-        <span className="text-xs text-muted-foreground">{message}</span>
+        <span className="text-xs text-gray-500">{message}</span>
       </div>
     </div>
   );

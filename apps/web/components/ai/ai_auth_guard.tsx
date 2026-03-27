@@ -3,7 +3,7 @@
 import React from 'react';
 
 /**
- * AI Auth Guard - Minimal login prompt for unauthenticated users
+ * AI Auth Guard - Login prompt for unauthenticated users
  *
  * @param icon - Display icon
  * @param title - Auth prompt title
@@ -24,11 +24,11 @@ export function AIAuthGuard({
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <div className="text-center max-w-sm">
-        <div className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30 flex items-center justify-center">
+        <div className="w-10 h-10 mx-auto mb-3 text-gray-300 flex items-center justify-center">
           {icon}
         </div>
-        <h2 className="text-sm font-semibold text-foreground mb-1">{title}</h2>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <h2 className="text-sm font-semibold text-gray-900 mb-1">{title}</h2>
+        <p className="text-xs text-gray-500">{description}</p>
       </div>
     </div>
   );

@@ -6,15 +6,12 @@ import { Bot, User } from 'lucide-react';
 import { MarkdownRenderer } from '@/ai/components/chat/markdown-renderer';
 
 /**
- * AI Chat Message Component - ChatGPT-inspired clean design
- *
- * Full-width message rows with subtle role distinction.
- * No bubble design - clean, flat, information-dense.
+ * AI Chat Message - ChatGPT-style full-width message rows
  *
  * @param message - Message object with role, content, timestamp, metadata
- * @param themeColor - Accent color theme for assistant indicator
+ * @param themeColor - Accent color for assistant avatar
  * @param metadataIcon - Icon for metadata badge
- * @param metadataLabel - Label text for metadata badge
+ * @param metadataLabel - Label for metadata badge
  */
 
 export interface Message {
@@ -53,7 +50,7 @@ export function AIChatMessage({
   const colors = themeColorMap[themeColor];
 
   return (
-    <div className={`flex gap-3 py-3 ${message.role === 'assistant' ? '' : ''}`}>
+    <div className="flex gap-3 py-3">
       {/* Avatar */}
       <div className="flex-shrink-0 mt-0.5">
         {message.role === 'assistant' ? (
@@ -70,20 +67,20 @@ export function AIChatMessage({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium text-foreground">
+          <span className="text-xs font-medium text-gray-900">
             {message.role === 'assistant' ? 'AI Assistant' : 'You'}
           </span>
-          <span className="text-2xs text-muted-foreground">
+          <span className="text-2xs text-gray-400">
             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
 
         {message.role === 'assistant' ? (
-          <div className="text-sm text-foreground leading-relaxed prose-sm max-w-none">
+          <div className="text-sm text-gray-900 leading-relaxed">
             <MarkdownRenderer content={message.content} />
           </div>
         ) : (
-          <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
+          <p className="text-sm text-gray-900 whitespace-pre-wrap">{message.content}</p>
         )}
 
         {/* Metadata */}
@@ -96,7 +93,7 @@ export function AIChatMessage({
               </Badge>
             )}
             {message.metadata.confidence && (
-              <span className="text-2xs text-muted-foreground">
+              <span className="text-2xs text-gray-400">
                 {(message.metadata.confidence * 100).toFixed(0)}% confidence
               </span>
             )}

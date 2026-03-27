@@ -3,12 +3,12 @@
 import React from 'react';
 
 /**
- * AI Page Header Component - Compact, Cloudflare-style
+ * AI Page Header - Compact header with icon, title, description
  *
- * @param icon - Icon element to display
- * @param title - Page title text
- * @param description - Page description text
- * @param iconColor - Tailwind color class for icon
+ * @param icon - Icon element
+ * @param title - Page title
+ * @param description - Page description
+ * @param iconColor - Tailwind icon color class
  */
 
 interface AIPageHeaderProps {
@@ -30,8 +30,8 @@ export function AIPageHeader({
         {icon}
       </div>
       <div>
-        <h1 className="text-sm font-semibold text-foreground">{title}</h1>
-        <p className="text-2xs text-muted-foreground">{description}</p>
+        <h1 className="text-sm font-semibold text-gray-900">{title}</h1>
+        <p className="text-2xs text-gray-500">{description}</p>
       </div>
     </div>
   );

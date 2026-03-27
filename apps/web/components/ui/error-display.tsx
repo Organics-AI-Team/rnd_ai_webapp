@@ -32,8 +32,8 @@ export function ErrorDisplay({ message, onRetry, variant = "default" }: ErrorDis
       <div className="rounded-full bg-red-50 p-2.5 mb-3">
         <AlertCircle className="h-5 w-5 text-red-600" />
       </div>
-      <h3 className="text-sm font-medium text-foreground mb-1">Error</h3>
-      <p className="text-xs text-muted-foreground mb-3 max-w-md">{message}</p>
+      <h3 className="text-sm font-medium text-gray-900 mb-1">Error</h3>
+      <p className="text-xs text-gray-500 mb-3 max-w-md">{message}</p>
       {onRetry && (
         <Button onClick={onRetry} variant="outline" size="sm">
           <RefreshCw className="h-3.5 w-3.5 mr-1.5" />

@@ -8,19 +8,19 @@ import { AIEmptyState } from './ai_empty_state';
 import type { Message } from './ai_chat_message';
 
 /**
- * AI Chat Messages Area - Scrollable message list with empty/loading states
+ * AI Chat Messages Area - Scrollable message list
  *
- * @param messages - Array of chat messages
+ * @param messages - Chat messages array
  * @param isLoading - Whether AI is processing
  * @param themeColor - Theme color for messages
  * @param emptyStateIcon - Icon for empty state
- * @param emptyStateGreeting - Empty state greeting text
- * @param emptyStateSuggestions - Suggestion strings for empty state
+ * @param emptyStateGreeting - Empty state greeting
+ * @param emptyStateSuggestions - Suggestion strings
  * @param loadingMessage - Loading indicator text
- * @param metadataIcon - Icon for message metadata
- * @param metadataLabel - Label for message metadata
+ * @param metadataIcon - Icon for metadata
+ * @param metadataLabel - Label for metadata
  * @param inputAreaHeight - Deprecated, unused
- * @param bottomPadding - Bottom spacing in pixels
+ * @param bottomPadding - Bottom spacing pixels
  */
 
 interface AIChatMessagesAreaProps {
@@ -52,7 +52,7 @@ export function AIChatMessagesArea({
   return (
     <ScrollArea className="flex-1 px-4 pt-2">
       <div
-        className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "divide-y divide-border/50"}
+        className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "divide-y divide-gray-100"}
         style={{ paddingBottom: `${bottomPadding}px` }}
       >
         {messages.length === 0 ? (

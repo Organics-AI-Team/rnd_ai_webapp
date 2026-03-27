@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowUp } from 'lucide-react';
 
 /**
- * AI Chat Input Component - ChatGPT-style clean input
+ * AI Chat Input - Clean input with send button
  *
  * @param value - Current input value
  * @param onChange - Input change callback
@@ -31,9 +31,9 @@ export function AIChatInput({
   disabled = false
 }: AIChatInputProps) {
   /**
-   * Handles keyboard events - Enter sends, Shift+Enter adds newline
+   * Handles keyboard events - Enter sends, Shift+Enter newline
    *
-   * @param e - Keyboard event from textarea
+   * @param e - Keyboard event
    */
   const handle_key_down = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -51,7 +51,7 @@ export function AIChatInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="flex-1 min-h-[40px] max-h-[120px] resize-none rounded-lg border-border bg-background text-sm py-2.5 px-3 pr-10"
+          className="flex-1 min-h-[40px] max-h-[120px] resize-none rounded-lg border-gray-200 bg-white text-sm text-gray-900 py-2.5 px-3 pr-10"
           onKeyDown={handle_key_down}
           disabled={disabled}
           rows={1}
