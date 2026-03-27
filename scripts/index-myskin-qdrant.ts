@@ -29,7 +29,7 @@ const MONGO_DB = 'rnd_ai';
 const MONGO_COLLECTION = 'raw_materials_myskin';
 const QDRANT_COLLECTION = 'raw_materials_myskin';
 const BATCH_SIZE = 50;
-const EMBEDDING_MODEL = 'text-embedding-004';
+const EMBEDDING_MODEL = 'gemini-embedding-001';
 const VECTOR_SIZE = 768;
 
 // ---------------------------------------------------------------------------
@@ -180,25 +180,14 @@ async function process_batch(
     // Build texts for embedding
     const texts = batch.map(build_embed_text);
 
-    // Batch embed via Gemini
-    const embed_result = await model.embedContent({
-      content: { parts: texts.map(t => ({ text: t })) },
+    // Batch embed via Gemini batchEmbedContents (single API call)
+    const embed_result = await model.batchEmbedContents({
+      requests: texts.map(text => ({
+        content: { role: 'user' as const, parts: [{ text: text.replace(/\n/g, ' ') }] },
+      })),
     });
 
-    // Handle both single and batch embedding responses
-    let vectors: number[][];
-    if (embed_result.embedding) {
-      // Single embedding result — need to call individually
-      const individual_results = await Promise.all(
-        texts.map(async (text: string) => {
-          const r = await model.embedContent({ content: { parts: [{ text }] } });
-          return r.embedding.values;
-        }),
-      );
-      vectors = individual_results;
-    } else {
-      vectors = [embed_result.embedding.values];
-    }
+    const vectors: number[][] = embed_result.embeddings.map(e => e.values);
 
     // Build Qdrant points
     const points = batch.map((doc, i) => ({
