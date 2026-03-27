@@ -7,7 +7,8 @@ export interface RAGIndexConfig {
   id: string;
   name: string;
   description: string;
-  pineconeIndex: string;
+  /** Qdrant collection name that backs this index */
+  qdrant_collection: string;
   namespace?: string;
   category: 'raw-materials' | 'formulations' | 'regulations' | 'market-data' | 'research' | 'documentation';
   embeddingModel: string;
@@ -33,7 +34,7 @@ export const RAG_INDICES: Record<string, RAGIndexConfig> = {
     id: 'raw-materials-db',
     name: 'Raw Materials Database',
     description: 'Comprehensive database of cosmetic raw materials, ingredients, and their properties',
-    pineconeIndex: 'raw-materials-stock',
+    qdrant_collection: 'raw_materials_stock',
     namespace: 'raw-materials',
     category: 'raw-materials',
     embeddingModel: 'text-embedding-3-small',
@@ -60,7 +61,7 @@ export const RAG_INDICES: Record<string, RAGIndexConfig> = {
     id: 'formulations-db',
     name: 'Cosmetic Formulations Database',
     description: 'Database of cosmetic formulations, recipes, and formulation guidelines',
-    pineconeIndex: 'raw-materials-stock',
+    qdrant_collection: 'raw_materials_console',
     namespace: 'formulations',
     category: 'formulations',
     embeddingModel: 'text-embedding-3-small',
@@ -87,7 +88,7 @@ export const RAG_INDICES: Record<string, RAGIndexConfig> = {
     id: 'regulations-db',
     name: 'Regulatory Compliance Database',
     description: 'Database of global cosmetic regulations, compliance requirements, and legal guidelines',
-    pineconeIndex: 'raw-materials-stock',
+    qdrant_collection: 'raw_materials_fda',
     namespace: 'regulations',
     category: 'regulations',
     embeddingModel: 'text-embedding-3-small',
@@ -114,7 +115,7 @@ export const RAG_INDICES: Record<string, RAGIndexConfig> = {
     id: 'market-research-db',
     name: 'Market Research Database',
     description: 'Database of market trends, consumer insights, and competitive analysis',
-    pineconeIndex: 'raw-materials-stock',
+    qdrant_collection: 'sales_rnd',
     namespace: 'market-research',
     category: 'market-data',
     embeddingModel: 'text-embedding-3-small',
@@ -141,7 +142,7 @@ export const RAG_INDICES: Record<string, RAGIndexConfig> = {
     id: 'research-db',
     name: 'Scientific Research Database',
     description: 'Database of scientific research papers, studies, and technical documentation',
-    pineconeIndex: 'raw-materials-stock',
+    qdrant_collection: 'raw_materials_fda',
     namespace: 'research',
     category: 'research',
     embeddingModel: 'text-embedding-3-small',
@@ -168,7 +169,7 @@ export const RAG_INDICES: Record<string, RAGIndexConfig> = {
     id: 'product-docs-db',
     name: 'Product Documentation Database',
     description: 'Internal product documentation, technical sheets, and development records',
-    pineconeIndex: 'raw-materials-stock',
+    qdrant_collection: 'raw_materials_console',
     namespace: 'product-docs',
     category: 'documentation',
     embeddingModel: 'text-embedding-3-small',
@@ -195,7 +196,7 @@ export const RAG_INDICES: Record<string, RAGIndexConfig> = {
     id: 'suppliers-db',
     name: 'Supplier Information Database',
     description: 'Database of supplier information, capabilities, and performance data',
-    pineconeIndex: 'raw-materials-stock',
+    qdrant_collection: 'raw_materials_console',
     namespace: 'suppliers',
     category: 'raw-materials',
     embeddingModel: 'text-embedding-3-small',
@@ -222,7 +223,7 @@ export const RAG_INDICES: Record<string, RAGIndexConfig> = {
     id: 'safety-db',
     name: 'Safety and Toxicology Database',
     description: 'Database of ingredient safety data, toxicology studies, and safety assessments',
-    pineconeIndex: 'raw-materials-stock',
+    qdrant_collection: 'raw_materials_fda',
     namespace: 'safety',
     category: 'research',
     embeddingModel: 'text-embedding-3-small',

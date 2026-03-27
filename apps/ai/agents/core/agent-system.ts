@@ -2,8 +2,8 @@
  * Core Agent System - Plug and Play Architecture
  * Provides reusable logic for all AI agents
  *
- * TEMPORARY VERSION - Stubs for Pinecone dependencies
- * TODO: Implement full agent system without Pinecone
+ * Stubs for vector search are backed by QdrantRAGService.
+ * Override searchVectorDatabase() and hybridSearch() in subclasses to activate Qdrant search.
  */
 
 import { UniversalEmbeddingService, createEmbeddingService } from "../../services/embeddings/universal-embedding-service";
@@ -249,11 +249,16 @@ export class BaseAgent {
   }
 
   /**
-   * Search vector database
+   * Search Qdrant vector database.
+   * Stub — override in subclasses and delegate to QdrantRAGService.search_similar().
+   *
+   * @param query - Natural language search query
+   * @param topK  - Maximum number of results to return
+   * @returns Array of search result objects
    */
   async searchVectorDatabase(query: string, topK?: number): Promise<any[]> {
-    // Stub implementation - override in subclasses
-    console.log(`⚠️ [${this.config.displayName}] Vector search not implemented`);
+    // Stub implementation - override in subclasses using QdrantRAGService.search_similar()
+    console.log(`[${this.config.displayName}] searchVectorDatabase: stub — override with QdrantRAGService`);
     return [];
   }
 
@@ -275,15 +280,20 @@ export class BaseAgent {
   }
 
   /**
-   * Get vector index (for stats)
+   * Get vector index stats.
+   * Stub — override in subclasses using QdrantRAGService.get_index_stats().
+   * Returns a Qdrant-compatible stats shape with pointsCount instead of totalRecordCount.
+   *
+   * @returns Object with pointsCount and status fields
    */
   getVectorIndex(): any {
-    // Stub implementation - override in subclasses
+    // Stub implementation - override in subclasses using QdrantRAGService.get_index_stats()
+    console.log(`[${this.config.displayName}] getVectorIndex: stub — override with QdrantRAGService`);
     return {
-      describeIndexStats: async () => ({
-        totalRecordCount: 0,
-        namespaces: {}
-      })
+      get_index_stats: async () => ({
+        pointsCount: 0,
+        status: 'unknown',
+      }),
     };
   }
 

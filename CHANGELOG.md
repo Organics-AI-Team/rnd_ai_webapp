@@ -1,5 +1,61 @@
 # Changelog
 
+## [2026-03-27] Refactor: Rename pineconeIndex → qdrant_collection across agent configs
+
+### Summary
+- Eliminated all remaining Pinecone field-name references in the agent layer.
+- Four files updated: index-config.ts, agent-manager.ts, collection-router.ts, agent-system.ts.
+
+### Planning / Approach
+- Read CHANGELOG.md to understand full migration history (Tasks 1-19 + cleanup).
+- Read qdrant-rag-service.ts to confirm QdrantRAGService constructor signature:
+  `(service_name?, config_override?, custom_embedding_service?)`.
+- Read qdrant-config.ts to confirm four valid Qdrant collection names:
+  `raw_materials_console`, `raw_materials_fda`, `raw_materials_stock`, `sales_rnd`.
+- Applied minimal targeted edits; no file rewritten from scratch.
+
+### Files Changed
+
+#### apps/ai/rag/indices/index-config.ts — MODIFIED
+- Interface `RAGIndexConfig`: `pineconeIndex: string` → `qdrant_collection: string` with JSDoc.
+- 8 config objects updated with correct Qdrant collection targets:
+  - `raw-materials-db` → `raw_materials_stock` (source: raw_materials_real_stock)
+  - `formulations-db`  → `raw_materials_console`
+  - `regulations-db`   → `raw_materials_fda`
+  - `market-research-db` → `sales_rnd`
+  - `research-db`      → `raw_materials_fda`
+  - `product-docs-db`  → `raw_materials_console`
+  - `suppliers-db`     → `raw_materials_console`
+  - `safety-db`        → `raw_materials_fda`
+
+#### apps/ai/agents/agent-manager.ts — MODIFIED
+- Import: `PineconeRAGService` → `QdrantRAGService` from `qdrant-rag-service`.
+- `ragServices` Map type: `Map<string, PineconeRAGService>` → `Map<string, QdrantRAGService>`.
+- `getRAGService()`: `indexConfig.pineconeIndex` → `indexConfig.qdrant_collection`; replaced
+  `new PineconeRAGService({index, namespace, ...})` stub with correct
+  `new QdrantRAGService(serviceName, { collectionName, topK, ... })` call.
+- Added `salesRndAI` routing for `market-data` category.
+- `ragService.searchSimilar()` → `ragService.search_similar()` (snake_case).
+- Added entry/exit console.log in `getRAGService()`.
+
+#### apps/ai/utils/collection-router.ts — MODIFIED
+- All `qdrant_collections` values updated from old namespace strings (`'in_stock'`, `'all_fda'`)
+  to actual Qdrant collection names (`'raw_materials_stock'`, `'raw_materials_fda'`).
+- Header comment updated to reference correct collection names.
+
+#### apps/ai/agents/core/agent-system.ts — MODIFIED
+- Header comment: Removed stale "TODO: Implement full agent system without Pinecone".
+- `searchVectorDatabase()` stub: updated comment to reference `QdrantRAGService.search_similar()`.
+- `getVectorIndex()` stub: updated return shape to Qdrant API (`get_index_stats` / `pointsCount`).
+
+### Root Cause
+After the ChromaDB → Qdrant migration (Tasks 1-19), agent-layer files still used `pineconeIndex`
+as a field name and old Pinecone namespace strings as values. This caused a semantic mismatch:
+the field held Qdrant collection names but was named after the old system, making the code
+misleading and prone to breaking if anyone followed the field name literally.
+
+---
+
 ## [2026-03-27] cleanup: Remove legacy Pinecone scripts and update source types to Qdrant
 
 ### Summary

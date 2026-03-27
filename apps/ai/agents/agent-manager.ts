@@ -4,7 +4,7 @@
  */
 
 import { IAIService } from '../services/core/ai-service-interface';
-import { PineconeRAGService } from '../services/rag/qdrant-rag-service';
+import { QdrantRAGService } from '../services/rag/qdrant-rag-service';
 import { AgentConfig, getAgentConfig, getEnabledAgentConfigs } from './configs/agent-configs';
 import { getSystemPrompt } from './prompts/system-prompts';
 import { getRAGIndexConfig } from '../rag/indices/index-config';
@@ -40,7 +40,7 @@ export interface AgentExecutionResult {
  */
 export class AgentManager {
   private aiService: IAIService;
-  private ragServices: Map<string, PineconeRAGService> = new Map();
+  private ragServices: Map<string, QdrantRAGService> = new Map();
 
   constructor(aiService: IAIService) {
     this.aiService = aiService;
@@ -136,9 +136,10 @@ export class AgentManager {
 
       const ragService = this.getRAGService(indexConfig);
       try {
-        const results = await ragService.searchSimilar(query, {
+        const results = await ragService.search_similar(query, {
           topK: ragOptions?.topK || indexConfig.topK,
-          similarityThreshold: ragOptions?.similarityThreshold || indexConfig.similarityThreshold
+          similarityThreshold: ragOptions?.similarityThreshold || indexConfig.similarityThreshold,
+          includeMetadata: true,
         });
 
         allResults.push(...results);
@@ -194,29 +195,39 @@ export class AgentManager {
   }
 
   /**
-   * Get or create RAG service for an index configuration
+   * Get or create RAG service for an index configuration.
+   * Uses QdrantRAGService with the collection name from the index config.
+   *
+   * @param indexConfig - RAGIndexConfig entry from RAG_INDICES
+   * @returns Cached or newly created QdrantRAGService instance
    */
-  private getRAGService(indexConfig: any): PineconeRAGService {
-    const serviceKey = `${indexConfig.pineconeIndex}-${indexConfig.namespace || 'default'}`;
+  private getRAGService(indexConfig: any): QdrantRAGService {
+    const collection = indexConfig.qdrant_collection as string;
+    const serviceKey = `${collection}-${indexConfig.namespace || 'default'}`;
 
     if (!this.ragServices.has(serviceKey)) {
-      // Map index category to RAG service name
-      // Default to rawMaterialsAllAI for general queries
-      let serviceName: 'rawMaterialsAllAI' | 'rawMaterialsAI' = 'rawMaterialsAllAI';
+      console.log('[AgentManager] getRAGService: creating QdrantRAGService', { collection, serviceKey });
 
-      // Use rawMaterialsAI for specific stock/chemical database queries
+      // Map index category to the corresponding service name so SERVICE_DEFAULTS apply correctly.
+      // Default to rawMaterialsAllAI for general queries.
+      let serviceName: 'rawMaterialsAllAI' | 'rawMaterialsAI' | 'salesRndAI' = 'rawMaterialsAllAI';
+
       if (indexConfig.category === 'raw-materials' && indexConfig.namespace === 'raw-materials') {
+        // Specifically the in-stock raw materials collection
         serviceName = 'rawMaterialsAI';
+      } else if (indexConfig.category === 'market-data') {
+        serviceName = 'salesRndAI';
       }
 
-      // PineconeRAGService constructor signature: (config only)
-      const ragService = new PineconeRAGService({
-        index: indexConfig.pineconeIndex,
-        namespace: indexConfig.namespace || 'default',
+      // QdrantRAGService constructor: (service_name, config_override, custom_embedding_service)
+      const ragService = new QdrantRAGService(serviceName, {
+        collectionName: collection,
         topK: indexConfig.topK,
         similarityThreshold: indexConfig.similarityThreshold,
-        includeMetadata: true
+        includeMetadata: true,
       });
+
+      console.log('[AgentManager] getRAGService: QdrantRAGService created', { serviceName, collection });
       this.ragServices.set(serviceKey, ragService);
     }
 
