@@ -97,15 +97,15 @@ export async function POST(request: NextRequest) {
           id: `react-${Date.now()}`,
           type: 'react-agent',
           features: {
-            searchEnabled: reactResult.toolCalls.some((t: any) => t.name === 'qdrant_search'),
+            searchEnabled: reactResult.tool_calls.some((t: any) => t.name === 'qdrant_search'),
             mlEnabled: false,
-            searchResultsCount: reactResult.toolCalls.filter((t: any) => t.name === 'qdrant_search').length,
-            optimizationsApplied: reactResult.toolCalls.map((t: any) => t.name),
+            searchResultsCount: reactResult.tool_calls.filter((t: any) => t.name === 'qdrant_search').length,
+            optimizationsApplied: reactResult.tool_calls.map((t: any) => t.name),
           },
-          toolCalls: reactResult.toolCalls,
+          toolCalls: reactResult.tool_calls,
           metadata: {
             iterations: reactResult.iterations,
-            processingTime: reactResult.processingTime,
+            processingTime: reactResult.processing_time,
             agent: 'react',
           },
         });

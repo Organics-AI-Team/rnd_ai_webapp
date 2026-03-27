@@ -16,7 +16,7 @@ import { useChat } from '../../hooks/use-chat';
 import { useFeedback } from '../../hooks/use-feedback';
 import { useEnhancedChat } from '../../hooks/enhanced/use-enhanced-chat';
 import { FeedbackCollector } from '../feedback/feedback-collector';
-import { PineconeClientService } from '../../services/rag/pinecone-client';
+import { QdrantRAGService as PineconeClientService } from '../../services/rag/qdrant-rag-service';
 import { EnhancedHybridSearchService } from '../../services/rag/enhanced-hybrid-search-service';
 import { ConversationMessage } from '../../types/conversation-types';
 import { StructuredResponse, EnhancedUserPreferences } from '../../services/enhanced/enhanced-ai-service';
