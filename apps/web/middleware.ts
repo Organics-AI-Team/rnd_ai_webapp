@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
   // Cookie name must match what login/verify/logout routes use
-  const authToken = request.cookies.get("rnd-ai-auth-session");
+  const authToken = request.cookies.get("auth_token");
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require authentication
