@@ -61,11 +61,9 @@ export class EnhancedAIService extends BaseAIService {
 
   constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
     const defaultConfig: AIModelConfig = {
-      model: 'gpt-4',
-      temperature: 0.6,
-      maxTokens: 1000,
-      presencePenalty: 0.1,
-      frequencyPenalty: 0.1,
+      model: config?.model || 'gemini-2.0-flash-exp',
+      temperature: 0.7,
+      maxTokens: 9000,
       ...config
     };
 

@@ -11,7 +11,6 @@ import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-
 import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // Initialize services once on server
@@ -20,7 +19,7 @@ let searchService: EnhancedHybridSearchService | null = null;
 let mlService: PreferenceLearningService | null = null;
 
 function initialize_services() {
-  if (toolService && searchService) return { toolService, searchService, mlService };
+  if (toolService) return { toolService, searchService, mlService };
 
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY not configured');
@@ -44,24 +43,24 @@ function initialize_services() {
   );
   console.log('✅ [RawMaterialsAgentAPI] Gemini tool service initialized');
 
-  // Initialize optimized search services if API keys available
-  if (PINECONE_API_KEY && MONGODB_URI) {
+  // Initialize optimized search services (Qdrant-based, no Pinecone needed)
+  if (MONGODB_URI) {
     try {
       searchService = new EnhancedHybridSearchService(
-        PINECONE_API_KEY,
+        '', // Legacy param — not used by Qdrant-based service
         MONGODB_URI,
         'rnd_ai',
         'raw_materials_console',
-        'raw-materials-stock'
+        'raw_materials_myskin'
       );
       mlService = new PreferenceLearningService();
 
-      console.log('✅ [RawMaterialsAgentAPI] Optimized search services initialized');
+      console.log('✅ [RawMaterialsAgentAPI] Optimized search services initialized (Qdrant)');
     } catch (error) {
       console.warn('⚠️ [RawMaterialsAgentAPI] Search services initialization failed:', error);
     }
   } else {
-    console.warn('⚠️ [RawMaterialsAgentAPI] Missing PINECONE/MONGODB keys for search');
+    console.warn('⚠️ [RawMaterialsAgentAPI] Missing MONGODB_URI for search services');
   }
 
   console.log('✅ [RawMaterialsAgentAPI] Services ready (Gemini + Tools + Optimized Search)');

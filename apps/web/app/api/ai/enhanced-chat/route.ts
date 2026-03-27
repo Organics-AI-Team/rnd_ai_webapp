@@ -33,17 +33,17 @@ async function initializeServices() {
         console.log('✅ [EnhancedChatAPI] Gemini service initialized');
       }
 
-      // Initialize search service
-      if (process.env.PINECONE_API_KEY && process.env.MONGODB_URI) {
+      // Initialize search service (Qdrant-based, no Pinecone needed)
+      if (process.env.MONGODB_URI) {
         searchService = new EnhancedHybridSearchService(
-          process.env.PINECONE_API_KEY,
+          '', // Legacy param — not used by Qdrant-based service
           process.env.MONGODB_URI,
           'rnd_ai',
           'raw_materials_console',
-          'raw-materials-stock'
+          'raw_materials_myskin'
         );
         await searchService.initialize();
-        console.log('✅ [EnhancedChatAPI] Search service initialized');
+        console.log('✅ [EnhancedChatAPI] Search service initialized (Qdrant)');
       }
 
       // Initialize ML learning service

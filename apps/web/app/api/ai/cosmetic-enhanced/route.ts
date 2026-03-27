@@ -9,19 +9,20 @@ import { CosmeticQualityScorer } from '@/ai/services/quality/cosmetic-quality-sc
 import { CosmeticRegulatoryService } from '@/ai/services/regulatory/cosmetic-regulatory-sources';
 import { CosmeticCredibilityWeightingService } from '@/ai/services/credibility/cosmetic-credibility-weighting';
 import { CosmeticQualityThresholdsService } from '@/ai/services/thresholds/cosmetic-quality-thresholds';
-import { EnhancedAIService } from '@/ai/services/enhanced/enhanced-ai-service';
+import { GeminiService } from '@/ai/services/providers/gemini-service';
 import { ResponseReranker } from '@/ai/services/response/response-reranker';
+import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
 
-// Initialize services
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
+// Initialize services — default to Gemini (no OpenAI/Pinecone required)
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+const AI_API_KEY = GEMINI_API_KEY || '';
 
 let knowledgeService: CosmeticKnowledgeService | null = null;
 let qualityScorer: CosmeticQualityScorer | null = null;
 let regulatoryService: CosmeticRegulatoryService | null = null;
 let credibilityService: CosmeticCredibilityWeightingService | null = null;
 let thresholdsService: CosmeticQualityThresholdsService | null = null;
-let enhancedAIService: EnhancedAIService | null = null;
+let enhancedAIService: GeminiService | null = null;
 let responseReranker: ResponseReranker | null = null;
 
 /**
@@ -44,18 +45,18 @@ function initializeServices() {
   console.log('🚀 [CosmeticEnhancedAPI] Initializing cosmetic AI services...');
 
   try {
-    if (!OPENAI_API_KEY || !PINECONE_API_KEY) {
-      throw new Error('Missing required API keys');
+    if (!GEMINI_API_KEY) {
+      throw new Error('Missing GEMINI_API_KEY — required for cosmetic AI services');
     }
 
-    // Initialize all services
-    knowledgeService = new CosmeticKnowledgeService(PINECONE_API_KEY);
+    // Initialize all services using Gemini + Qdrant (no OpenAI/Pinecone needed)
+    knowledgeService = new CosmeticKnowledgeService(AI_API_KEY);
     qualityScorer = new CosmeticQualityScorer();
     regulatoryService = new CosmeticRegulatoryService();
     credibilityService = new CosmeticCredibilityWeightingService();
     thresholdsService = new CosmeticQualityThresholdsService();
-    enhancedAIService = new EnhancedAIService(OPENAI_API_KEY, 'gpt-4');
-    responseReranker = new ResponseReranker(PINECONE_API_KEY);
+    enhancedAIService = new GeminiService(GEMINI_API_KEY, { model: 'gemini-2.0-flash-exp', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
+    responseReranker = new ResponseReranker();
 
     console.log('✅ [CosmeticEnhancedAPI] All services initialized successfully');
 
@@ -109,12 +110,51 @@ export async function POST(request: NextRequest) {
     // Initialize services
     const services = initializeServices();
 
+    // Try ReAct agent first (primary path — uses Gemini + Qdrant tools)
+    try {
+      console.log('[cosmetic-enhanced] POST: attempting ReAct agent path');
+      const reactAgent = new ReactAgentService();
+      const reactResult = await reactAgent.execute({
+        prompt,
+        user_id: userId,
+        conversation_history: [],
+      });
+
+      if (reactResult.success) {
+        console.log(`[cosmetic-enhanced] POST: ReAct success, iterations=${reactResult.iterations}`);
+        return NextResponse.json({
+          success: true,
+          response: reactResult.response,
+          model: reactResult.model,
+          id: `react-cosmetic-${Date.now()}`,
+          type: 'react-agent',
+          features: {
+            searchEnabled: reactResult.tool_calls.some((t: any) => t.name === 'qdrant_search'),
+            mlEnabled: false,
+            searchResultsCount: reactResult.tool_calls.filter((t: any) => t.name === 'qdrant_search').length,
+            optimizationsApplied: reactResult.tool_calls.map((t: any) => t.name),
+          },
+          toolCalls: reactResult.tool_calls,
+          metadata: {
+            iterations: reactResult.iterations,
+            processingTime: reactResult.processing_time,
+            agent: 'react',
+            userRole,
+            productType,
+            targetRegions,
+          },
+        });
+      }
+    } catch (err: any) {
+      console.error('[cosmetic-enhanced] POST: ReAct agent failed, falling back:', err.message);
+    }
+
     // Check if streaming is requested
     if (enableStreaming) {
       return handleStreamingResponse(request, services, body);
     }
 
-    // Generate enhanced response with all optimizations
+    // Fallback: Generate enhanced response with all optimizations
     console.log('🤖 [CosmeticEnhancedAPI] Generating enhanced response for:', prompt);
 
     const startTime = Date.now();
@@ -155,7 +195,7 @@ export async function POST(request: NextRequest) {
     // Step 2: Generate AI Response
     let aiResponse: any = null;
     try {
-      aiResponse = await services.enhancedAIService!.generateEnhancedResponse({
+      aiResponse = await services.enhancedAIService!.generateResponse({
         prompt,
         userId,
         context: {
@@ -422,7 +462,7 @@ function handleStreamingResponse(
     async start(controller) {
       try {
         // Generate enhanced response with streaming
-        await services.enhancedAIService.generateStreamingResponse({
+        await (services.enhancedAIService as any).generateStreamingResponse({
           prompt,
           userId,
           context: {
