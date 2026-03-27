@@ -1,7 +1,18 @@
+/**
+ * RAG tRPC Router
+ *
+ * Exposes vector search, indexing, and statistics procedures backed by
+ * QdrantRAGService.  All service instantiation and method calls use the
+ * snake_case API defined in qdrant-rag-service.ts.
+ *
+ * @author AI Management System
+ * @date 2026-03-27
+ */
+
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import { raw_materials_client_promise } from "@rnd-ai/shared-database";
-import { PineconeRAGService, RawMaterialDocument } from "@/ai/services/rag/pinecone-service-stub";
+import { QdrantRAGService, RawMaterialDocument } from "../../services/rag/qdrant-rag-service";
 import { ObjectId } from "mongodb";
 import { getRAGConfig, RAGServicesConfig } from "@/ai/config/rag-config";
 
@@ -16,17 +27,20 @@ export const ragRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
+      console.log('[ragRouter] searchRawMaterials — start', { query: input.query, topK: input.topK, serviceName: input.serviceName });
+
       try {
-        const pineconeService = new PineconeRAGService(input.serviceName, {
+        const qdrantService = new QdrantRAGService(input.serviceName, {
           topK: input.topK
         });
 
         // Search using vector similarity
-        const matches = await pineconeService.searchSimilar(
+        const matches = await qdrantService.search_similar(
           input.query,
           { topK: input.topK }
         );
 
+        console.log('[ragRouter] searchRawMaterials — done', { resultCount: matches.length });
         return {
           success: true,
           matches,
@@ -34,7 +48,7 @@ export const ragRouter = router({
           totalResults: matches.length
         };
       } catch (error) {
-        console.error('Error in vector search:', error);
+        console.error('[ragRouter] searchRawMaterials — error', error);
         return {
           success: false,
           error: 'Failed to search raw materials',
@@ -45,7 +59,7 @@ export const ragRouter = router({
       }
     }),
 
-  // Index raw materials data into Pinecone
+  // Index raw materials data into Qdrant
   indexRawMaterials: protectedProcedure
     .input(
       z.object({
@@ -54,10 +68,12 @@ export const ragRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      console.log('[ragRouter] indexRawMaterials — start', { batchSize: input.batchSize, startIndex: input.startIndex });
+
       try {
         const client = await raw_materials_client_promise;
         const db = client.db();
-        const pineconeService = new PineconeRAGService();
+        const qdrantService = new QdrantRAGService();
 
         // Get raw materials from MongoDB
         const materials = await db.collection("raw_materials_real_stock")
@@ -67,6 +83,7 @@ export const ragRouter = router({
           .toArray();
 
         if (materials.length === 0) {
+          console.log('[ragRouter] indexRawMaterials — no more materials');
           return {
             success: true,
             indexed: 0,
@@ -75,14 +92,15 @@ export const ragRouter = router({
           };
         }
 
-        // Prepare documents for Pinecone
+        // Prepare documents for Qdrant
         const documents: RawMaterialDocument[] = materials.map(material =>
-          PineconeRAGService.prepareRawMaterialDocument(material)
+          QdrantRAGService.prepare_raw_material_document(material as Record<string, unknown>)
         );
 
-        // Index documents in Pinecone
-        await pineconeService.upsertDocuments(documents);
+        // Index documents in Qdrant
+        await qdrantService.upsert_documents(documents);
 
+        console.log('[ragRouter] indexRawMaterials — done', { indexed: documents.length });
         return {
           success: true,
           indexed: documents.length,
@@ -91,7 +109,7 @@ export const ragRouter = router({
           documentsIndexed: documents.map(doc => ({ id: doc.id, name: doc.metadata.trade_name }))
         };
       } catch (error) {
-        console.error('Error indexing raw materials:', error);
+        console.error('[ragRouter] indexRawMaterials — error', error);
         return {
           success: false,
           indexed: 0,
@@ -104,25 +122,28 @@ export const ragRouter = router({
   // Get indexing statistics
   getIndexStats: protectedProcedure
     .query(async ({ ctx }) => {
+      console.log('[ragRouter] getIndexStats — start');
+
       try {
         const client = await raw_materials_client_promise;
         const db = client.db();
-        const pineconeService = new PineconeRAGService();
+        const qdrantService = new QdrantRAGService();
 
         // Get MongoDB count
         const mongoCount = await db.collection("raw_materials_real_stock").countDocuments();
 
-        // Get Pinecone stats
-        const pineconeStats = await pineconeService.getIndexStats();
+        // Get Qdrant stats — returns { pointsCount, status, config }
+        const qdrantStats = await qdrantService.get_index_stats();
 
+        console.log('[ragRouter] getIndexStats — done', { mongoCount, qdrantPointsCount: qdrantStats.pointsCount });
         return {
           success: true,
           mongoDBCount: mongoCount,
-          pineconeStats,
-          indexedCount: pineconeStats.totalRecordCount || 0
+          qdrantStats,
+          indexedCount: qdrantStats.pointsCount || 0
         };
       } catch (error) {
-        console.error('Error getting index stats:', error);
+        console.error('[ragRouter] getIndexStats — error', error);
         return {
           success: false,
           error: 'Failed to get index statistics'
@@ -133,16 +154,19 @@ export const ragRouter = router({
   // Get indexed documents count
   getIndexedCount: protectedProcedure
     .query(async ({ ctx }) => {
-      try {
-        const pineconeService = new PineconeRAGService();
-        const stats = await pineconeService.getIndexStats();
+      console.log('[ragRouter] getIndexedCount — start');
 
+      try {
+        const qdrantService = new QdrantRAGService();
+        const stats = await qdrantService.get_index_stats();
+
+        console.log('[ragRouter] getIndexedCount — done', { count: stats.pointsCount });
         return {
           success: true,
-          count: stats.totalRecordCount || 0
+          count: stats.pointsCount || 0
         };
       } catch (error) {
-        console.error('Error getting indexed count:', error);
+        console.error('[ragRouter] getIndexedCount — error', error);
         return {
           success: false,
           count: 0,
@@ -161,22 +185,24 @@ export const ragRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
+      console.log('[ragRouter] hybridSearch — start', { query: input.query, topK: input.topK });
+
       try {
         const client = await raw_materials_client_promise;
         const db = client.db();
-        const pineconeService = new PineconeRAGService();
+        const qdrantService = new QdrantRAGService();
 
         // Vector search
-        const vectorMatches = await pineconeService.searchSimilar(
+        const vectorMatches = await qdrantService.search_similar(
           input.query,
           { topK: input.topK }
         );
 
-        let keywordMatches = [];
+        let keywordMatches: typeof vectorMatches = [];
 
         // Fallback keyword search if vector search returns no results
         if (input.includeKeywordSearch && (!vectorMatches || vectorMatches.length === 0)) {
-          keywordMatches = await db.collection("raw_materials_real_stock")
+          const rawKeywordMatches = await db.collection("raw_materials_real_stock")
             .find({
               $or: [
                 { rm_code: { $regex: input.query, $options: 'i' } },
@@ -188,8 +214,8 @@ export const ragRouter = router({
             .toArray();
 
           // Convert keyword matches to vector-like format
-          keywordMatches = keywordMatches.map(material => ({
-            id: material._id?.toString(),
+          keywordMatches = rawKeywordMatches.map(material => ({
+            id: material._id?.toString() || '',
             score: 0.5, // Lower score for keyword matches
             metadata: {
               rm_code: material.rm_code,
@@ -208,6 +234,11 @@ export const ragRouter = router({
 
         const allMatches = [...vectorMatches, ...keywordMatches].slice(0, input.topK);
 
+        console.log('[ragRouter] hybridSearch — done', {
+          vectorResults: vectorMatches.length,
+          keywordResults: keywordMatches.length,
+          totalResults: allMatches.length
+        });
         return {
           success: true,
           matches: allMatches,
@@ -217,7 +248,7 @@ export const ragRouter = router({
           totalResults: allMatches.length
         };
       } catch (error) {
-        console.error('Error in hybrid search:', error);
+        console.error('[ragRouter] hybridSearch — error', error);
         return {
           success: false,
           error: 'Failed to search raw materials',

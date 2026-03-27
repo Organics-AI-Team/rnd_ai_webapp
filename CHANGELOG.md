@@ -1,5 +1,29 @@
 # Changelog
 
+## [2026-03-27] Task 16: Update RAG Router to Use QdrantRAGService
+
+### Summary
+- Migrated `apps/ai/server/routers/rag.ts` from stub `PineconeRAGService` to `QdrantRAGService`.
+- All tRPC procedure definitions remain unchanged; only service instantiation and method calls updated.
+
+### Root Cause
+`rag.ts` still imported `PineconeRAGService` from `@/ai/services/rag/pinecone-service-stub` and called
+camelCase methods (`searchSimilar`, `upsertDocuments`, `getIndexStats`, `prepareRawMaterialDocument`).
+QdrantRAGService exposes all these as snake_case methods per project convention.
+
+### Changes Made
+- **Import swap**: `PineconeRAGService` from `pinecone-service-stub` → `QdrantRAGService` from `../../services/rag/qdrant-rag-service`
+- **Instantiation**: `new PineconeRAGService(...)` → `new QdrantRAGService(...)`
+- **Method renames**: `searchSimilar` → `search_similar`, `upsertDocuments` → `upsert_documents`, `getIndexStats` → `get_index_stats`, `prepareRawMaterialDocument` → `prepare_raw_material_document`
+- **Response shape fix**: `getIndexStats` procedure now reads `qdrantStats.pointsCount` (was `pineconeStats.totalRecordCount`) and returns renamed key `qdrantStats`
+- **Logging**: Added `console.log` entry/exit/error calls to all procedure handlers per function-logging rule
+- **Typing**: `keywordMatches` properly typed as `typeof vectorMatches` to avoid implicit `any[]`
+
+### Files Changed
+- `apps/ai/server/routers/rag.ts` — MODIFIED: PineconeRAGService stub → QdrantRAGService migration
+
+---
+
 ## [2026-03-27] dev/droplet — Qdrant Migration + ReAct Agent Architecture
 
 ### Architecture Changes
