@@ -78,13 +78,7 @@ export class EnhancedHybridSearchService {
     });
 
     this.qdrantService = get_qdrant_service();
-    this.embeddingService = createEmbeddingService({
-      provider: 'gemini',
-      model: 'gemini-embedding-001',
-      dimensions: 3072,
-      batchSize: 96,
-      apiKey: process.env.GEMINI_API_KEY || ''
-    });
+    this.embeddingService = createEmbeddingService();
     this.mongoClient = new MongoClient(mongoUri);
     this.collectionName = collectionName;
     this.qdrantCollectionName = qdrantCollectionName;
@@ -371,7 +365,7 @@ export class EnhancedHybridSearchService {
       }
 
       const results = await this.collection
-        .find(searchQuery, { score: { $meta: 'textScore' } })
+        .find(searchQuery, { projection: { score: { $meta: 'textScore' } } } as any)
         .sort({ score: { $meta: 'textScore' } })
         .limit(options.topK || 20)
         .toArray();
