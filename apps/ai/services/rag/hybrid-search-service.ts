@@ -286,7 +286,7 @@ export class HybridSearchService extends QdrantRAGService {
       const results = await this.search_similar(query, {
         ...options,
         filter: filters,
-        namespace: options.qdrant_collection,
+        collectionName: options.qdrant_collection,
         topK: options.topK || 10,
         similarityThreshold: 0.6 // Lower threshold for metadata search
       });
@@ -392,7 +392,7 @@ export class HybridSearchService extends QdrantRAGService {
         // Limit to top 3 expansions
         const results = await this.search_similar(expanded_query, {
           ...options,
-          namespace: options.qdrant_collection,
+          collectionName: options.qdrant_collection,
           filter: options.metadata_filters,
           topK: options.topK || 5,
           similarityThreshold: options.similarityThreshold || 0.5
