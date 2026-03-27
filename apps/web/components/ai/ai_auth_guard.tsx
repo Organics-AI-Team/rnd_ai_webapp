@@ -3,14 +3,11 @@
 import React from 'react';
 
 /**
- * AI Auth Guard Component
+ * AI Auth Guard - Minimal login prompt for unauthenticated users
  *
- * Displays a login prompt when user is not authenticated.
- * Shows icon, title, and description encouraging user to sign in.
- *
- * @param icon - Icon element to display
- * @param title - Main title text
- * @param description - Description text explaining why auth is needed
+ * @param icon - Display icon
+ * @param title - Auth prompt title
+ * @param description - Explanation text
  */
 
 interface AIAuthGuardProps {
@@ -25,13 +22,13 @@ export function AIAuthGuard({
   description
 }: AIAuthGuardProps) {
   return (
-    <div className="container mx-auto p-6">
-      <div className="text-center">
-        <div className="w-16 h-16 mx-auto mb-4 text-gray-300 flex items-center justify-center">
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center max-w-sm">
+        <div className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30 flex items-center justify-center">
           {icon}
         </div>
-        <h2 className="text-xl font-semibold mb-2">{title}</h2>
-        <p className="text-gray-600">{description}</p>
+        <h2 className="text-sm font-semibold text-foreground mb-1">{title}</h2>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
     </div>
   );

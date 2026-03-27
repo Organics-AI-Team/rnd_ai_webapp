@@ -32,28 +32,41 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+/**
+ * Ingredients list page - Cloudflare-style data table
+ *
+ * Compact table with search, sort, and pagination controls.
+ * Admin users can add, edit, delete, duplicate, and favorite ingredients.
+ */
 export default function IngredientsPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const utils = trpc.useUtils();
 
-  const [searchInput, setSearchInput] = useState(""); // What user types
-  const [searchTerm, setSearchTerm] = useState(""); // What's sent to server
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [viewingIngredient, setViewingIngredient] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<string>("productCode");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const itemsPerPage = 50;
 
-  // Reset to page 1 when search term, sort field, or sort direction changes
   React.useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, sortField, sortDirection]);
 
+  /**
+   * Triggers search with current input value
+   */
   const handleSearch = () => {
     setSearchTerm(searchInput);
   };
 
+  /**
+   * Handles Enter key press to trigger search
+   *
+   * @param e - Keyboard event
+   */
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleSearch();
@@ -76,10 +89,9 @@ export default function IngredientsPage() {
   const deleteProduct = trpc.products.delete.useMutation({
     onSuccess: () => {
       utils.products.list.invalidate();
-      alert("ลบสารเรียบร้อยแล้ว!");
     },
     onError: (error) => {
-      alert(error.message || "ไม่สามารถลบสารได้");
+      alert(error.message || "Delete failed");
     },
   });
 
@@ -88,12 +100,12 @@ export default function IngredientsPage() {
       utils.products.list.invalidate();
     },
     onError: (error) => {
-      alert(error.message || "ไม่สามารถอัพเดทรายการโปรดได้");
+      alert(error.message || "Update failed");
     },
   });
 
   const [duplicatingId, setDuplicatingId] = useState<string>("");
-  const { data: duplicateData, refetch: fetchDuplicate } = trpc.products.duplicate.useQuery(
+  const { refetch: fetchDuplicate } = trpc.products.duplicate.useQuery(
     { id: duplicatingId },
     { enabled: false }
   );
@@ -102,8 +114,8 @@ export default function IngredientsPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent mx-auto"></div>
+          <p className="mt-3 text-xs text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
@@ -111,17 +123,13 @@ export default function IngredientsPage() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <Card className="max-w-md">
-          <CardContent className="pt-6">
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="max-w-sm">
+          <CardContent className="pt-4">
             <div className="text-center">
-              <p className="text-red-600 font-semibold mb-4">กรุณาเข้าสู่ระบบ</p>
-              <p className="text-gray-600 mb-4">
-                คุณต้องเข้าสู่ระบบก่อนเข้าใช้งานหน้านี้
-              </p>
-              <Button onClick={() => router.push("/login")}>
-                ไปหน้าเข้าสู่ระบบ
-              </Button>
+              <p className="text-sm font-medium text-foreground mb-2">Sign in required</p>
+              <p className="text-xs text-muted-foreground mb-3">You need to be authenticated to view this page.</p>
+              <Button onClick={() => router.push("/login")} size="sm">Sign in</Button>
             </div>
           </CardContent>
         </Card>
@@ -129,10 +137,14 @@ export default function IngredientsPage() {
     );
   }
 
-  // No client-side filtering needed - server handles it
-
+  /**
+   * Handles ingredient deletion with confirmation
+   *
+   * @param id - Ingredient ID to delete
+   * @param name - Ingredient name for confirmation dialog
+   */
   const handleDelete = async (id: string, name: string) => {
-    if (confirm(`คุณแน่ใจหรือไม่ที่จะลบสาร "${name}"?`)) {
+    if (confirm(`Delete "${name}"?`)) {
       try {
         await deleteProduct.mutateAsync({ id });
       } catch (error: any) {
@@ -141,6 +153,12 @@ export default function IngredientsPage() {
     }
   };
 
+  /**
+   * Toggles favorite status for an ingredient
+   *
+   * @param id - Ingredient ID
+   * @param e - Mouse event (stopped from propagating)
+   */
   const handleToggleFavorite = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -150,12 +168,16 @@ export default function IngredientsPage() {
     }
   };
 
+  /**
+   * Duplicates an ingredient and navigates to the edit form
+   *
+   * @param id - Ingredient ID to duplicate
+   */
   const handleDuplicate = async (id: string) => {
     try {
       setDuplicatingId(id);
       const result = await fetchDuplicate();
       if (result.data) {
-        // Navigate to admin/products with duplicate data
         const params = new URLSearchParams({
           duplicate: "true",
           data: JSON.stringify(result.data),
@@ -164,389 +186,289 @@ export default function IngredientsPage() {
       }
     } catch (error: any) {
       console.error("Error duplicating ingredient:", error);
-      alert("ไม่สามารถทำซ้ำสารได้");
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => router.back()}
-            className="mb-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            ย้อนกลับ
-          </Button>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-600 rounded-lg">
-                <BoxIcon className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">
-                  สารทั้งหมด
-                </h1>
-                <p className="text-gray-600">
-                  จัดการและดูวัตถุดิบทั้งหมด
-                </p>
-              </div>
-            </div>
-
-            {user.role === "admin" && (
-              <Button
-                onClick={() => router.push("/products")}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                เพิ่มสารใหม่
-              </Button>
-            )}
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+      {/* Header */}
+      <div className="mb-4">
+        <Button variant="ghost" onClick={() => router.back()} size="sm" className="mb-2 -ml-2">
+          <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+          Back
+        </Button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-semibold text-foreground">Ingredients</h1>
+            <p className="text-xs text-muted-foreground">Manage raw materials and ingredients</p>
           </div>
+          {user.role === "admin" && (
+            <Button onClick={() => router.push("/products")} size="sm">
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add
+            </Button>
+          )}
         </div>
+      </div>
 
-        {/* Ingredients List */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>รายการสาร</CardTitle>
-                <CardDescription>
-                  แสดง {products?.length || 0} รายการในหน้านี้ (ทั้งหมด {totalCount.toLocaleString()} สาร)
-                </CardDescription>
-              </div>
+      {/* Table Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Ingredient List</CardTitle>
+              <CardDescription>
+                Showing {products?.length || 0} of {totalCount.toLocaleString()} items
+              </CardDescription>
             </div>
+          </div>
 
-            {/* Search and Sort Controls */}
-            <div className="flex gap-4 mt-4">
-              <div className="flex-1 flex gap-2">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="ค้นหา รหัสสาร, ชื่อสาร, INCI, Benefits, Use Cases..."
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="pl-9"
-                  />
-                </div>
-                <Button
-                  onClick={handleSearch}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
+          {/* Search and Sort */}
+          <div className="flex gap-2 mt-3">
+            <div className="flex-1 flex gap-1.5">
+              <div className="flex-1 relative">
+                <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search code, name, INCI, benefits..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  className="pl-7"
+                />
               </div>
-              <div className="flex gap-2">
-                <select
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value)}
-                  className="px-3 py-2 border rounded-md text-sm bg-white"
-                >
-                  <option value="productCode">รหัสสาร</option>
-                  <option value="productName">ชื่อสาร</option>
-                  <option value="supplier">Supplier</option>
-                  <option value="price">ราคา</option>
-                </select>
+              <Button onClick={handleSearch} size="sm" variant="outline">
+                <Search className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="flex gap-1.5">
+              <select
+                value={sortField}
+                onChange={(e) => setSortField(e.target.value)}
+                className="h-8 px-2 border border-border rounded-md text-xs bg-background text-foreground"
+              >
+                <option value="productCode">Code</option>
+                <option value="productName">Name</option>
+                <option value="supplier">Supplier</option>
+                <option value="price">Price</option>
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+              >
+                <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
+                {sortDirection === "asc" ? "A-Z" : "Z-A"}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {products && products.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>INCI</TableHead>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead>Benefits</TableHead>
+                  <TableHead>Use Cases</TableHead>
+                  <TableHead className="w-10"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {products.map((product: any) => (
+                  <TableRow key={product._id}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {product.productCode}
+                    </TableCell>
+                    <TableCell className="font-medium text-sm max-w-[180px]">
+                      <div className="break-words whitespace-normal">{product.productName}</div>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[160px]">
+                      <div className="break-words whitespace-normal">{product.inci_name || "-"}</div>
+                    </TableCell>
+                    <TableCell className="text-xs max-w-[100px]">
+                      <div className="break-words whitespace-normal">{product.supplier || "-"}</div>
+                    </TableCell>
+                    <TableCell className="max-w-[150px]">
+                      <div className="flex flex-wrap gap-0.5">
+                        {Array.isArray(product.benefits) && product.benefits.length > 0 ? (
+                          product.benefits.slice(0, 2).map((benefit: string, idx: number) => (
+                            <Badge key={idx} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">{benefit}</Badge>
+                          ))
+                        ) : (
+                          <span className="text-2xs text-muted-foreground">-</span>
+                        )}
+                        {product.benefits && product.benefits.length > 2 && (
+                          <Badge variant="outline">+{product.benefits.length - 2}</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-[150px]">
+                      <div className="flex flex-wrap gap-0.5">
+                        {Array.isArray(product.usecase) && product.usecase.length > 0 ? (
+                          product.usecase.slice(0, 2).map((usecase: string, idx: number) => (
+                            <Badge key={idx} variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">{usecase}</Badge>
+                          ))
+                        ) : (
+                          <span className="text-2xs text-muted-foreground">-</span>
+                        )}
+                        {product.usecase && product.usecase.length > 2 && (
+                          <Badge variant="outline">+{product.usecase.length - 2}</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleToggleFavorite(product._id, e as any);
+                            }}
+                          >
+                            <Star className={`h-3.5 w-3.5 mr-2 ${product.isFavorited ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
+                            {product.isFavorited ? "Remove favorite" : "Add favorite"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setViewingIngredient(product)}>
+                            <Eye className="h-3.5 w-3.5 mr-2 text-blue-600" />
+                            View details
+                          </DropdownMenuItem>
+                          {user.role === "admin" && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleDuplicate(product._id)}>
+                                <Copy className="h-3.5 w-3.5 mr-2 text-violet-600" />
+                                Duplicate
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => router.push(`/products?edit=${product._id}`)}>
+                                <Edit className="h-3.5 w-3.5 mr-2 text-emerald-600" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(product._id, product.productName)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8">
+              <BoxIcon className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">No ingredients found</p>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+              <span className="text-xs text-muted-foreground">
+                {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount.toLocaleString()}
+              </span>
+              <div className="flex items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
-                  className="flex items-center gap-1"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
                 >
-                  <ArrowUpDown className="h-4 w-4" />
-                  {sortDirection === "asc" ? "A-Z" : "Z-A"}
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <span className="text-xs text-muted-foreground px-2">
+                  {currentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={!hasMore}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            {products && products.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>รหัสสาร</TableHead>
-                    <TableHead>ชื่อสาร</TableHead>
-                    <TableHead>INCI Name</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Benefits</TableHead>
-                    <TableHead>Use Cases</TableHead>
-                    <TableHead>จัดการ</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((product: any) => (
-                    <TableRow key={product._id}>
-                      <TableCell className="font-mono text-sm">
-                        {product.productCode}
-                      </TableCell>
-                      <TableCell className="font-medium max-w-[200px]">
-                        <div className="break-words whitespace-normal">
-                          {product.productName}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-600 max-w-[200px]">
-                        <div className="break-words whitespace-normal">
-                          {product.inci_name || "-"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm max-w-[120px]">
-                        <div className="break-words whitespace-normal">
-                          {product.supplier || "-"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[180px]">
-                        <div className="flex flex-wrap gap-1">
-                          {Array.isArray(product.benefits) && product.benefits.length > 0 ? (
-                            product.benefits.slice(0, 2).map((benefit: string, idx: number) => (
-                              <Badge
-                                key={idx}
-                                variant="secondary"
-                                className="text-xs bg-blue-100 text-blue-800"
-                              >
-                                {benefit}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
-                          {product.benefits && product.benefits.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{product.benefits.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[180px]">
-                        <div className="flex flex-wrap gap-1">
-                          {Array.isArray(product.usecase) && product.usecase.length > 0 ? (
-                            product.usecase.slice(0, 2).map((usecase: string, idx: number) => (
-                              <Badge
-                                key={idx}
-                                variant="secondary"
-                                className="text-xs bg-green-100 text-green-800"
-                              >
-                                {usecase}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
-                          {product.usecase && product.usecase.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{product.usecase.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 w-8 p-0"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleToggleFavorite(product._id, e as any);
-                              }}
-                            >
-                              <Star
-                                className={`h-4 w-4 mr-2 ${
-                                  product.isFavorited
-                                    ? "fill-yellow-400 text-yellow-400"
-                                    : "text-gray-400"
-                                }`}
-                              />
-                              {product.isFavorited ? "ลบออกจากรายการโปรด" : "เพิ่มในรายการโปรด"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setViewingIngredient(product)}
-                            >
-                              <Eye className="h-4 w-4 mr-2 text-blue-600" />
-                              ดูรายละเอียด
-                            </DropdownMenuItem>
-                            {user.role === "admin" && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => handleDuplicate(product._id)}
-                                >
-                                  <Copy className="h-4 w-4 mr-2 text-purple-600" />
-                                  ทำซ้ำ
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => router.push(`/products?edit=${product._id}`)}
-                                >
-                                  <Edit className="h-4 w-4 mr-2 text-green-600" />
-                                  แก้ไข
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => handleDelete(product._id, product.productName)}
-                                  className="text-red-600 focus:text-red-600"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  ลบ
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center py-12">
-                <BoxIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">ยังไม่มีสาร</p>
-                {user.role === "admin" && (
-                  <p className="text-sm text-gray-500">
-                    คลิก &quot;เพิ่มสารใหม่&quot; เพื่อเพิ่มสาร
-                  </p>
-                )}
-              </div>
-            )}
+          )}
+        </CardContent>
+      </Card>
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="mt-4 flex items-center justify-between border-t pt-4">
-                <div className="text-sm text-gray-600">
-                  แสดง {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, totalCount)} จากทั้งหมด {totalCount.toLocaleString()} สาร
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    ก่อนหน้า
-                  </Button>
-                  <div className="text-sm text-gray-600">
-                    หน้า {currentPage} / {totalPages}
+      {/* Detail Dialog */}
+      <Dialog open={!!viewingIngredient} onOpenChange={() => setViewingIngredient(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Ingredient Details</DialogTitle>
+          </DialogHeader>
+          {viewingIngredient && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: "Code", value: viewingIngredient.productCode, mono: true },
+                  { label: "Name", value: viewingIngredient.productName },
+                  { label: "INCI Name", value: viewingIngredient.inci_name || "-" },
+                  { label: "Supplier", value: viewingIngredient.supplier || "-" },
+                  { label: "Price", value: viewingIngredient.price ? `${viewingIngredient.price.toFixed(2)} THB` : "-" },
+                  { label: "Category", value: viewingIngredient.category || "-" },
+                ].map((field, i) => (
+                  <div key={i}>
+                    <p className="text-2xs text-muted-foreground mb-0.5">{field.label}</p>
+                    <p className={`text-sm font-medium ${field.mono ? 'font-mono' : ''}`}>{field.value}</p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={!hasMore}
-                  >
-                    ถัดไป
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
+                ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* View Ingredient Dialog */}
-        <Dialog open={!!viewingIngredient} onOpenChange={() => setViewingIngredient(null)}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>รายละเอียดสาร</DialogTitle>
-            </DialogHeader>
-            {viewingIngredient && (
-              <div className="space-y-6">
-                {/* Product Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">รหัสสาร</p>
-                    <p className="font-mono font-semibold">{viewingIngredient.productCode}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">ชื่อสาร</p>
-                    <p className="font-semibold">{viewingIngredient.productName}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">INCI Name</p>
-                    <p className="font-semibold">{viewingIngredient.inci_name || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Supplier</p>
-                    <p className="font-semibold">{viewingIngredient.supplier || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Price</p>
-                    <p className="font-semibold">
-                      {viewingIngredient.price ? `฿${viewingIngredient.price.toFixed(2)}` : "-"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Category</p>
-                    <p className="font-semibold">{viewingIngredient.category || "-"}</p>
+              {viewingIngredient.benefits && viewingIngredient.benefits.length > 0 && (
+                <div>
+                  <p className="text-2xs text-muted-foreground mb-1.5">Benefits</p>
+                  <div className="flex flex-wrap gap-1">
+                    {viewingIngredient.benefits.map((benefit: string, idx: number) => (
+                      <Badge key={idx} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">{benefit}</Badge>
+                    ))}
                   </div>
                 </div>
+              )}
 
-                {/* Benefits */}
-                {viewingIngredient.benefits && viewingIngredient.benefits.length > 0 && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">Benefits</p>
-                    <div className="flex flex-wrap gap-2">
-                      {viewingIngredient.benefits.map((benefit: string, idx: number) => (
-                        <Badge
-                          key={idx}
-                          variant="secondary"
-                          className="bg-blue-100 text-blue-800"
-                        >
-                          {benefit}
-                        </Badge>
-                      ))}
-                    </div>
+              {viewingIngredient.usecase && viewingIngredient.usecase.length > 0 && (
+                <div>
+                  <p className="text-2xs text-muted-foreground mb-1.5">Use Cases</p>
+                  <div className="flex flex-wrap gap-1">
+                    {viewingIngredient.usecase.map((usecase: string, idx: number) => (
+                      <Badge key={idx} variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">{usecase}</Badge>
+                    ))}
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Use Cases */}
-                {viewingIngredient.usecase && viewingIngredient.usecase.length > 0 && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">Use Cases</p>
-                    <div className="flex flex-wrap gap-2">
-                      {viewingIngredient.usecase.map((usecase: string, idx: number) => (
-                        <Badge
-                          key={idx}
-                          variant="secondary"
-                          className="bg-green-100 text-green-800"
-                        >
-                          {usecase}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
+              {viewingIngredient.description && (
+                <div>
+                  <p className="text-2xs text-muted-foreground mb-1">Description</p>
+                  <p className="text-xs bg-muted p-2.5 rounded-md">{viewingIngredient.description}</p>
+                </div>
+              )}
 
-                {/* Description */}
-                {viewingIngredient.description && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">Description</p>
-                    <p className="text-sm bg-gray-50 p-3 rounded-lg">{viewingIngredient.description}</p>
-                  </div>
-                )}
-
-                {/* Function */}
-                {viewingIngredient.function && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">Function</p>
-                    <p className="text-sm bg-gray-50 p-3 rounded-lg">{viewingIngredient.function}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
+              {viewingIngredient.function && (
+                <div>
+                  <p className="text-2xs text-muted-foreground mb-1">Function</p>
+                  <p className="text-xs bg-muted p-2.5 rounded-md">{viewingIngredient.function}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

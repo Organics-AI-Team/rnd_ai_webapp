@@ -4,14 +4,9 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 
 /**
- * AI Chat Messages Container Component
+ * AI Chat Messages Container - Clean card wrapper for chat area
  *
- * Wraps chat messages area with Card component for consistent styling.
- * Renders ONLY the messages area with header - input area is separate.
- * Enables proper scrolling with min-h-0 and overflow-hidden.
- * No hardcoded HTML - fully component-based.
- *
- * @param header - Header component (typically AIChatHeader)
+ * @param header - Header component (AIChatHeader)
  * @param messagesArea - Messages area component (AIChatMessagesArea)
  */
 
@@ -25,7 +20,7 @@ export function AIChatMessagesContainer({
   messagesArea
 }: AIChatMessagesContainerProps) {
   return (
-    <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+    <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-border">
       {header}
       <CardContent className="flex-1 flex flex-col p-0 min-h-0 overflow-hidden">
         {messagesArea}
@@ -35,12 +30,7 @@ export function AIChatMessagesContainer({
 }
 
 /**
- * AI Chat Input Container Component
- *
- * Wraps chat input area with sticky positioning at the bottom.
- * Input stays fixed at bottom of viewport during scroll.
- * Background color prevents content overlap.
- * No hardcoded HTML - fully component-based.
+ * AI Chat Input Container - Sticky bottom input wrapper
  *
  * @param inputArea - Input area component (AIChatInputArea)
  */
@@ -53,7 +43,7 @@ export function AIChatInputContainer({
   inputArea
 }: AIChatInputContainerProps) {
   return (
-    <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm z-10 pb-2">
+    <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm z-10 border-t border-border">
       {inputArea}
     </div>
   );

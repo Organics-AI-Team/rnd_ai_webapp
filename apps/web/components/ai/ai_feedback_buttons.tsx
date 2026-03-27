@@ -5,14 +5,11 @@ import { Button } from '@/components/ui/button';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
 
 /**
- * AI Feedback Buttons Component
+ * AI Feedback Buttons - Subtle thumbs up/down for response rating
  *
- * Provides thumbs up/down feedback buttons for AI responses.
- * Displays "Was this helpful?" prompt with positive and negative feedback options.
- *
- * @param messageId - ID of the message being rated
- * @param onFeedback - Callback when feedback is submitted (messageId, isPositive)
- * @param disabled - Whether buttons are disabled (e.g., already submitted)
+ * @param messageId - ID of the rated message
+ * @param onFeedback - Callback with (messageId, isPositive)
+ * @param disabled - Whether already submitted
  */
 
 interface AIFeedbackButtonsProps {
@@ -27,16 +24,16 @@ export function AIFeedbackButtons({
   disabled = false
 }: AIFeedbackButtonsProps) {
   return (
-    <div className="px-4 py-2 border-t flex items-center gap-2">
-      <span className="text-xs text-gray-500">Was this helpful?</span>
+    <div className="px-4 py-1.5 flex items-center gap-1.5">
+      <span className="text-2xs text-muted-foreground">Helpful?</span>
       <Button
         variant="ghost"
         size="sm"
         onClick={() => onFeedback(messageId, true)}
         disabled={disabled}
-        className="h-6 px-2 text-xs"
+        className="h-5 px-1.5 text-2xs text-muted-foreground hover:text-emerald-600"
       >
-        <ThumbsUp className="w-3 h-3 mr-1" />
+        <ThumbsUp className="w-2.5 h-2.5 mr-0.5" />
         Yes
       </Button>
       <Button
@@ -44,9 +41,9 @@ export function AIFeedbackButtons({
         size="sm"
         onClick={() => onFeedback(messageId, false)}
         disabled={disabled}
-        className="h-6 px-2 text-xs"
+        className="h-5 px-1.5 text-2xs text-muted-foreground hover:text-red-600"
       >
-        <ThumbsDown className="w-3 h-3 mr-1" />
+        <ThumbsDown className="w-2.5 h-2.5 mr-0.5" />
         No
       </Button>
     </div>

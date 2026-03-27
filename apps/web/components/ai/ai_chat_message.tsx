@@ -2,19 +2,19 @@
 
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Brain, User } from 'lucide-react';
+import { Bot, User } from 'lucide-react';
 import { MarkdownRenderer } from '@/ai/components/chat/markdown-renderer';
 
 /**
- * AI Chat Message Component
+ * AI Chat Message Component - ChatGPT-inspired clean design
  *
- * Displays a single message in an AI chat interface with role-based styling,
- * avatar, timestamp, and optional metadata badges.
+ * Full-width message rows with subtle role distinction.
+ * No bubble design - clean, flat, information-dense.
  *
- * @param message - Message object containing role, content, timestamp, and optional metadata
- * @param themeColor - Primary theme color for assistant messages (default: 'blue')
- * @param metadataIcon - Custom icon for metadata badge
- * @param metadataLabel - Custom label for metadata badge
+ * @param message - Message object with role, content, timestamp, metadata
+ * @param themeColor - Accent color theme for assistant indicator
+ * @param metadataIcon - Icon for metadata badge
+ * @param metadataLabel - Label text for metadata badge
  */
 
 export interface Message {
@@ -38,26 +38,10 @@ interface AIChatMessageProps {
 }
 
 const themeColorMap = {
-  blue: {
-    avatar: 'bg-blue-100',
-    icon: 'text-blue-600',
-    badge: 'bg-blue-50 border-blue-300'
-  },
-  green: {
-    avatar: 'bg-green-100',
-    icon: 'text-green-600',
-    badge: 'bg-green-50 border-green-300'
-  },
-  purple: {
-    avatar: 'bg-purple-100',
-    icon: 'text-purple-600',
-    badge: 'bg-purple-50 border-purple-300'
-  },
-  orange: {
-    avatar: 'bg-orange-100',
-    icon: 'text-orange-600',
-    badge: 'bg-orange-50 border-orange-300'
-  }
+  blue: { icon: 'text-blue-600', bg: 'bg-blue-50', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
+  green: { icon: 'text-emerald-600', bg: 'bg-emerald-50', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  purple: { icon: 'text-violet-600', bg: 'bg-violet-50', badge: 'bg-violet-50 text-violet-700 border-violet-200' },
+  orange: { icon: 'text-orange-600', bg: 'bg-orange-50', badge: 'bg-orange-50 text-orange-700 border-orange-200' }
 };
 
 export function AIChatMessage({
@@ -69,61 +53,56 @@ export function AIChatMessage({
   const colors = themeColorMap[themeColor];
 
   return (
-    <div
-      className={`flex items-start gap-3 ${
-        message.role === 'user' ? 'justify-end' : 'justify-start'
-      }`}
-    >
-      {message.role === 'assistant' && (
-        <div className={`w-8 h-8 rounded-full ${colors.avatar} flex items-center justify-center flex-shrink-0`}>
-          <Brain className={`w-4 h-4 ${colors.icon}`} />
-        </div>
-      )}
-
-      <div
-        className={`max-w-[70%] rounded-lg p-3 ${
-          message.role === 'user'
-            ? 'bg-green-500 text-white'
-            : 'bg-gray-100 text-gray-900'
-        }`}
-      >
+    <div className={`flex gap-3 py-3 ${message.role === 'assistant' ? '' : ''}`}>
+      {/* Avatar */}
+      <div className="flex-shrink-0 mt-0.5">
         {message.role === 'assistant' ? (
-          <div className="text-sm">
+          <div className={`w-6 h-6 rounded-md ${colors.bg} flex items-center justify-center`}>
+            <Bot className={`w-3.5 h-3.5 ${colors.icon}`} />
+          </div>
+        ) : (
+          <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center">
+            <User className="w-3.5 h-3.5 text-gray-500" />
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-medium text-foreground">
+            {message.role === 'assistant' ? 'AI Assistant' : 'You'}
+          </span>
+          <span className="text-2xs text-muted-foreground">
+            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+
+        {message.role === 'assistant' ? (
+          <div className="text-sm text-foreground leading-relaxed prose-sm max-w-none">
             <MarkdownRenderer content={message.content} />
           </div>
         ) : (
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          <p className="text-sm text-foreground whitespace-pre-wrap">{message.content}</p>
         )}
 
-        {/* Enhanced features metadata */}
+        {/* Metadata */}
         {message.role === 'assistant' && message.metadata && (
-          <div className="mt-2 space-y-1">
+          <div className="mt-2 flex items-center gap-2">
             {message.metadata.ragUsed && (
-              <Badge variant="secondary" className={`text-xs ${colors.badge}`}>
-                {metadataIcon && <span className="mr-1">{metadataIcon}</span>}
+              <Badge variant="outline" className={`text-2xs ${colors.badge}`}>
+                {metadataIcon && <span className="mr-0.5">{metadataIcon}</span>}
                 {metadataLabel}
               </Badge>
             )}
             {message.metadata.confidence && (
-              <div className="text-xs text-gray-500">
-                Confidence: {(message.metadata.confidence * 100).toFixed(0)}%
-              </div>
+              <span className="text-2xs text-muted-foreground">
+                {(message.metadata.confidence * 100).toFixed(0)}% confidence
+              </span>
             )}
           </div>
         )}
-
-        <p className={`text-xs mt-1 ${
-          message.role === 'user' ? 'text-green-100' : 'text-gray-500'
-        }`}>
-          {message.timestamp.toLocaleTimeString()}
-        </p>
       </div>
-
-      {message.role === 'user' && (
-        <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-          <User className="w-4 h-4 text-white" />
-        </div>
-      )}
     </div>
   );
 }

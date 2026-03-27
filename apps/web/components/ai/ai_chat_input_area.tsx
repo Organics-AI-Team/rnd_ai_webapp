@@ -6,22 +6,18 @@ import { AIFeedbackButtons } from './ai_feedback_buttons';
 import type { Message } from './ai_chat_message';
 
 /**
- * AI Chat Input Area Component
- *
- * Displays the chat input area with optional feedback buttons for the last message.
- * Renders as a separate, independent component for better modularity.
- * Reports its height to parent for spacing calculations.
+ * AI Chat Input Area - Input with optional feedback buttons
  *
  * @param input - Current input value
- * @param onInputChange - Callback when input changes
- * @param onSend - Callback when message is sent
+ * @param onInputChange - Input change callback
+ * @param onSend - Send message callback
  * @param placeholder - Input placeholder text
  * @param disabled - Whether input is disabled
- * @param messages - Array of messages (to check for last assistant message)
- * @param onFeedback - Callback when feedback is submitted
- * @param feedbackDisabled - Set of message IDs with feedback already submitted
- * @param showFeedback - Whether to show feedback buttons (default: true)
- * @param onHeightChange - Callback when input area height changes
+ * @param messages - Messages array for feedback context
+ * @param onFeedback - Feedback submission callback
+ * @param feedbackDisabled - Set of message IDs with feedback submitted
+ * @param showFeedback - Whether to show feedback buttons
+ * @param onHeightChange - Height change callback for parent spacing
  */
 
 interface AIChatInputAreaProps {
@@ -51,9 +47,6 @@ export function AIChatInputArea({
 }: AIChatInputAreaProps) {
   const container_ref = useRef<HTMLDivElement>(null);
 
-  /**
-   * Checks if feedback buttons should be displayed
-   */
   const should_show_feedback =
     showFeedback &&
     messages.length > 0 &&
@@ -61,34 +54,27 @@ export function AIChatInputArea({
     onFeedback;
 
   /**
-   * Measure and report container height changes
-   * Uses ResizeObserver to detect height changes dynamically
+   * Measures and reports container height changes via ResizeObserver
    */
   useEffect(() => {
     if (!container_ref.current || !onHeightChange) return;
 
     const measure_height = () => {
       if (container_ref.current) {
-        const height = container_ref.current.offsetHeight;
-        onHeightChange(height);
+        onHeightChange(container_ref.current.offsetHeight);
       }
     };
 
-    // Initial measurement
     measure_height();
 
-    // Observe size changes
     const resize_observer = new ResizeObserver(measure_height);
     resize_observer.observe(container_ref.current);
 
-    return () => {
-      resize_observer.disconnect();
-    };
+    return () => { resize_observer.disconnect(); };
   }, [onHeightChange, should_show_feedback]);
 
   return (
     <div ref={container_ref}>
-      {/* Feedback buttons for last assistant message */}
       {should_show_feedback && (
         <AIFeedbackButtons
           messageId={messages[messages.length - 1].id}
@@ -96,8 +82,6 @@ export function AIChatInputArea({
           disabled={feedbackDisabled.has(messages[messages.length - 1].id)}
         />
       )}
-
-      {/* Input */}
       <AIChatInput
         value={input}
         onChange={onInputChange}

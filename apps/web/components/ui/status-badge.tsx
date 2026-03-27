@@ -6,27 +6,20 @@ interface StatusBadgeProps {
 }
 
 const defaultStatusConfig = {
-  // Order statuses
-  pending: { label: "รอดำเนินการ", className: "bg-yellow-100 text-yellow-800" },
-  processing: { label: "กำลังดำเนินการ", className: "bg-blue-100 text-blue-800" },
-  completed: { label: "เสร็จสิ้น", className: "bg-green-100 text-green-800" },
-  cancelled: { label: "ยกเลิก", className: "bg-red-100 text-red-800" },
-
-  // Formula statuses
-  draft: { label: "ฉบับร่าง", className: "bg-gray-100 text-gray-800" },
-  testing: { label: "ทดสอบ", className: "bg-yellow-100 text-yellow-800" },
-  approved: { label: "อนุมัติ", className: "bg-green-100 text-green-800" },
-  rejected: { label: "ปฏิเสธ", className: "bg-red-100 text-red-800" },
-
-  // User roles
-  admin: { label: "ผู้ดูแลระบบ", className: "bg-blue-100 text-blue-800" },
-  shipper: { label: "พนักงานจัดส่ง", className: "bg-green-100 text-green-800" },
-  member: { label: "พนักงานจัดซื้อ", className: "bg-purple-100 text-purple-800" },
-
-  // General statuses
-  active: { label: "ใช้งานอยู่", className: "bg-green-100 text-green-800" },
-  inactive: { label: "ไม่ใช้งาน", className: "bg-gray-100 text-gray-800" },
-  archived: { label: "เก็บถาวร", className: "bg-gray-100 text-gray-800" },
+  pending: { label: "Pending", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  processing: { label: "Processing", className: "bg-blue-50 text-blue-700 border-blue-200" },
+  completed: { label: "Completed", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  cancelled: { label: "Cancelled", className: "bg-red-50 text-red-700 border-red-200" },
+  draft: { label: "Draft", className: "bg-gray-50 text-gray-600 border-gray-200" },
+  testing: { label: "Testing", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  approved: { label: "Approved", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  rejected: { label: "Rejected", className: "bg-red-50 text-red-700 border-red-200" },
+  admin: { label: "Admin", className: "bg-blue-50 text-blue-700 border-blue-200" },
+  shipper: { label: "Shipper", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  member: { label: "Member", className: "bg-violet-50 text-violet-700 border-violet-200" },
+  active: { label: "Active", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  inactive: { label: "Inactive", className: "bg-gray-50 text-gray-600 border-gray-200" },
+  archived: { label: "Archived", className: "bg-gray-50 text-gray-600 border-gray-200" },
 };
 
 export function StatusBadge({
@@ -35,11 +28,11 @@ export function StatusBadge({
 }: StatusBadgeProps) {
   const statusInfo = statusConfig[status] || {
     label: status,
-    className: "bg-gray-100 text-gray-800"
+    className: "bg-gray-50 text-gray-600 border-gray-200"
   };
 
   return (
-    <Badge variant="secondary" className={statusInfo.className}>
+    <Badge variant="outline" className={statusInfo.className}>
       {statusInfo.label}
     </Badge>
   );

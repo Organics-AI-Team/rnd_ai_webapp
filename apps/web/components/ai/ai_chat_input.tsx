@@ -3,19 +3,16 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send } from 'lucide-react';
+import { ArrowUp } from 'lucide-react';
 
 /**
- * AI Chat Input Component
- *
- * Provides an input area with a send button for AI chat interfaces.
- * Supports Enter key to send (Shift+Enter for new line).
+ * AI Chat Input Component - ChatGPT-style clean input
  *
  * @param value - Current input value
- * @param onChange - Callback when input changes
- * @param onSend - Callback when message is sent
- * @param placeholder - Placeholder text for input
- * @param disabled - Whether input is disabled (e.g., during loading)
+ * @param onChange - Input change callback
+ * @param onSend - Send message callback
+ * @param placeholder - Placeholder text
+ * @param disabled - Whether input is disabled during loading
  */
 
 interface AIChatInputProps {
@@ -34,9 +31,9 @@ export function AIChatInput({
   disabled = false
 }: AIChatInputProps) {
   /**
-   * Handles key down events in textarea
-   * - Enter (without Shift): Send message
-   * - Shift+Enter: New line
+   * Handles keyboard events - Enter sends, Shift+Enter adds newline
+   *
+   * @param e - Keyboard event from textarea
    */
   const handle_key_down = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -48,22 +45,24 @@ export function AIChatInput({
   };
 
   return (
-    <div className="p-4 border-t">
-      <div className="flex gap-2">
+    <div className="px-4 py-3">
+      <div className="relative flex items-end gap-2 max-w-3xl mx-auto">
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="flex-1 min-h-[60px] resize-none"
+          className="flex-1 min-h-[40px] max-h-[120px] resize-none rounded-lg border-border bg-background text-sm py-2.5 px-3 pr-10"
           onKeyDown={handle_key_down}
           disabled={disabled}
+          rows={1}
         />
         <Button
           onClick={onSend}
           disabled={!value.trim() || disabled}
-          className="px-4"
+          size="icon"
+          className="absolute right-1.5 bottom-1.5 h-7 w-7 rounded-md"
         >
-          <Send className="w-4 h-4" />
+          <ArrowUp className="w-3.5 h-3.5" />
         </Button>
       </div>
     </div>

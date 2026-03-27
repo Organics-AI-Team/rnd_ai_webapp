@@ -1,16 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Brain } from 'lucide-react';
+import { Bot } from 'lucide-react';
 
 /**
- * AI Loading Indicator Component
+ * AI Loading Indicator Component - Subtle, clean typing indicator
  *
- * Displays an animated loading state with bouncing dots and custom message.
- * Used to indicate AI is processing a request.
- *
- * @param message - Loading message to display (default: 'Thinking...')
- * @param themeColor - Theme color for avatar background (default: 'blue')
+ * @param message - Loading message text
+ * @param themeColor - Theme color for the bot avatar
  */
 
 interface AILoadingIndicatorProps {
@@ -19,22 +16,10 @@ interface AILoadingIndicatorProps {
 }
 
 const themeColorMap = {
-  blue: {
-    avatar: 'bg-blue-100',
-    icon: 'text-blue-600'
-  },
-  green: {
-    avatar: 'bg-green-100',
-    icon: 'text-green-600'
-  },
-  purple: {
-    avatar: 'bg-purple-100',
-    icon: 'text-purple-600'
-  },
-  orange: {
-    avatar: 'bg-orange-100',
-    icon: 'text-orange-600'
-  }
+  blue: { bg: 'bg-blue-50', icon: 'text-blue-600' },
+  green: { bg: 'bg-emerald-50', icon: 'text-emerald-600' },
+  purple: { bg: 'bg-violet-50', icon: 'text-violet-600' },
+  orange: { bg: 'bg-orange-50', icon: 'text-orange-600' }
 };
 
 export function AILoadingIndicator({
@@ -44,19 +29,17 @@ export function AILoadingIndicator({
   const colors = themeColorMap[themeColor];
 
   return (
-    <div className="flex items-start gap-3">
-      <div className={`w-8 h-8 rounded-full ${colors.avatar} flex items-center justify-center flex-shrink-0`}>
-        <Brain className={`w-4 h-4 ${colors.icon}`} />
+    <div className="flex items-start gap-3 py-3">
+      <div className={`w-6 h-6 rounded-md ${colors.bg} flex items-center justify-center flex-shrink-0`}>
+        <Bot className={`w-3.5 h-3.5 ${colors.icon}`} />
       </div>
-      <div className="bg-gray-100 rounded-lg p-3">
-        <div className="flex items-center gap-2">
-          <div className="flex space-x-1">
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-          </div>
-          <span className="text-sm text-gray-600">{message}</span>
+      <div className="flex items-center gap-2 pt-1">
+        <div className="flex space-x-1">
+          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce"></div>
+          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{animationDelay: '0.15s'}}></div>
+          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" style={{animationDelay: '0.3s'}}></div>
         </div>
+        <span className="text-xs text-muted-foreground">{message}</span>
       </div>
     </div>
   );

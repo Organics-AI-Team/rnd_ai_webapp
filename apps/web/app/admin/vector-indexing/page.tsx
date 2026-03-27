@@ -76,26 +76,26 @@ export default function VectorIndexingPage() {
             <div className="text-center p-4 bg-gray-50 rounded-lg">
               <div className="text-2xl font-bold text-purple-600">
                 {statsQuery.data?.success ?
-                  Math.round((statsQuery.data.indexedCount / statsQuery.data.mongoDBCount) * 100) : '...'
+                  Math.round(((statsQuery.data as any).indexedCount / (statsQuery.data as any).mongoDBCount) * 100) : '...'
                 }%
               </div>
               <div className="text-sm text-gray-600">Indexing Progress</div>
             </div>
           </div>
 
-          {statsQuery.data?.success && statsQuery.data.indexedCount < statsQuery.data.mongoDBCount && (
+          {statsQuery.data?.success && (statsQuery.data as any).indexedCount < (statsQuery.data as any).mongoDBCount && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center space-x-2 text-yellow-800">
                 <AlertCircle className="w-5 h-5" />
                 <span className="font-medium">Indexing Incomplete</span>
               </div>
               <p className="text-sm text-yellow-700 mt-1">
-                {statsQuery.data.mongoDBCount - statsQuery.data.indexedCount} documents still need to be indexed.
+                {(statsQuery.data as any).mongoDBCount - (statsQuery.data as any).indexedCount} documents still need to be indexed.
               </p>
             </div>
           )}
 
-          {statsQuery.data?.success && statsQuery.data.indexedCount >= statsQuery.data.mongoDBCount && (
+          {statsQuery.data?.success && (statsQuery.data as any).indexedCount >= (statsQuery.data as any).mongoDBCount && (
             <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex items-center space-x-2 text-green-800">
                 <CheckCircle className="w-5 h-5" />

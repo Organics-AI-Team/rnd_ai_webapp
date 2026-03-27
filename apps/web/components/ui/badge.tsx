@@ -4,26 +4,26 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@rnd-ai/shared-utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center rounded-md border px-1.5 py-0.5 text-2xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   {
     variants: {
       variant: {
         default:
-          "border-gray-300 bg-primary text-primary-foreground hover:bg-primary/80",
+          "border-transparent bg-primary text-primary-foreground",
         secondary:
-          "border-gray-300 bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "border-transparent bg-secondary text-secondary-foreground",
         destructive:
-          "border-red-600 bg-destructive text-destructive-foreground hover:bg-destructive/80",
-        outline: "text-foreground",
-        line: "bg-green-100 text-green-700 border-green-300",
-        shopee: "bg-orange-100 text-orange-700 border-orange-300",
-        lazada: "bg-blue-100 text-blue-700 border-blue-300",
-        other: "bg-gray-100 text-gray-700 border-gray-300",
-        pending: "bg-yellow-500 text-white border-yellow-600",
-        processing: "bg-blue-500 text-white border-blue-600",
-        sent_to_logistic: "bg-purple-500 text-white border-purple-600",
-        delivered: "bg-line text-white border-line-dark",
-        cancelled: "bg-red-500 text-white border-red-600",
+          "border-transparent bg-destructive text-destructive-foreground",
+        outline: "text-foreground border-border",
+        line: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        shopee: "bg-orange-50 text-orange-700 border-orange-200",
+        lazada: "bg-blue-50 text-blue-700 border-blue-200",
+        other: "bg-gray-50 text-gray-600 border-gray-200",
+        pending: "bg-amber-50 text-amber-700 border-amber-200",
+        processing: "bg-blue-50 text-blue-700 border-blue-200",
+        sent_to_logistic: "bg-violet-50 text-violet-700 border-violet-200",
+        delivered: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        cancelled: "bg-red-50 text-red-700 border-red-200",
       },
     },
     defaultVariants: {

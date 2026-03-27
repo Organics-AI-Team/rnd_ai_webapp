@@ -7,7 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
+import { Package } from "lucide-react";
 
+/**
+ * Login page - Cloudflare-style clean authentication form
+ *
+ * Minimal, centered card with email/password fields
+ */
 export default function LoginPage() {
   const { login, isLoading } = useAuth();
   const [email, setEmail] = useState("");
@@ -15,6 +21,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /**
+   * Handles form submission for user authentication
+   *
+   * @param e - Form submit event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -23,7 +34,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
     } catch (err: any) {
-      setError(err.message || "เข้าสู่ระบบไม่สำเร็จ");
+      setError(err.message || "Login failed");
     } finally {
       setIsSubmitting(false);
     }
@@ -32,71 +43,76 @@ export default function LoginPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p>กำลังโหลด...</p>
+        <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <Card className="w-full max-w-md rounded-xl">
-        <CardHeader className="space-y-1 p-4 md:p-6">
-          <CardTitle className="text-xl md:text-2xl font-bold text-center">
-            เข้าสู่ระบบ
-          </CardTitle>
-          <p className="text-sm text-gray-500 text-center">
-            กรอกอีเมลและรหัสผ่านเพื่อเข้าสู่ระบบ
-          </p>
-        </CardHeader>
-        <CardContent className="p-4 md:p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">อีเมล</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
+    <div className="min-h-screen flex items-center justify-center bg-muted p-4">
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <div className="w-8 h-8 rounded-lg bg-sidebar-bg flex items-center justify-center">
+            <Package size={16} className="text-orange-500" />
+          </div>
+          <span className="text-base font-semibold text-foreground">R&D AI</span>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">รหัสผ่าน</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-
-            {error && (
-              <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md">
-                {error}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-center">Sign in to your account</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-2">
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
               </div>
-            )}
 
-            <Button
-              type="submit"
-              className="w-full bg-line hover:bg-line-dark"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
-            </Button>
+              <div className="space-y-1.5">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
 
-            <div className="text-center text-sm">
-              <span className="text-gray-500">ยังไม่มีบัญชี? </span>
-              <Link href="/signup" className="text-line hover:underline font-medium">
-                ลงทะเบียน
-              </Link>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+              {error && (
+                <div className="px-2.5 py-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-md">
+                  {error}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Signing in..." : "Sign in"}
+              </Button>
+
+              <div className="text-center text-xs">
+                <span className="text-muted-foreground">No account? </span>
+                <Link href="/signup" className="text-primary hover:underline font-medium">
+                  Create one
+                </Link>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

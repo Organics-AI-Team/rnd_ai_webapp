@@ -8,23 +8,19 @@ import { AIEmptyState } from './ai_empty_state';
 import type { Message } from './ai_chat_message';
 
 /**
- * AI Chat Messages Area Component
+ * AI Chat Messages Area - Scrollable message list with empty/loading states
  *
- * Displays the scrollable chat messages area with empty state, messages list, and loading indicator.
- * Renders as a separate, independent component for better modularity.
- * Optimized for maximum space utilization with sticky input.
- *
- * @param messages - Array of chat messages to display
- * @param isLoading - Whether AI is currently processing
- * @param themeColor - Theme color for messages and loading indicator
+ * @param messages - Array of chat messages
+ * @param isLoading - Whether AI is processing
+ * @param themeColor - Theme color for messages
  * @param emptyStateIcon - Icon for empty state
- * @param emptyStateGreeting - Greeting message when no messages
- * @param emptyStateSuggestions - Array of suggestions for empty state
- * @param loadingMessage - Loading indicator message
- * @param metadataIcon - Icon for message metadata badge
- * @param metadataLabel - Label for message metadata badge
- * @param inputAreaHeight - Height of input area in pixels (deprecated - no longer used)
- * @param bottomPadding - Small gap between messages and sticky input (default: 16)
+ * @param emptyStateGreeting - Empty state greeting text
+ * @param emptyStateSuggestions - Suggestion strings for empty state
+ * @param loadingMessage - Loading indicator text
+ * @param metadataIcon - Icon for message metadata
+ * @param metadataLabel - Label for message metadata
+ * @param inputAreaHeight - Deprecated, unused
+ * @param bottomPadding - Bottom spacing in pixels
  */
 
 interface AIChatMessagesAreaProps {
@@ -51,22 +47,13 @@ export function AIChatMessagesArea({
   loadingMessage = 'Thinking...',
   metadataIcon,
   metadataLabel = 'Enhanced',
-  inputAreaHeight = 0,
   bottomPadding = 16
 }: AIChatMessagesAreaProps) {
-  /**
-   * Calculate minimal bottom spacing to prevent overlap with sticky input
-   * Since input is sticky with its own background, we only need small gap
-   */
-  const calculated_bottom_spacing = bottomPadding;
-
   return (
-    <ScrollArea className="flex-1 px-4 pt-4">
+    <ScrollArea className="flex-1 px-4 pt-2">
       <div
-        className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "space-y-4"}
-        style={{
-          paddingBottom: `${calculated_bottom_spacing}px`
-        }}
+        className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "divide-y divide-border/50"}
+        style={{ paddingBottom: `${bottomPadding}px` }}
       >
         {messages.length === 0 ? (
           <AIEmptyState
