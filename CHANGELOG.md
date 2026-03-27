@@ -1,5 +1,48 @@
 # Changelog
 
+## [2026-03-27] Add ReAct Agent Tool Handlers (qdrant, mongo, formula, web, memory)
+
+### Summary
+- Created `apps/ai/agents/react/tool-handlers/` directory with 5 handler files that
+  implement the ReAct agent tools declared in `tool-definitions.ts`.
+
+### Planning / Approach
+- Read `tool-definitions.ts` to understand the 5 tool contracts (ReactToolName union).
+- Read `qdrant-service.ts` to confirm `get_qdrant_service()` singleton + `search()` API.
+- Read `qdrant-config.ts` to confirm `get_search_defaults()` signature.
+- Read `universal-embedding-service.ts` to confirm `createEmbeddingService()` factory.
+- Reused `MongoClient` caching pattern (module-level Map keyed by URI) in both
+  `mongo-query-handler` and `context-memory-handler` to avoid connection churn.
+- All files: snake_case names, JSDoc on every function, console.log entry/exit.
+
+### Files Created
+- `apps/ai/agents/react/tool-handlers/qdrant-search-handler.ts` — NEW
+  - Generates query embedding via `createEmbeddingService()`
+  - Builds Qdrant `must` filter from `params.filters`
+  - Calls `QdrantService.search()` with resolved top_k / score_threshold
+  - Returns formatted string: score%, code, trade_name, INCI, supplier, cost, benefits, stock_status
+- `apps/ai/agents/react/tool-handlers/mongo-query-handler.ts` — NEW
+  - Dispatches find / findOne / aggregate / count operations
+  - URI routing: database==='raw_materials' → RAW_MATERIALS_REAL_STOCK_MONGODB_URI, else MONGODB_URI
+  - MongoClient cached per URI in module-level Map; max 20 results cap
+  - Returns JSON stringified results with context header
+- `apps/ai/agents/react/tool-handlers/formula-calc-handler.ts` — NEW
+  - Pure math; no external deps
+  - Operations: batch_cost, scale_formula, unit_convert, ingredient_percentage
+  - Unit-to-grams map: g=1, kg=1000, lb=453.592, ton=1_000_000, oz=28.3495, ml=1, l=1000
+  - Handles unit aliases (litre, gram, kilogram, ounce, etc.)
+- `apps/ai/agents/react/tool-handlers/web-search-handler.ts` — NEW
+  - Calls Google Custom Search API when GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CSE_ID set
+  - Gracefully degrades to training-data fallback when credentials absent
+  - Uses native fetch with AbortSignal.timeout(15s)
+- `apps/ai/agents/react/tool-handlers/context-memory-handler.ts` — NEW
+  - Queries rnd_ai.conversations + rnd_ai.raw_materials_conversations in parallel
+  - Normalises 3 document shapes (messages[], conversation[], flat role+content)
+  - Merges and sorts by timestamp; trims to lookback (default: 10, max: 50)
+  - Returns [ROLE]: content formatted turns
+
+---
+
 ## [2026-03-27] Tasks 18 & 19: Delete ChromaDB files + update RAG config for Qdrant
 
 ### Summary
