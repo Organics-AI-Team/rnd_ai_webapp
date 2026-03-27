@@ -26,7 +26,7 @@ export interface HybridSearchResult {
   match_type: 'exact' | 'fuzzy' | 'semantic' | 'metadata' | 'hybrid';
   confidence: number;
   matched_fields: string[];
-  source: 'mongodb' | 'pinecone';
+  source: 'mongodb' | 'qdrant';
 }
 
 export interface HybridSearchOptions extends Partial<RAGConfig> {
@@ -42,7 +42,7 @@ export interface HybridSearchOptions extends Partial<RAGConfig> {
     semantic: number;
     metadata: number;
   };
-  pinecone_namespace?: string; // Support for Qdrant namespaces
+  qdrant_collection?: string; // Support for Qdrant namespaces
   mongodb_collection?: string; // Support for MongoDB collection selection
   metadata_filters?: any; // Additional metadata filters
 }
@@ -271,7 +271,7 @@ export class HybridSearchService extends QdrantRAGService {
       const filters: any = options.metadata_filters || {};
 
       // Add default source filter if not provided
-      if (!filters.source && !options.pinecone_namespace) {
+      if (!filters.source && !options.qdrant_collection) {
         filters.source = 'raw_materials_real_stock';
       }
 
@@ -286,7 +286,7 @@ export class HybridSearchService extends QdrantRAGService {
       const results = await this.searchSimilar(query, {
         ...options,
         filter: filters,
-        namespace: options.pinecone_namespace,
+        namespace: options.qdrant_collection,
         topK: options.topK || 10,
         similarityThreshold: 0.6 // Lower threshold for metadata search
       });
@@ -299,7 +299,7 @@ export class HybridSearchService extends QdrantRAGService {
         match_type: 'metadata' as const,
         confidence: 0.8,
         matched_fields: ['metadata'],
-        source: 'pinecone' as const
+        source: 'qdrant' as const
       }));
     } catch (error) {
       console.error('❌ [metadata-filter] Error:', error);
@@ -392,7 +392,7 @@ export class HybridSearchService extends QdrantRAGService {
         // Limit to top 3 expansions
         const results = await this.searchSimilar(expanded_query, {
           ...options,
-          namespace: options.pinecone_namespace,
+          namespace: options.qdrant_collection,
           filter: options.metadata_filters,
           topK: options.topK || 5,
           similarityThreshold: options.similarityThreshold || 0.5
@@ -415,7 +415,7 @@ export class HybridSearchService extends QdrantRAGService {
         match_type: 'semantic' as const,
         confidence: 0.7,
         matched_fields: ['semantic'],
-        source: 'pinecone' as const
+        source: 'qdrant' as const
       }));
     } catch (error) {
       console.error('❌ [semantic-search] Error:', error);

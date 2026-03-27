@@ -149,9 +149,9 @@ export class CosmeticKnowledgeService {
   private searchService: EnhancedHybridSearchService;
   private knowledgeSources: Map<string, CosmeticKnowledgeSource> = new Map();
 
-  constructor(pineconeApiKey: string) {
+  constructor(apiKey: string = '') {
     this.searchService = new EnhancedHybridSearchService(
-      pineconeApiKey,
+      apiKey, // Legacy param kept for backward compat; not used by Qdrant
       process.env.MONGODB_URI || '',
       process.env.MONGODB_DB_NAME || 'rnd_cosmetics',
       'raw_materials',

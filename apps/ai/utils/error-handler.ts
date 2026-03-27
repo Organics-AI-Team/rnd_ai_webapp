@@ -117,7 +117,7 @@ export class ErrorHandler {
    * try {
    *   await riskyOperation();
    * } catch (error) {
-   *   return ErrorHandler.handle(error, 'PineconeService');
+   *   return ErrorHandler.handle(error, 'QdrantService');
    * }
    */
   static handle(error: unknown, context: string): ErrorResult {
@@ -155,7 +155,7 @@ export class ErrorHandler {
    *   await database.query();
    * } catch (error) {
    *   ErrorHandler.wrap(error, 'Failed to query database', ErrorType.DATABASE_ERROR, {
-   *     service: 'PineconeService',
+   *     service: 'QdrantService',
    *     query: 'search'
    *   });
    * }
@@ -263,7 +263,7 @@ export class ErrorHandler {
     if (
       message.includes('database') ||
       message.includes('mongodb') ||
-      message.includes('pinecone') ||
+      message.includes('qdrant') ||
       message.includes('connection')
     ) {
       return ErrorType.DATABASE_ERROR;

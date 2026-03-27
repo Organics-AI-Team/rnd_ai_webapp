@@ -625,7 +625,7 @@ export async function GET(request: NextRequest) {
             qualityScoring: '35% improvement in overall quality',
             regulatoryCompliance: 'Real-time compliance checking',
             sourceCredibility: 'Weighted source evaluation',
-            responseReranking: 'Pinecone semantic reranking',
+            responseReranking: 'Qdrant semantic reranking',
             thresholds: 'Cosmetic-specific quality standards'
           },
           timestamp: new Date().toISOString()
