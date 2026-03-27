@@ -8,9 +8,10 @@
  *   - Document preparation, batch indexing, and result formatting
  *
  * Service name → Qdrant collection mapping:
- *   rawMaterialsAllAI  → raw_materials_fda
- *   rawMaterialsAI     → raw_materials_console
- *   salesRndAI         → sales_rnd
+ *   rawMaterialsAllAI      → raw_materials_fda
+ *   rawMaterialsAI         → raw_materials_console
+ *   salesRndAI             → sales_rnd
+ *   rawMaterialsMySkinAI   → raw_materials_myskin
  *
  * @author AI Management System
  * @date 2026-03-27
@@ -94,6 +95,7 @@ export type RAGServicesConfig = {
   rawMaterialsAllAI: unknown;
   rawMaterialsAI: unknown;
   salesRndAI: unknown;
+  rawMaterialsMySkinAI: unknown;
   [key: string]: unknown;
 };
 
@@ -109,6 +111,7 @@ const SERVICE_COLLECTION_MAP: Record<string, string> = {
   rawMaterialsAllAI: 'raw_materials_fda',
   rawMaterialsAI: 'raw_materials_console',
   salesRndAI: 'sales_rnd',
+  rawMaterialsMySkinAI: 'raw_materials_myskin',
 };
 
 /**
@@ -118,6 +121,7 @@ const SERVICE_DEFAULTS: Record<string, Omit<RAGSearchConfig, 'filter' | 'collect
   rawMaterialsAllAI: { topK: 5, similarityThreshold: 0.7, includeMetadata: true },
   rawMaterialsAI: { topK: 5, similarityThreshold: 0.7, includeMetadata: true },
   salesRndAI: { topK: 8, similarityThreshold: 0.65, includeMetadata: true },
+  rawMaterialsMySkinAI: { topK: 5, similarityThreshold: 0.7, includeMetadata: true },
 };
 
 /**

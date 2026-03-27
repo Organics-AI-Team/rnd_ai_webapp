@@ -8,16 +8,18 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { separatedSearchTools } from './tools/separated-search-tools';
+import { myskinSearchTools } from './tools/myskin-search-tools';
 
 // Define the state schema for our agent workflow
 export const RawMaterialsStateSchema = z.object({
   messages: z.array(z.any()),
   query: z.string().optional(),
-  queryType: z.enum(['search', 'stock_check', 'profile', 'usecase_search', 'general']).optional(),
+  queryType: z.enum(['search', 'stock_check', 'profile', 'usecase_search', 'myskin_search', 'general']).optional(),
   searchResults: z.array(z.any()).optional(),
   stockResults: z.array(z.any()).optional(),
   profileResults: z.array(z.any()).optional(),
   usecaseResults: z.array(z.any()).optional(),
+  myskinResults: z.array(z.any()).optional(),
   needsTools: z.boolean().optional(),
   toolCalls: z.array(z.any()).optional(),
   response: z.string().optional(),
@@ -49,7 +51,12 @@ export class LangGraphRawMaterialsAgent {
       search_fda_database: separatedSearchTools.search_fda_database,
       check_stock_availability: separatedSearchTools.check_stock_availability,
       get_material_profile: separatedSearchTools.get_material_profile,
-      search_materials_by_usecase: separatedSearchTools.search_materials_by_usecase
+      search_materials_by_usecase: separatedSearchTools.search_materials_by_usecase,
+      // MySkin tools
+      search_myskin_materials: myskinSearchTools.search_myskin_materials,
+      get_myskin_material_detail: myskinSearchTools.get_myskin_material_detail,
+      browse_myskin_categories: myskinSearchTools.browse_myskin_categories,
+      compare_myskin_materials: myskinSearchTools.compare_myskin_materials,
     };
 
     // Build the state graph

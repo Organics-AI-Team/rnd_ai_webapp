@@ -10,6 +10,7 @@ import { CosmeticCredibilityWeightingService } from '@/ai/services/credibility/c
 import { ResponseReranker } from '@/ai/services/response/response-reranker';
 import { get_tool_registry } from '../core/tool-registry';
 import { separatedSearchTools } from './tools/separated-search-tools';
+import { myskinSearchTools } from './tools/myskin-search-tools';
 
 // Initialize services
 let knowledgeService: CosmeticKnowledgeService | null = null;

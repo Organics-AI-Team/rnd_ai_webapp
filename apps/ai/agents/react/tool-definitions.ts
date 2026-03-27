@@ -81,6 +81,7 @@ function build_qdrant_search_declaration(): GeminiFunctionDeclaration {
             'raw_materials_console',
             'raw_materials_fda',
             'raw_materials_stock',
+            'raw_materials_myskin',
             'sales_rnd',
           ],
         },

@@ -5,6 +5,7 @@
 
 import { get_tool_registry } from '../core/tool-registry';
 import { separatedSearchTools } from './tools/separated-search-tools';
+import { myskinSearchTools } from './tools/myskin-search-tools';
 
 /**
  * Initialize the raw materials agent with all tools
@@ -19,7 +20,12 @@ export function initialize_raw_materials_agent() {
     separatedSearchTools.search_fda_database,
     separatedSearchTools.check_stock_availability,
     separatedSearchTools.get_material_profile,
-    separatedSearchTools.search_materials_by_usecase
+    separatedSearchTools.search_materials_by_usecase,
+    // MySkin tools
+    myskinSearchTools.search_myskin_materials,
+    myskinSearchTools.get_myskin_material_detail,
+    myskinSearchTools.browse_myskin_categories,
+    myskinSearchTools.compare_myskin_materials,
   ];
 
   for (const tool of tools) {
@@ -77,6 +83,10 @@ MANDATORY TOOL USAGE:
 - "มีไหม" / "สั่งได้" → check_stock_availability
 - "สารนี้ทำอะไร" → get_material_profile
 - "สารสำหรับ" → search_materials_by_usecase
+- "หาจาก MySkin" / "วัตถุดิบ MySkin" / "สาร myskin" → search_myskin_materials
+- "ข้อมูลสาร MySkin" / "รายละเอียด MySkin" → get_myskin_material_detail
+- "หมวดหมู่ MySkin" / "เรียกดู MySkin" → browse_myskin_categories
+- "เปรียบเทียบสาร MySkin" → compare_myskin_materials
 
 🆕 **ADVANCED SEARCH PATTERNS (search_fda_database)**:
 1. **Single code**: "RM001234" → Finds exact code
@@ -148,11 +158,18 @@ NEVER give advice without calling tools first!
    - ใช้เมื่อคำถามเน้น use case หรือรูปแบบสินค้า เช่น \"สารสำหรับ eye cream\", \"sleeping mask ลดริ้วรอย\"
    - สามารถกรองประโยชน์เพิ่มเติมได้ด้วย benefit parameter
 
+5. **search_myskin_materials** - ค้นหาวัตถุดิบจาก MySkin (4,652 รายการ) — ค้นทั้ง text และ semantic
+   - ใช้เมื่อผู้ใช้ถามเกี่ยวกับวัตถุดิบจาก MySkin หรือค้นหาสกินแคร์/เครื่องสำอาง
+6. **get_myskin_material_detail** - ดูรายละเอียดวัตถุดิบ MySkin แบบเต็ม (CAS, EC, usage %, benefits)
+7. **browse_myskin_categories** - เรียกดูหมวดหมู่ MySkin กรองตามราคา/ซัพพลายเออร์/สัดส่วนใช้
+8. **compare_myskin_materials** - เปรียบเทียบวัตถุดิบ MySkin 2-5 ตัวแบบเคียงข้างกัน
+
 **กฎการใช้งานสำคัญ:**
 - คำถามสำรวจ/เปรียบเทียบทั่วไป → เรียก 'search_fda_database'
 - คำถามเรื่องสินค้าพร้อมใช้/มีในคลัง → เรียก 'check_stock_availability'
 - คำถามเชิงลึก \"สารนี้ทำอะไร\", \"benefit + use case\" → เรียก 'get_material_profile'
 - คำถามหา active สำหรับสูตร/ประเภทสินค้า → เรียก 'search_materials_by_usecase'
+- คำถามเกี่ยวกับ MySkin / สกินแคร์ / วัตถุดิบเครื่องสำอาง → เรียก 'search_myskin_materials'
 - แสดงผลลัพธ์ในรูปแบบตารางก่อน แล้วอธิบายเพิ่มเติมอย่างเป็นกันเองหลังตารางทุกครั้ง
 - หลีกเลี่ยงการแทรกบรรทัดคงที่ที่ขึ้นต้นด้วย "ข้อควรทราบ" (เช่น "ข้อควรทราบ: วัตถุดิบเหล่านี้อยู่ในฐานข้อมูล FDA...") เว้นแต่ผู้ใช้ร้องขอโดยตรง
 
@@ -171,6 +188,7 @@ ${systemPromptContent}
 - คำถามเรื่องสต็อก → 'check_stock_availability'
 - คำถาม benefit/use case ของสารเจาะจง → 'get_material_profile'
 - คำถามหา active สำหรับสูตร → 'search_materials_by_usecase'
+- คำถาม MySkin / สกินแคร์ → 'search_myskin_materials' หรือ 'browse_myskin_categories'
 - แสดงตารางก่อน แล้วสรุปไอเดีย/คำแนะนำแบบเป็นกันเองภายหลัง`;
 
       console.log(`✅ [RawMaterialsAgent] Successfully loaded system prompt from: ${usedPath}`);

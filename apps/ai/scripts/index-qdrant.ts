@@ -38,7 +38,7 @@ import { QDRANT_COLLECTIONS } from '../config/qdrant-config';
  * Each key selects both the embedding defaults and the target collection
  * inside QdrantRAGService.
  */
-type RagServiceName = 'rawMaterialsAllAI' | 'rawMaterialsAI' | 'salesRndAI';
+type RagServiceName = 'rawMaterialsAllAI' | 'rawMaterialsAI' | 'salesRndAI' | 'rawMaterialsMySkinAI';
 
 /**
  * Definition of a single indexing target mapping MongoDB source to Qdrant collection.
@@ -90,6 +90,14 @@ const INDEX_TARGETS: IndexTarget[] = [
     mongo_uri_env: 'RAW_MATERIALS_REAL_STOCK_MONGODB_URI',
     qdrant_collection: 'sales_rnd',
     rag_service_name: 'salesRndAI',
+  },
+  {
+    name: 'MySkin Raw Materials',
+    mongo_db: 'rnd_ai',
+    mongo_collection: 'raw_materials_myskin',
+    mongo_uri_env: 'MONGODB_URI',
+    qdrant_collection: 'raw_materials_myskin',
+    rag_service_name: 'rawMaterialsMySkinAI',
   },
 ];
 

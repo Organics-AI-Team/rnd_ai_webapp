@@ -1,5 +1,125 @@
 # Changelog
 
+## [2026-03-27] Feature: MySkin Search Tools — 4 AI chatbot tools for 4,652 cosmetic ingredients
+
+### Summary
+- Added 4 MySkin search tools to the raw materials AI agent:
+  1. `search_myskin_materials` — Hybrid text+semantic search across MySkin database
+  2. `get_myskin_material_detail` — Full material profile lookup with related materials
+  3. `browse_myskin_categories` — Category/supplier/cost/usage filtering with aggregation
+  4. `compare_myskin_materials` — Side-by-side comparison of 2-5 materials
+- Tools registered in all 3 agent entry points (agent.ts, langgraph-agent.ts, enhanced-raw-materials-agent.ts)
+- ReAct agent updated: `raw_materials_myskin` added to Qdrant collection enum + system prompt
+- Qdrant config: new `raw_materials_myskin` collection schema (768-dim Cosine, MySkin-specific payload indexes)
+- RAG service: `rawMaterialsMySkinAI` service name → `raw_materials_myskin` collection mapping
+- Indexing script: MySkin target added to INDEX_TARGETS for Qdrant vector indexing
+
+### Chain of Thought
+- User query → POST /api/ai/raw-materials-agent
+- ReAct agent (primary): Gemini decides tools → executes up to 5 iterations → final response
+- Fallback: GeminiToolService with function calling via tool registry
+- MySkin tools accessible from both paths:
+  - ReAct: via qdrant_search (collection=raw_materials_myskin) + mongo_query (collection=raw_materials_myskin)
+  - GeminiToolService: via registered tool definitions (search_myskin_materials, etc.)
+- Human-in-the-loop: Feedback recording only (PreferenceLearningService) — no approval gates
+
+### Files Changed
+- `apps/ai/agents/raw-materials-ai/tools/myskin-search-tools.ts` — CREATE: 4 tools + exports
+- `apps/ai/config/qdrant-config.ts` — MODIFY: Add raw_materials_myskin collection + search defaults
+- `apps/ai/scripts/index-qdrant.ts` — MODIFY: Add MySkin index target + RagServiceName
+- `apps/ai/agents/raw-materials-ai/agent.ts` — MODIFY: Import + register MySkin tools + system prompt
+- `apps/ai/agents/raw-materials-ai/langgraph-agent.ts` — MODIFY: Import + register + state schema
+- `apps/ai/agents/raw-materials-ai/enhanced-raw-materials-agent.ts` — MODIFY: Import MySkin tools
+- `apps/ai/agents/react/tool-definitions.ts` — MODIFY: Add raw_materials_myskin to qdrant_search enum
+- `apps/ai/agents/react/react-system-prompt.ts` — MODIFY: Add MySkin routing in phrase table
+- `apps/ai/services/rag/qdrant-rag-service.ts` — MODIFY: Add rawMaterialsMySkinAI service mapping
+
+---
+
+## [2026-03-27] Redesign: Cloudflare-inspired UI overhaul across entire frontend
+
+### Summary
+- Complete UI redesign to match Cloudflare dashboard aesthetic: dark sidebar, compact spacing, small text, flat design
+- Switched font from Noto Sans Thai to Inter (Google Fonts) for clean, professional appearance
+- Added comprehensive CSS design tokens (CSS variables) for colors, spacing, sidebar theme
+- Reduced all text sizes: body 13px, headers proportionally smaller, badges 10-11px
+- Dark charcoal sidebar (#1b1b1b) with orange brand accent, replacing white/green sidebar
+- Flat card design with subtle 1px borders, no gradients on metric cards
+- ChatGPT-style AI chat interface: full-width messages, no bubbles, clean avatar layout
+- Cloudflare-style data tables: compact rows, uppercase headers, subtle borders
+- Compact form inputs (h-8), buttons (h-8/h-7), and badges (rounded-md, tiny padding)
+- Consistent design language across all 40+ component files
+
+### Design Tokens Added (globals.css)
+- --sidebar-bg, --sidebar-fg, --sidebar-muted, --sidebar-accent, --sidebar-border
+- --primary (#2563eb), --muted (#f4f5f6), --border (#e5e7eb)
+- Custom scrollbar styling (6px, gray-300 thumb)
+- Font smoothing (antialiased)
+
+### Tailwind Config Changes
+- Added custom fontSize scale: 2xs (10px), xs (11px), sm (13px), base (14px)
+- Added sidebar color palette with CSS variable references
+- Added semantic color tokens: primary, secondary, destructive, muted, accent, card, popover
+- Reduced border-radius: lg=0.5rem, md=0.375rem, sm=0.25rem
+- Subtler box-shadow presets
+
+### Files Changed (37 files)
+- `apps/web/app/globals.css` — Complete CSS variables overhaul + scrollbar + font smoothing
+- `apps/web/tailwind.config.ts` — New color palette, fontSize scale, border-radius, shadows
+- `apps/web/app/layout.tsx` — Noto Sans Thai → Inter font
+- `apps/web/components/ui/button.tsx` — Compact sizing (h-8/h-7), gap-1.5, rounded-md
+- `apps/web/components/ui/card.tsx` — Flat design, px-4 py-3, text-sm titles
+- `apps/web/components/ui/input.tsx` — h-8, px-2.5, rounded-md
+- `apps/web/components/ui/badge.tsx` — px-1.5 py-0.5, text-2xs, rounded-md, pastel variants
+- `apps/web/components/ui/table.tsx` — Compact h-8 headers, uppercase, tracking-wider
+- `apps/web/components/ui/textarea.tsx` — min-h-[72px], rounded-md
+- `apps/web/components/ui/label.tsx` — text-xs, text-muted-foreground
+- `apps/web/components/ui/progress.tsx` — h-1.5 (thinner)
+- `apps/web/components/ui/tabs.tsx` — Cloudflare underline tabs (border-b-2 on active)
+- `apps/web/components/ui/alert.tsx` — Compact padding, text-xs description
+- `apps/web/components/ui/separator.tsx` — h-px (thinner)
+- `apps/web/components/ui/error-display.tsx` — Compact, text-xs
+- `apps/web/components/ui/status-badge.tsx` — Pastel colors, outline variant
+- `apps/web/components/navigation.tsx` — Dark sidebar, orange brand mark, compact nav items
+- `apps/web/components/admin-navigation.tsx` — Dark sidebar, red admin accent
+- `apps/web/app/page.tsx` — Clean dashboard with icon-in-box metric cards
+- `apps/web/app/login/page.tsx` — Minimal centered card, dark logo header
+- `apps/web/app/ingredients/page.tsx` — Compact table, smaller headers, clean pagination
+- `apps/web/app/formulas/page.tsx` — Compact table, clean status badges
+- `apps/web/components/ai/ai_chat_message.tsx` — ChatGPT-style full-width, no bubbles
+- `apps/web/components/ai/ai_chat_input.tsx` — ArrowUp send button, compact textarea
+- `apps/web/components/ai/ai_chat_header.tsx` — Compact py-2.5, text-sm
+- `apps/web/components/ai/ai_page_header.tsx` — text-sm title, text-2xs description
+- `apps/web/components/ai/ai_empty_state.tsx` — Minimal, muted colors
+- `apps/web/components/ai/ai_loading_indicator.tsx` — w-1.5 dots, subtle animation
+- `apps/web/components/ai/ai_chat_container.tsx` — Clean border, border-t on input
+- `apps/web/components/ai/ai_chat_messages_area.tsx` — divide-y message separation
+- `apps/web/components/ai/ai_chat_input_area.tsx` — Clean composition
+- `apps/web/components/ai/ai_feedback_buttons.tsx` — text-2xs, h-5 buttons
+- `apps/web/components/ai/ai_features_grid.tsx` — p-3, text-xs titles
+- `apps/web/components/ai/ai_auth_guard.tsx` — Minimal centered layout
+
+### No New TypeScript Errors
+- All 43 pre-existing errors remain unchanged (cosmetic services, langgraph, calculations)
+- Zero new errors introduced by this redesign
+
+---
+
+## [2026-03-27] Task 1: Add MySkin Qdrant collection config
+
+### Summary
+- Added `raw_materials_myskin` collection schema to `QDRANT_COLLECTIONS` with MySkin-specific payload indexes (category, cas_no, usage_min_pct, usage_max_pct)
+- Added `raw_materials_myskin` search defaults to `QDRANT_SEARCH_DEFAULTS` (top_k=5, score_threshold=0.7, ef=128)
+- Updated file header comment in qdrant-config.ts to document the new collection
+- Extended `RagServiceName` type in index-qdrant.ts with `'rawMaterialsMySkinAI'`
+- Added `MySkin Raw Materials` index target to `INDEX_TARGETS` array (rnd_ai.raw_materials_myskin → Qdrant raw_materials_myskin)
+
+### Files Changed
+- `apps/ai/config/qdrant-config.ts` — new collection + search defaults + header comment
+- `apps/ai/scripts/index-qdrant.ts` — RagServiceName type + INDEX_TARGETS entry
+
+---
+
 ## [2026-03-27] Feature: Add Prisma ORM v6.19 with MongoDB schema (20 models, 30+ indexes)
 
 ### Summary

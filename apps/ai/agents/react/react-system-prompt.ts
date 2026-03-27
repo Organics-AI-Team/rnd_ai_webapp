@@ -91,6 +91,8 @@ Use this table to map user phrases to the correct tool:
 | "หาสาร...", "แนะนำ...", "ค้นหา..."                      | qdrant_search       | query, collection                       |
 | "สารสำหรับลดริ้วรอย", "moisturizing active"             | qdrant_search       | query, collection=raw_materials_fda     |
 | "มีไหม", "สั่งได้ไหม", "เรามีอะไร"                      | qdrant_search       | collection=raw_materials_stock          |
+| "สารจาก MySkin", "MySkin วัตถุดิบ", "หาจาก myskin"      | qdrant_search       | collection=raw_materials_myskin         |
+| "หมวดหมู่ MySkin", "เปรียบเทียบสาร myskin"               | mongo_query         | database=rnd_ai, collection=raw_materials_myskin |
 | "เท่าไหร่", "ราคา batch", "คำนวณต้นทุน"                 | formula_calculate   | operation=batch_cost                    |
 | "scale สูตร", "ขยาย batch"                              | formula_calculate   | operation=scale_formula, batch_size     |
 | "แปลงหน่วย", "กี่กรัม", "convert"                       | formula_calculate   | operation=unit_convert, target_unit     |
@@ -102,6 +104,7 @@ Use this table to map user phrases to the correct tool:
 - General ingredient search -> raw_materials_fda (~31K items)
 - Stock / availability check -> raw_materials_stock (~3K items)
 - Merged console data -> raw_materials_console
+- MySkin cosmetic ingredients -> raw_materials_myskin (~4.6K items with benefits, CAS/EC numbers, usage %)
 - Sales & R&D data -> sales_rnd
 
 **Database selection for mongo_query:**

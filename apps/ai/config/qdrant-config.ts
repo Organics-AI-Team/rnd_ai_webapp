@@ -8,6 +8,7 @@
  *   - raw_materials_fda (FDA materials ~31K)
  *   - raw_materials_stock (in-stock ~3K)
  *   - sales_rnd (sales data)
+ *   - raw_materials_myskin (MySkin cosmetic ingredients ~4.6K)
  *
  * @author AI Management System
  * @date 2026-03-27
@@ -197,6 +198,23 @@ export const QDRANT_COLLECTIONS: Record<string, QdrantCollectionSchema> = {
     description:
       'Sales strategy, market intelligence, and R&D collaboration data.',
   },
+
+  raw_materials_myskin: {
+    name: 'raw_materials_myskin',
+    vector_size: 768,
+    distance: 'Cosine',
+    hnsw_config: { ...DEFAULT_HNSW_CONFIG },
+    on_disk_payload: true,
+    payload_indexes: [
+      ...RAW_MATERIAL_PAYLOAD_INDEXES,
+      { field_name: 'category', field_type: 'keyword' },
+      { field_name: 'cas_no', field_type: 'keyword' },
+      { field_name: 'usage_min_pct', field_type: 'float' },
+      { field_name: 'usage_max_pct', field_type: 'float' },
+    ],
+    description:
+      'MySkin cosmetic ingredients (~4.6K). Detailed benefits, usage guidelines, CAS/EC numbers.',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -229,6 +247,12 @@ export const QDRANT_SEARCH_DEFAULTS: Record<string, QdrantSearchDefaults> = {
   sales_rnd: {
     top_k: 8,
     score_threshold: 0.65,
+    ef: 128,
+    with_payload: true,
+  },
+  raw_materials_myskin: {
+    top_k: 5,
+    score_threshold: 0.7,
     ef: 128,
     with_payload: true,
   },
