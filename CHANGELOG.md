@@ -1,5 +1,48 @@
 # Changelog
 
+## [2026-03-27] Tasks 18 & 19: Delete ChromaDB files + update RAG config for Qdrant
+
+### Summary
+- Removed 7 legacy ChromaDB/Pinecone source files via `git rm`
+- Updated `apps/ai/config/rag-config.ts`: renamed `pineconeIndex` -> `collectionName`, updated values to Qdrant collection names, replaced Pinecone API config block with Qdrant equivalent
+
+### Task 18 — Delete old ChromaDB files
+Files removed with `git rm`:
+- `apps/ai/services/vector/chroma-service.ts` — Low-level ChromaDB client (replaced by qdrant-service.ts)
+- `apps/ai/services/rag/chroma-rag-service.ts` — High-level ChromaDB RAG service (replaced by qdrant-rag-service.ts)
+- `apps/ai/services/rag/pinecone-service-stub.ts` — Pinecone stub (Qdrant now primary)
+- `apps/ai/scripts/index-chromadb-simple.ts` — ChromaDB indexing script (replaced by index-qdrant.ts)
+- `apps/ai/scripts/index-chromadb-resume.ts` — ChromaDB resume indexing script
+- `apps/ai/scripts/index-chromadb-resume-fast.ts` — ChromaDB fast resume script
+- `apps/ai/scripts/check-chromadb-count.ts` — ChromaDB count check script
+
+### Task 19 — Update RAG config for Qdrant
+- **Interface change**: `RAGServiceConfig.pineconeIndex: string` -> `collectionName: string`
+- **Comment update**: JSDoc updated to reference Qdrant collection
+- **Value updates**:
+  - `rawMaterialsAllAI`: `'raw-materials-stock'` -> `'raw_materials_fda'`
+  - `rawMaterialsAI`: `'raw-materials-stock'` -> `'raw_materials_console'`
+  - `salesRndAI`: `'003-sales-ai'` -> `'sales_rnd'`
+- **validateRAGConfig**: `config.pineconeIndex` -> `config.collectionName`
+- **PINECONE_API_CONFIG** replaced with `QDRANT_API_CONFIG` reading `QDRANT_URL` / `QDRANT_API_KEY`
+- **validateEnvironment**: checks `QDRANT_URL` instead of `PINECONE_API_KEY`
+- **Descriptions**: All descriptions updated to reference Qdrant collections
+
+### Root Cause / Context
+ChromaDB was the original vector store; Tasks 1-4 migrated the codebase to Qdrant. These tasks complete the cleanup by removing dead code and aligning the central config with Qdrant collection names.
+
+### Files Changed
+- `apps/ai/services/vector/chroma-service.ts` — DELETED
+- `apps/ai/services/rag/chroma-rag-service.ts` — DELETED
+- `apps/ai/services/rag/pinecone-service-stub.ts` — DELETED
+- `apps/ai/scripts/index-chromadb-simple.ts` — DELETED
+- `apps/ai/scripts/index-chromadb-resume.ts` — DELETED
+- `apps/ai/scripts/index-chromadb-resume-fast.ts` — DELETED
+- `apps/ai/scripts/check-chromadb-count.ts` — DELETED
+- `apps/ai/config/rag-config.ts` — MODIFIED: pineconeIndex -> collectionName, Qdrant collection names, Qdrant API config
+
+---
+
 ## [2026-03-27] Task 13 (Update): Refactor index-qdrant.ts — Typed IndexTarget + URI Fallback + MONGODB_URI Guard
 
 ### Summary
