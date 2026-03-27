@@ -1,13 +1,13 @@
 #!/usr/bin/env tsx
 
 /**
- * Script to index raw materials data into Sales RND AI Pinecone index
+ * Script to index raw materials data into Sales RND AI Qdrant index
  *
  * This script:
  * 1. Connects to MongoDB raw_materials_real_stock collection
  * 2. Fetches all materials
  * 3. Vectorizes them using Gemini embeddings
- * 4. Uploads to 'sales-rnd-ai' Pinecone index
+ * 4. Uploads to 'sales-rnd-ai' Qdrant index
  *
  * Note: Uses raw_materials_real_stock as it contains the actual data
  *
@@ -15,7 +15,7 @@
  */
 
 import { config } from 'dotenv';
-import { PineconeRAGService } from '../ai/services/rag/qdrant-rag-service';
+import { QdrantRAGService } from '../ai/services/rag/qdrant-rag-service';
 import rawMaterialsClientPromise from '../lib/raw-materials-mongodb';
 
 // Load environment variables
@@ -95,19 +95,19 @@ async function fetchMaterialsFromStock(limit?: number) {
 }
 
 /**
- * Index materials into sales-rnd-ai Pinecone index
+ * Index materials into sales-rnd-ai Qdrant index
  */
 async function indexMaterialsToSalesAI(materials: any[], batchSize: number = 50) {
   logStart('indexMaterialsToSalesAI', `Indexing ${materials.length} materials (batch size: ${batchSize})`);
 
   try {
     // Initialize RAG service with salesRndAI configuration
-    const ragService = new PineconeRAGService('salesRndAI');
+    const ragService = new QdrantRAGService('salesRndAI');
 
     // Prepare documents with raw_materials_real_stock source
     // This ensures they are compatible with the sales AI filter
     const documents = materials.map(material => {
-      const doc = PineconeRAGService.prepareRawMaterialDocument(material);
+      const doc = QdrantRAGService.prepareRawMaterialDocument(material);
       // Ensure source matches the salesRndAI filter
       doc.metadata.source = 'raw_materials_real_stock';
       return doc;
@@ -134,7 +134,7 @@ async function testSalesAISearch() {
   logStart('testSalesAISearch', 'Testing sales AI search...');
 
   try {
-    const ragService = new PineconeRAGService('salesRndAI');
+    const ragService = new QdrantRAGService('salesRndAI');
 
     const testQueries = [
       "moisturizing ingredients",
@@ -177,7 +177,7 @@ async function getIndexStats() {
   logStart('getIndexStats', 'Getting index statistics...');
 
   try {
-    const ragService = new PineconeRAGService('salesRndAI');
+    const ragService = new QdrantRAGService('salesRndAI');
     const stats = await ragService.getIndexStats();
 
     console.log('\n📊 Sales RND AI Index Statistics:');
@@ -200,7 +200,7 @@ async function getIndexStats() {
 async function main() {
   console.log('🚀 SALES RND AI DATA INDEXING SCRIPT');
   console.log('=' .repeat(70));
-  console.log('Purpose: Index raw_materials_real_stock data into sales-rnd-ai Pinecone index');
+  console.log('Purpose: Index raw_materials_real_stock data into sales-rnd-ai Qdrant index');
   console.log('=' .repeat(70));
 
   // Step 1: Check MongoDB connection
@@ -228,7 +228,7 @@ async function main() {
   }
 
   // Step 3: Index materials to Sales AI
-  console.log('\n📝 STEP 3: Indexing Materials to sales-rnd-ai Pinecone Index');
+  console.log('\n📝 STEP 3: Indexing Materials to sales-rnd-ai Qdrant Index');
   console.log('-'.repeat(70));
   const indexResult = await indexMaterialsToSalesAI(fetchResult.materials, 50);
 

@@ -4,8 +4,8 @@
  *
  * Search Strategies:
  * 1. Exact Match (MongoDB) - for codes and exact names
- * 2. Metadata Filter (Pinecone) - for structured field searches
- * 3. Semantic Vector Search (Pinecone) - for natural language queries
+ * 2. Metadata Filter (Qdrant) - for structured field searches
+ * 3. Semantic Vector Search (Qdrant) - for natural language queries
  * 4. Fuzzy Match - for typos and variations
  * 5. BM25 Text Search - for keyword-based ranking
  *
@@ -16,7 +16,7 @@
  * - Query expansion
  */
 
-import { PineconeRAGService, RAGConfig, RawMaterialDocument } from './qdrant-rag-service';
+import { QdrantRAGService, RAGConfig, RawMaterialDocument } from './qdrant-rag-service';
 import { classify_query, QueryClassification, fuzzy_match_score } from '../../utils/query-classifier';
 import client_promise from '@rnd-ai/shared-database';
 
@@ -42,7 +42,7 @@ export interface HybridSearchOptions extends Partial<RAGConfig> {
     semantic: number;
     metadata: number;
   };
-  pinecone_namespace?: string; // Support for Pinecone namespaces
+  pinecone_namespace?: string; // Support for Qdrant namespaces
   mongodb_collection?: string; // Support for MongoDB collection selection
   metadata_filters?: any; // Additional metadata filters
 }
@@ -51,7 +51,7 @@ export interface HybridSearchOptions extends Partial<RAGConfig> {
  * Hybrid Search Service
  * Intelligently combines multiple search strategies for optimal results
  */
-export class HybridSearchService extends PineconeRAGService {
+export class HybridSearchService extends QdrantRAGService {
   private mongodb_client: any = null;
 
   constructor(serviceName?: any, config?: Partial<RAGConfig>) {
@@ -258,8 +258,8 @@ export class HybridSearchService extends PineconeRAGService {
   }
 
   /**
-   * Strategy 2: Metadata Filter Search (Pinecone)
-   * Use Pinecone metadata filters for structured searches
+   * Strategy 2: Metadata Filter Search (Qdrant)
+   * Use Qdrant metadata filters for structured searches
    */
   private async metadata_filter_search(
     query: string,
@@ -278,8 +278,8 @@ export class HybridSearchService extends PineconeRAGService {
       // Add filters based on extracted entities
       const codes = classification.extracted_entities.codes || [];
       if (codes.length > 0) {
-        // Search for any of the extracted codes using $in operator (Pinecone compatible)
-        // Pinecone doesn't support $regex, so we use exact matching with $in
+        // Search for any of the extracted codes using $in operator (Qdrant compatible)
+        // Qdrant doesn't support $regex, so we use exact matching with $in
         filters.rm_code = { $in: codes };
       }
 
@@ -374,7 +374,7 @@ export class HybridSearchService extends PineconeRAGService {
   }
 
   /**
-   * Strategy 4: Semantic Vector Search (Pinecone)
+   * Strategy 4: Semantic Vector Search (Qdrant)
    * Use embeddings for natural language understanding
    */
   private async semantic_vector_search(

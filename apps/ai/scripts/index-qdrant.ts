@@ -81,6 +81,16 @@ const INDEX_TARGETS: IndexTarget[] = [
     qdrant_collection: 'raw_materials_stock',
     rag_service_name: 'rawMaterialsAI',
   },
+  {
+    name: 'Sales R&D Intelligence',
+    mongo_db: 'raw_materials',
+    mongo_collection: 'raw_materials_real_stock',
+    // Same source collection as stock, but indexed with salesRndAI service
+    // for sales-oriented search (different embedding context / metadata)
+    mongo_uri_env: 'RAW_MATERIALS_REAL_STOCK_MONGODB_URI',
+    qdrant_collection: 'sales_rnd',
+    rag_service_name: 'salesRndAI',
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -257,16 +257,16 @@ export const productsRouter = router({
         organizationId: ctx.user.organizationId,
       });
 
-      // 🔄 AUTO-SYNC: Index new material to ChromaDB for AI search
+      // 🔄 AUTO-SYNC: Index new material to Qdrant for AI search
       // This runs asynchronously without blocking the response
       auto_index_material({
         _id: result.insertedId,
         ...newMaterial
       }).then(success => {
         if (success) {
-          console.log(`✅ [ProductsRouter] Auto-indexed material ${rmCode} to ChromaDB`);
+          console.log(`✅ [ProductsRouter] Auto-indexed material ${rmCode} to Qdrant`);
         } else {
-          console.warn(`⚠️  [ProductsRouter] Failed to auto-index material ${rmCode} to ChromaDB`);
+          console.warn(`⚠️  [ProductsRouter] Failed to auto-index material ${rmCode} to Qdrant`);
         }
       }).catch(error => {
         console.error(`❌ [ProductsRouter] Error auto-indexing material ${rmCode}:`, error);
@@ -360,7 +360,7 @@ export const productsRouter = router({
         organizationId: ctx.user.organizationId,
       });
 
-      // 🔄 AUTO-SYNC: Re-index updated material to ChromaDB
+      // 🔄 AUTO-SYNC: Re-index updated material to Qdrant
       // Get the full updated document
       const updatedMaterial = await db.collection("raw_materials_console").findOne({
         _id: new ObjectId(id),
@@ -369,9 +369,9 @@ export const productsRouter = router({
       if (updatedMaterial) {
         auto_index_material(updatedMaterial as any).then(success => {
           if (success) {
-            console.log(`✅ [ProductsRouter] Auto-updated material ${updatedMaterial.rm_code} in ChromaDB`);
+            console.log(`✅ [ProductsRouter] Auto-updated material ${updatedMaterial.rm_code} in Qdrant`);
           } else {
-            console.warn(`⚠️  [ProductsRouter] Failed to auto-update material ${updatedMaterial.rm_code} in ChromaDB`);
+            console.warn(`⚠️  [ProductsRouter] Failed to auto-update material ${updatedMaterial.rm_code} in Qdrant`);
           }
         }).catch(error => {
           console.error(`❌ [ProductsRouter] Error auto-updating material:`, error);
@@ -428,7 +428,7 @@ export const productsRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      // Get material before deleting (need rm_code for ChromaDB deletion)
+      // Get material before deleting (need rm_code for Qdrant deletion)
       const material = await db.collection("raw_materials_console").findOne({
         _id: new ObjectId(input.id),
       });
@@ -457,13 +457,13 @@ export const productsRouter = router({
         organizationId: ctx.user.organizationId,
       });
 
-      // 🔄 AUTO-SYNC: Delete material from ChromaDB
+      // 🔄 AUTO-SYNC: Delete material from Qdrant
       if (rm_code) {
         auto_delete_material(rm_code).then(success => {
           if (success) {
-            console.log(`✅ [ProductsRouter] Auto-deleted material ${rm_code} from ChromaDB`);
+            console.log(`✅ [ProductsRouter] Auto-deleted material ${rm_code} from Qdrant`);
           } else {
-            console.warn(`⚠️  [ProductsRouter] Failed to auto-delete material ${rm_code} from ChromaDB`);
+            console.warn(`⚠️  [ProductsRouter] Failed to auto-delete material ${rm_code} from Qdrant`);
           }
         }).catch(error => {
           console.error(`❌ [ProductsRouter] Error auto-deleting material ${rm_code}:`, error);
