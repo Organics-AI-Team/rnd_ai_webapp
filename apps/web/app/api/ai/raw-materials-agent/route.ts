@@ -8,6 +8,7 @@ import { RawMaterialsAgent } from '@/ai/agents/raw-materials-ai/agent';
 import { GeminiToolService } from '@/ai/services/providers/gemini-tool-service';
 import { EnhancedHybridSearchService } from '@/ai/services/rag/enhanced-hybrid-search-service';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
+import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
@@ -211,8 +212,6 @@ export async function GET(request: NextRequest) {
           status: 'healthy',
           services: {
             toolService: !!services.toolService,
-            enhancedService: !!services.enhancedService,
-            responseReranker: !!services.responseReranker,
             searchService: !!services.searchService,
             mlService: !!services.mlService
           },
@@ -295,6 +294,46 @@ export async function POST(request: NextRequest) {
 
     // Initialize services
     const services = initialize_services();
+
+    // Try ReAct agent first (new intelligent routing)
+    try {
+      console.log('[raw-materials-agent] POST: attempting ReAct agent path');
+      const reactAgent = new ReactAgentService();
+      const reactResult = await reactAgent.execute({
+        prompt: body.prompt,
+        userId: body.userId,
+        sessionId: body.conversationHistory?.[0]?.sessionId,
+        conversationHistory: body.conversationHistory?.map((m: any) => ({
+          role: m.role || 'user',
+          content: m.content || '',
+        })),
+      });
+
+      if (reactResult.success) {
+        console.log(`[raw-materials-agent] POST: ReAct success, iterations=${reactResult.iterations}`);
+        return NextResponse.json({
+          success: true,
+          response: reactResult.response,
+          model: reactResult.model,
+          id: `react-${Date.now()}`,
+          type: 'react-agent',
+          features: {
+            searchEnabled: reactResult.toolCalls.some((t: any) => t.name === 'qdrant_search'),
+            mlEnabled: false,
+            searchResultsCount: reactResult.toolCalls.filter((t: any) => t.name === 'qdrant_search').length,
+            optimizationsApplied: reactResult.toolCalls.map((t: any) => t.name),
+          },
+          toolCalls: reactResult.toolCalls,
+          metadata: {
+            iterations: reactResult.iterations,
+            processingTime: reactResult.processingTime,
+            agent: 'react',
+          },
+        });
+      }
+    } catch (err: any) {
+      console.error('[raw-materials-agent] POST: ReAct agent failed, falling back:', err.message);
+    }
 
     // Streaming not yet implemented with new optimized services
     if (enableStreaming) {

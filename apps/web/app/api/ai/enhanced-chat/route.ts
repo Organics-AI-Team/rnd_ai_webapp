@@ -10,6 +10,7 @@ import { EnhancedHybridSearchService } from '@/ai/services/rag/enhanced-hybrid-s
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
 import { AIRequest } from '@/ai/types/ai-types';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
 
 // Lazy initialization of services to avoid build-time errors
 let geminiService: GeminiService | null = null;
@@ -71,6 +72,46 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: prompt, userId' },
         { status: 400 }
       );
+    }
+
+    // Try ReAct agent first (new intelligent routing)
+    try {
+      console.log('[enhanced-chat] POST: attempting ReAct agent path');
+      const reactAgent = new ReactAgentService();
+      const reactResult = await reactAgent.execute({
+        prompt: body.prompt,
+        userId: body.userId,
+        sessionId: body.conversationHistory?.[0]?.sessionId,
+        conversationHistory: body.conversationHistory?.map((m: any) => ({
+          role: m.role || 'user',
+          content: m.content || '',
+        })),
+      });
+
+      if (reactResult.success) {
+        console.log(`[enhanced-chat] POST: ReAct success, iterations=${reactResult.iterations}`);
+        return NextResponse.json({
+          success: true,
+          response: reactResult.response,
+          model: reactResult.model,
+          id: `react-${Date.now()}`,
+          type: 'react-agent',
+          features: {
+            searchEnabled: reactResult.toolCalls.some((t: any) => t.name === 'qdrant_search'),
+            mlEnabled: false,
+            searchResultsCount: reactResult.toolCalls.filter((t: any) => t.name === 'qdrant_search').length,
+            optimizationsApplied: reactResult.toolCalls.map((t: any) => t.name),
+          },
+          toolCalls: reactResult.toolCalls,
+          metadata: {
+            iterations: reactResult.iterations,
+            processingTime: reactResult.processingTime,
+            agent: 'react',
+          },
+        });
+      }
+    } catch (err: any) {
+      console.error('[enhanced-chat] POST: ReAct agent failed, falling back:', err.message);
     }
 
     const aiRequest: AIRequest = {
