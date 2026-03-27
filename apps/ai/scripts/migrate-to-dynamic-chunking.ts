@@ -16,7 +16,7 @@
  */
 
 import client_promise from '@rnd-ai/shared-database';
-import { PineconeRAGService } from '@/ai/services/rag/pinecone-service-stub';
+import { PineconeRAGService } from '@/ai/services/rag/qdrant-rag-service';
 import { DynamicChunkingService } from '@/ai/services/rag/dynamic-chunking-service';
 
 interface MigrationConfig {

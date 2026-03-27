@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PineconeRAGService } from '@/ai/services/rag/pinecone-service-stub';
+import { PineconeRAGService } from '@/ai/services/rag/qdrant-rag-service';
 
 export async function POST(request: NextRequest) {
   try {

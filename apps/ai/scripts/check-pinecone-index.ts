@@ -5,7 +5,7 @@
  */
 
 import { config } from 'dotenv';
-import { PineconeRAGService } from '../ai/services/rag/pinecone-service-stub';
+import { PineconeRAGService } from '../ai/services/rag/qdrant-rag-service';
 
 // Load environment variables
 config({ path: '.env.local' });

@@ -16,7 +16,7 @@
  * - Query expansion
  */
 
-import { PineconeRAGService, RAGConfig, RawMaterialDocument } from './pinecone-service-stub';
+import { PineconeRAGService, RAGConfig, RawMaterialDocument } from './qdrant-rag-service';
 import { classify_query, QueryClassification, fuzzy_match_score } from '../../utils/query-classifier';
 import client_promise from '@rnd-ai/shared-database';
 

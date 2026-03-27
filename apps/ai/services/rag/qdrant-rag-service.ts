@@ -707,6 +707,7 @@ export class QdrantRAGService {
 // ---------------------------------------------------------------------------
 
 /**
- * Alias for backward compatibility with consumers that reference PineconeRAGService.
+ * Aliases for backward compatibility with consumers that reference PineconeRAGService / RAGConfig.
  */
 export { QdrantRAGService as PineconeRAGService };
+export type { RAGSearchConfig as RAGConfig };

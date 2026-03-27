@@ -11,7 +11,7 @@
  * - Dynamic chunk size based on content
  */
 
-import { RawMaterialDocument } from './pinecone-service-stub';
+import { RawMaterialDocument } from './qdrant-rag-service';
 
 export interface ChunkConfig {
   /** Maximum chunk size in characters */
