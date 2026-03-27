@@ -646,12 +646,12 @@ export class EnhancedHybridSearchService {
    */
   private formatResults(results: SearchResultWithScore[]): HybridSearchResult[] {
     return results.map(result => ({
-      id: result.id,
-      content: result.content,
+      document: result.metadata,
       score: result.score,
-      metadata: result.metadata,
-      strategy: result.strategy,
-      distance: 1 - result.score, // Convert to distance metric
+      match_type: 'hybrid' as const,
+      confidence: result.score,
+      matched_fields: [result.strategy],
+      source: 'qdrant' as const,
     }));
   }
 

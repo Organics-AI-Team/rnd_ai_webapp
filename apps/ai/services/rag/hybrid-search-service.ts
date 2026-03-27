@@ -283,7 +283,7 @@ export class HybridSearchService extends QdrantRAGService {
         filters.rm_code = { $in: codes };
       }
 
-      const results = await this.searchSimilar(query, {
+      const results = await this.search_similar(query, {
         ...options,
         filter: filters,
         namespace: options.qdrant_collection,
@@ -390,7 +390,7 @@ export class HybridSearchService extends QdrantRAGService {
 
       for (const expanded_query of queries_to_search.slice(0, 3)) {
         // Limit to top 3 expansions
-        const results = await this.searchSimilar(expanded_query, {
+        const results = await this.search_similar(expanded_query, {
           ...options,
           namespace: options.qdrant_collection,
           filter: options.metadata_filters,

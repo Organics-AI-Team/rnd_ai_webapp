@@ -66,7 +66,7 @@ export class UnifiedSearchService extends HybridSearchService {
         // Perform hybrid search with Qdrant collection filter
         const collection_results = await this.hybrid_search(query, {
           ...options,
-          pinecone_namespace: qdrant_collection, // field kept for interface compat; maps to Qdrant collection
+          qdrant_collection, // Qdrant collection to search
           metadata_filters: {
             ...options.metadata_filters,
             namespace: qdrant_collection,
