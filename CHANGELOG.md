@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-03-27] Task 13 (Update): Refactor index-qdrant.ts — Typed IndexTarget + URI Fallback + MONGODB_URI Guard
+
+### Summary
+- Refactored `apps/ai/scripts/index-qdrant.ts` to align with spec requirements.
+
+### Details
+- **Added `RagServiceName` type**: Explicit union `'rawMaterialsAllAI' | 'rawMaterialsAI' | 'salesRndAI'` for type safety.
+- **Renamed `IndexTarget` fields**: `database`/`collection`/`mongodb_uri_env` → `mongo_db`/`mongo_collection`/`mongo_uri_env` for consistent snake_case and clarity.
+- **MONGODB_URI validation**: Added upfront guard in `main()` — exits with code 1 if `MONGODB_URI` is unset.
+- **URI fallback**: `index_target()` now resolves `process.env[target.mongo_uri_env] || process.env.MONGODB_URI` so target 2 (`raw_materials_real_stock`) uses `RAW_MATERIALS_REAL_STOCK_MONGODB_URI` when set, falling back to `MONGODB_URI`.
+- **Updated log lines**: Progress logs reference `mongo_db.mongo_collection` with new field names.
+
+### Files Changed
+- `apps/ai/scripts/index-qdrant.ts` — UPDATED: Typed interface, MONGODB_URI guard, URI fallback
+
+---
+
 ## [2026-03-27] Task 16: Update RAG Router to Use QdrantRAGService
 
 ### Summary
