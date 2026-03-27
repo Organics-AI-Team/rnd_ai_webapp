@@ -1,5 +1,32 @@
 # Changelog
 
+## [2026-03-27] Task 4: Create QdrantRAGService (High-Level RAG)
+
+### Summary
+- Created `apps/ai/services/rag/qdrant-rag-service.ts` as a drop-in replacement for `chroma-rag-service.ts`.
+- Matches ChromaRAGService interface so consumers can switch with minimal changes.
+
+### Details
+- **Types exported**: `RawMaterialDocument`, `RAGSearchConfig`, `RAGSearchResult`, `RAGServicesConfig`
+- **Service name -> collection mapping**: rawMaterialsAllAI -> raw_materials_fda, rawMaterialsAI -> raw_materials_console, salesRndAI -> sales_rnd
+- **Constructor**: accepts service_name, optional config override, optional custom embedding service; resolves defaults from SERVICE_DEFAULTS map
+- **Embedding**: `create_embeddings(texts)` delegates to UniversalEmbeddingService (lazy singleton)
+- **Upsert**: `upsert_documents(docs)` embeds texts then upserts as QdrantPoints with `indexed_at` timestamp
+- **Batch**: `batch_process_documents(materials, batch_size)` with inter-batch EMBEDDING_BATCH_DELAY_MS delay
+- **Search**: `search_similar(query, options)` embeds query -> Qdrant search -> maps to RAGSearchResult
+- **Format**: `search_and_format(query, options)` convenience wrapper for search + markdown formatting
+- **Delete**: `delete_documents(ids)` delegates to QdrantService.delete
+- **Stats**: `get_index_stats()` returns pointsCount/status/config via QdrantService.get_collection_info
+- **Config**: `update_config(partial)` / `get_config()` for runtime config changes
+- **Static helpers**: `prepare_raw_material_document(material)` and `format_search_results(results)`
+- **Backward compat**: exports `PineconeRAGService` alias
+- All functions use snake_case, have docstrings, and include console.log entry/exit logging
+
+### Files Changed
+- `apps/ai/services/rag/qdrant-rag-service.ts` — NEW: High-level Qdrant RAG service
+
+---
+
 ## [2026-03-27] Tasks 5 & 7: ReAct Agent Tool Definitions and System Prompt
 
 ### Summary
