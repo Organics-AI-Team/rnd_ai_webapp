@@ -1,5 +1,40 @@
 # Changelog
 
+## [2026-03-27] dev/droplet — Qdrant Migration + ReAct Agent Architecture
+
+### Architecture Changes
+- **ChromaDB → Qdrant**: Replaced ChromaDB with Qdrant for production-grade vector search
+  - Cosine similarity with HNSW tuning (ef=128, m=16), typed payload indexes, on-disk payloads
+- **MongoDB Atlas → DO Managed MongoDB**: Migrated to DigitalOcean managed database ($15/mo)
+- **ReAct Agent**: Chain-of-thought reasoning replaces RAG-only pipeline
+  - 5 tools: qdrant_search, mongo_query, formula_calculate, web_search, context_memory
+  - Gemini function calling drives tool selection with multi-step reasoning
+  - Graceful fallback to existing flow
+
+### Infrastructure
+- DO droplet provisioning script (doctl CLI), 4GB + 2GB swap
+- docker-compose: Qdrant replaces ChromaDB, mem_limit on all services
+- .env.production updated for Qdrant + DO MongoDB
+
+### New Files
+- apps/ai/services/vector/qdrant-service.ts
+- apps/ai/services/rag/qdrant-rag-service.ts
+- apps/ai/config/qdrant-config.ts
+- apps/ai/agents/react/react-agent-service.ts
+- apps/ai/agents/react/react-system-prompt.ts
+- apps/ai/agents/react/tool-definitions.ts
+- apps/ai/agents/react/tool-handlers/ (5 files)
+- apps/ai/scripts/index-qdrant.ts
+- scripts/provision-droplet.sh
+
+### Deleted Files
+- apps/ai/services/vector/chroma-service.ts
+- apps/ai/services/rag/chroma-rag-service.ts
+- apps/ai/services/rag/pinecone-service-stub.ts
+- apps/ai/scripts/index-chromadb-simple.ts
+
+---
+
 ## [2026-03-27] Refactor: Update auto-index service to target Qdrant
 
 ### Summary
