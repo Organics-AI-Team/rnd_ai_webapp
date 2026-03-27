@@ -1,5 +1,25 @@
 # Changelog
 
+## [2026-03-27] Task 2: Create Qdrant Configuration
+
+### Summary
+- Created `apps/ai/config/qdrant-config.ts` with full collection schemas, HNSW tuning,
+  connection settings, search defaults, and batch constants for Qdrant.
+
+### Details
+- 4 collections defined: `raw_materials_console`, `raw_materials_fda`, `raw_materials_stock`, `sales_rnd`
+- All collections use vectorSize=768 (Gemini text-embedding-004), Cosine distance, HNSW m=16/efConstruct=128
+- Shared payload indexes extracted to DRY constant (rm_code, trade_name, inci_name, supplier, source, stock_status, cost, indexed_at)
+- Per-collection search defaults mirror rag-config.ts topK/threshold values with added Qdrant-specific `ef` param
+- `get_qdrant_connection_config()` reads QDRANT_URL and QDRANT_API_KEY from env
+- Batch constants: UPSERT_BATCH_SIZE=100, EMBEDDING_BATCH_DELAY_MS=1000
+- All functions use snake_case, have docstrings, and include entry/exit console.log
+
+### Files Changed
+- `apps/ai/config/qdrant-config.ts` — NEW: Qdrant collection schemas and configuration
+
+---
+
 ## [2026-03-27] Task 1: Replace ChromaDB with Qdrant client
 
 ### Dependencies
