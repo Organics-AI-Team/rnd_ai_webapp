@@ -304,7 +304,7 @@ export async function POST(request: NextRequest) {
 
         // Enhance response based on reranking if needed
         if (rerankScore.overallScore < 0.7) {
-          enhancedResponse = await services.responseReranker.enhanceResponse(
+          const enhanceResult = await services.responseReranker.enhanceResponse(
             prompt,
             aiResponse.response,
             searchResults,
@@ -313,7 +313,8 @@ export async function POST(request: NextRequest) {
               enablePersonalization: false,
               userPreferences: preferences
             }
-          ).response;
+          );
+          enhancedResponse = enhanceResult.response;
         }
 
         console.log(`🔄 [CosmeticEnhancedAPI] Rerank score: ${(rerankScore.overallScore * 100).toFixed(1)}%`);
@@ -415,6 +416,7 @@ function handleStreamingResponse(
 
   console.log('🌊 [CosmeticEnhancedAPI] Starting streaming response');
 
+  const streamStartTime = Date.now();
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -470,7 +472,7 @@ function handleStreamingResponse(
               response: fullResponse.response,
               quality: qualityScore,
               metadata: {
-                processingTime: Date.now() - Date.now(),
+                processingTime: Date.now() - streamStartTime,
                 userRole,
                 productType,
                 targetRegions,
