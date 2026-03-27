@@ -20,7 +20,7 @@ export const productsRouter = router({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-    const client = await clientPromise;
+    const client = await client_promise;
     const db = client.db();
 
     const limit = input?.limit || 50;
@@ -475,7 +475,7 @@ export const productsRouter = router({
 
   // Get low stock products
   lowStock: protectedProcedure.query(async ({ ctx }) => {
-    const client = await clientPromise;
+    const client = await client_promise;
     const db = client.db();
 
     const products = await db

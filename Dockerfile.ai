@@ -40,7 +40,7 @@ ENV NODE_ENV=production
 
 # Build the AI service
 WORKDIR /app/apps/ai
-RUN npx tsc --noEmit false || true
+RUN npx tsc --noEmit false
 WORKDIR /app
 
 # Stage 3: Runner

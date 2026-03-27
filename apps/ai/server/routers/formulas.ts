@@ -39,7 +39,7 @@ export const formulasRouter = router({
 
   // Get all formulas
   list: protectedProcedure.query(async ({ ctx }) => {
-    const client = await clientPromise;
+    const client = await client_promise;
     const db = client.db();
 
     const formulas = await db

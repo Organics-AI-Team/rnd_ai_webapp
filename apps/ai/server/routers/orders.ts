@@ -322,7 +322,7 @@ export const ordersRouter = router({
     }),
 
   getStats: publicProcedure.query(async ({ ctx }) => {
-    const client = await clientPromise;
+    const client = await client_promise;
     const db = client.db();
 
     const filter: any = {};

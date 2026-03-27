@@ -118,7 +118,7 @@ up() {
 
     log_info "Services started. Check status with: $compose_cmd ps"
     log_info "Web app: http://$(hostname -I | awk '{print $1}'):3000"
-    log_info "AI service: http://$(hostname -I | awk '{print $1}'):3001"
+    log_info "Qdrant: http://127.0.0.1:6333 (localhost only)"
 }
 
 # Stop services
@@ -144,7 +144,7 @@ logs() {
 health() {
     log_info "Checking service health..."
 
-    local services=("web:3000" "ai:3001" "qdrant:6333")
+    local services=("web:3000" "qdrant:6333")
     for svc in "${services[@]}"; do
         local name="${svc%%:*}"
         local port="${svc##*:}"
@@ -161,7 +161,7 @@ index_qdrant() {
     check_prerequisites
     local compose_cmd=$(get_compose_cmd)
     log_info "Re-indexing data into Qdrant..."
-    $compose_cmd --env-file "$ENV_FILE" exec ai npx tsx apps/ai/scripts/index-qdrant.ts
+    $compose_cmd --env-file "$ENV_FILE" exec web npx tsx apps/ai/scripts/index-qdrant.ts
     log_info "Re-indexing complete"
 }
 

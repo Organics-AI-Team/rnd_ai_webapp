@@ -10,7 +10,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     container_name: rnd-ai-web
-    mem_limit: 768m
+    mem_limit: 1536m
     ports:
       - "3000:3000"
     environment:
@@ -18,17 +18,22 @@ services:
       - MONGODB_URI=${MONGODB_URI}
       - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI}
 
-      # AI Service URL (connects to ai service container)
-      - AI_SERVICE_URL=http://ai:3001
-
-      # API Keys
+      # AI API Keys
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
 
-      # Public Variables
+      # Vector Database (Qdrant)
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+
+      # Web Search (optional — enables ReAct web_search tool)
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
+      - GOOGLE_SEARCH_CSE_ID=${GOOGLE_SEARCH_CSE_ID:-}
+
+      # Public Variables (inlined at build time)
       - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
       - NEXT_PUBLIC_OPENAI_API_KEY=${NEXT_PUBLIC_OPENAI_API_KEY}
-      - NEXT_PUBLIC_API_URL=http://localhost:3000/api
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
 
       # Admin
       - ADMIN_EMAIL=${ADMIN_EMAIL}
@@ -37,10 +42,11 @@ services:
       # Node Environment
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
+      - HOSTNAME=0.0.0.0
 
     depends_on:
-      - ai
-      - qdrant
+      qdrant:
+        condition: service_healthy
 
     networks:
       - rnd-ai-network
@@ -53,43 +59,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # AI Backend Service
-  ai:
-    build:
-      context: .
-      dockerfile: Dockerfile.ai
-    container_name: rnd-ai-service
-    mem_limit: 768m
-    ports:
-      - "3001:3001"
-    environment:
-      # Database
-      - MONGODB_URI=${MONGODB_URI}
-      - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI}
-
-      # AI APIs
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-
-      # Vector Database
-      - QDRANT_URL=http://qdrant:6333
-
-      # Service Configuration
-      - AI_SERVICE_PORT=3001
-      - WEB_APP_URL=http://web:3000
-
-      # Node Environment
-      - NODE_ENV=production
-
-    depends_on:
-      qdrant:
-        condition: service_healthy
-
-    networks:
-      - rnd-ai-network
-
-    restart: unless-stopped
 
   # Qdrant Vector Database
   qdrant:

@@ -21,7 +21,7 @@ import { get_react_system_prompt } from './react-system-prompt';
 // If a handler does not exist yet, runtime will throw a clear error on first call.
 import { handle_qdrant_search } from './tool-handlers/qdrant-search-handler';
 import { handle_mongo_query } from './tool-handlers/mongo-query-handler';
-import { handle_formula_calculate } from './tool-handlers/formula-calculate-handler';
+import { handle_formula_calculate } from './tool-handlers/formula-calc-handler';
 import { handle_web_search } from './tool-handlers/web-search-handler';
 import { handle_context_memory } from './tool-handlers/context-memory-handler';
 
@@ -101,11 +101,11 @@ const TOOL_HANDLER_MAP: Record<
   ReactToolName,
   (args: Record<string, unknown>, session_id?: string) => Promise<string>
 > = {
-  qdrant_search: handle_qdrant_search,
-  mongo_query: handle_mongo_query,
-  formula_calculate: handle_formula_calculate,
-  web_search: handle_web_search,
-  context_memory: handle_context_memory,
+  qdrant_search: (args) => handle_qdrant_search(args as any),
+  mongo_query: (args) => handle_mongo_query(args as any),
+  formula_calculate: (args) => handle_formula_calculate(args as any),
+  web_search: (args) => handle_web_search(args as any),
+  context_memory: (args) => handle_context_memory(args as any),
 };
 
 // ---------------------------------------------------------------------------
