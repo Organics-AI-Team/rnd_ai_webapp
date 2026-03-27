@@ -1,1 +1,71 @@
+# Changelog
 
+## [2026-03-27] Task 1: Replace ChromaDB with Qdrant client
+
+### Dependencies
+- Removed `chromadb` (1.8.1) from `apps/ai/package.json`
+- Added `@qdrant/js-client-rest` (^1.12.0) to `apps/ai/package.json`
+- Replaced chromadb-related npm scripts with qdrant equivalents in both root and apps/ai package.json
+- Old scripts removed: `index:chromadb`, `index:chromadb:resume`, `index:chromadb:fast`, `check:chromadb`
+- New scripts added: `index:qdrant`, `check:qdrant`
+
+### Files Changed
+- `package.json` (root) — Replaced chromadb workspace scripts with qdrant equivalents
+- `apps/ai/package.json` — Swapped chromadb dep for @qdrant/js-client-rest, updated scripts
+
+---
+
+## [2026-03-27] dev/droplet — Full Codebase Audit + Droplet Deployment Setup
+
+### Audit Findings
+
+#### BLOCKERS FIXED
+- **Auth middleware cookie mismatch**: `middleware.ts` checked `"auth_token"` but login/verify/logout all use `"rnd-ai-auth-session"`. Users were stuck in infinite login redirect. Fixed.
+- **Missing `Dockerfile.ai`**: `docker-compose.yml` referenced it but file didn't exist. AI service couldn't start. Created.
+- **Secrets baked into Docker images**: Server-side secrets (MONGODB_URI, API keys, ADMIN_PASSWORD) were embedded into image layers via ARG->ENV. Now only NEXT_PUBLIC_* build-time vars are embedded; secrets injected at runtime.
+
+#### CRITICAL AI WIRING FIXES
+- **Cosmetic-enhanced broken await chain** (`route.ts:307-317`): `.response` was accessed on a Promise object instead of the resolved value. Result was always `undefined`. Fixed with proper `await` then property access.
+- **Cosmetic-enhanced zero timing** (`route.ts:473`): `Date.now() - Date.now()` always produced 0. Fixed to use captured `streamStartTime`.
+- **Raw-materials-agent health check** (`route.ts:214-215`): Referenced `services.enhancedService` and `services.responseReranker` which don't exist in `initialize_services()` return. Removed phantom properties.
+
+#### KNOWN ISSUES (Not fixed in this branch — require architectural decisions)
+- **Dead LangGraph route**: `langgraph-route.ts` not named `route.ts`, never served by Next.js
+- **Missing `/api/index-data/manage`**: Admin AI indexing page calls it but route doesn't exist (404)
+- **AI Hub dead link**: `/ai/agents` page doesn't exist
+- **AI Analytics page**: Entirely mock data, no real API integration
+- **Shared-types orphaned**: Created during deduplication but zero consumers; full duplicate in `apps/ai/lib/types.ts`
+- **Insecure auth**: Plain text password comparison, unsigned session cookie string "authenticated"
+- **NEXT_PUBLIC_GEMINI_API_KEY as server fallback**: Used in `enhanced-chat` and `raw-materials-agent` routes
+- **Dead imports**: `AgentFactory` in agent chat, `getEmbeddingService` in ai-chat, `GoogleGenerativeAI` in enhanced-chat
+- **AI-chat simulated streaming**: Full response generated then chunked with setTimeout, not real streaming
+- **MongoDB connection leak in index-data**: Client never closed after use
+- **PreferenceLearningService inconsistent API**: Called with different schemas across routes
+
+#### HITL Flow Status
+- Shipping: STRONG (full confirmation modal)
+- Calculation, Formulas, Orders, Credits: GOOD (confirm dialogs, role-based)
+- Admin Vector Indexing: GOOD (batch controls)
+- Admin AI Indexing: BROKEN (missing API route)
+- Sales/Raw Materials AI Chat: PARTIAL (feedback buttons, no approval gate)
+- AI Analytics: NONE (mock data)
+
+### Deployment Changes
+- Created `Dockerfile.ai` for AI backend service
+- Upgraded all Dockerfiles from Node 18 (EOL) to Node 20
+- Added missing workspace package.json copies to Docker deps stages (shared-utils, shared-database, apps/ai)
+- Removed server-side secrets from Docker build-time ARGs (security fix)
+- Created `.env.production` template for droplet deployment
+- Created `scripts/deploy-droplet.sh` deployment automation script
+- Fixed `apps/web/middleware.ts` cookie name to match auth system
+
+### Files Changed
+- `apps/web/middleware.ts` — Fixed cookie name from `auth_token` to `rnd-ai-auth-session`
+- `apps/web/app/api/ai/cosmetic-enhanced/route.ts` — Fixed broken await chain + zero timing
+- `apps/web/app/api/ai/raw-materials-agent/route.ts` — Fixed phantom health check properties
+- `Dockerfile` — Node 20, removed secret baking, added missing package copies
+- `apps/web/Dockerfile` — Node 20, removed secret baking, added missing package copies
+- `Dockerfile.ai` — NEW: AI backend service Dockerfile
+- `.env.production` — NEW: Production env template for droplet
+- `scripts/deploy-droplet.sh` — NEW: Droplet deployment automation
+- `CHANGELOG.md` — This file

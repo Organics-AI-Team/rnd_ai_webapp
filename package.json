@@ -25,10 +25,8 @@
     "migrate": "npm run migrate --workspace=apps/ai",
     "create-sales-index": "npm run create-sales-index --workspace=apps/ai",
     "index-sales-data": "npm run index-sales-data --workspace=apps/ai",
-    "index:chromadb": "npm run index:chromadb --workspace=apps/ai",
-    "index:chromadb:resume": "npm run index:chromadb:resume --workspace=apps/ai",
-    "index:chromadb:fast": "npm run index:chromadb:fast --workspace=apps/ai",
-    "check:chromadb": "npm run check:chromadb --workspace=apps/ai"
+    "index:qdrant": "npm run index:qdrant --workspace=apps/ai",
+    "check:qdrant": "npm run check:qdrant --workspace=apps/ai"
   },
   "keywords": ["monorepo", "ai", "nextjs", "typescript"],
   "author": "",

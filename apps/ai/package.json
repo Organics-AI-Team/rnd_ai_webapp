@@ -14,10 +14,8 @@
     "migrate": "tsx scripts/migrate-to-mongo.ts",
     "create-sales-index": "node scripts/create-sales-ai-index.js",
     "index-sales-data": "tsx scripts/index-sales-data.ts",
-    "index:chromadb": "tsx scripts/index-chromadb-simple.ts",
-    "index:chromadb:resume": "tsx scripts/index-chromadb-resume.ts",
-    "index:chromadb:fast": "tsx scripts/index-chromadb-resume-fast.ts",
-    "check:chromadb": "tsx scripts/check-chromadb-count.ts"
+    "index:qdrant": "tsx scripts/index-qdrant.ts",
+    "check:qdrant": "tsx scripts/check-qdrant.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -30,7 +28,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "@trpc/server": "^11.6.0",
     "bcryptjs": "^3.0.2",
-    "chromadb": "1.8.1",
+    "@qdrant/js-client-rest": "^1.12.0",
     "csv-parser": "^3.2.0",
     "langchain": "^0.3.9",
     "langchainhub": "^0.0.11",
