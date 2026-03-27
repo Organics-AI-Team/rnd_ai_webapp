@@ -169,7 +169,7 @@ export const searchMySkinMaterialsTool = {
       let semantic_results: any[] = [];
       if ((mode === 'semantic' || mode === 'hybrid') && text_results.length < limit) {
         try {
-          const { QdrantRAGService } = await import('../../services/rag/qdrant-rag-service' as any);
+          const { QdrantRAGService } = await import('@/ai/services/rag/qdrant-rag-service' as any);
           const rag = new QdrantRAGService('rawMaterialsMySkinAI');
           const vector_results = await rag.search_similar(search_query, {
             topK: limit,
@@ -350,7 +350,7 @@ export const getMySkinMaterialDetailTool = {
       let related: any[] = [];
       if (params.include_related) {
         try {
-          const { QdrantRAGService } = await import('../../services/rag/qdrant-rag-service' as any);
+          const { QdrantRAGService } = await import('@/ai/services/rag/qdrant-rag-service' as any);
           const rag = new QdrantRAGService('rawMaterialsMySkinAI');
           const embed_text = `${doc.trade_name} ${doc.inci_name} ${doc.benefits}`;
           const results = await rag.search_similar(embed_text, {
