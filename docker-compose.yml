@@ -10,6 +10,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     container_name: rnd-ai-web
+    mem_limit: 768m
     ports:
       - "3000:3000"
     environment:
@@ -23,7 +24,6 @@ services:
       # API Keys
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
 
       # Public Variables
       - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
@@ -40,7 +40,7 @@ services:
 
     depends_on:
       - ai
-      - chromadb
+      - qdrant
 
     networks:
       - rnd-ai-network
@@ -60,6 +60,7 @@ services:
       context: .
       dockerfile: Dockerfile.ai
     container_name: rnd-ai-service
+    mem_limit: 768m
     ports:
       - "3001:3001"
     environment:
@@ -70,11 +71,9 @@ services:
       # AI APIs
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
 
       # Vector Database
-      - VECTOR_DB_PROVIDER=chroma
-      - CHROMA_URL=http://chromadb:8000
+      - QDRANT_URL=http://qdrant:6333
 
       # Service Configuration
       - AI_SERVICE_PORT=3001
@@ -84,41 +83,37 @@ services:
       - NODE_ENV=production
 
     depends_on:
-      - chromadb
+      qdrant:
+        condition: service_healthy
 
     networks:
       - rnd-ai-network
 
-    volumes:
-      # Persist ChromaDB data
-      - chromadb-data:/app/apps/ai/.chromadb
-
     restart: unless-stopped
 
-  # ChromaDB Vector Database
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: rnd-ai-chromadb
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rnd-ai-qdrant
+    mem_limit: 512m
     ports:
-      - "8000:8000"
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-
+      - QDRANT__STORAGE__ON_DISK_PAYLOAD=true
+      - QDRANT__STORAGE__OPTIMIZERS__MEMMAP_THRESHOLD_KB=20000
+      - QDRANT__SERVICE__GRPC_PORT=6334
     volumes:
-      - chromadb-data:/chroma/chroma
-
+      - qdrant-data:/qdrant/storage
     networks:
       - rnd-ai-network
-
     restart: unless-stopped
-
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:6333/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 10s
 
 networks:
   rnd-ai-network:
@@ -126,9 +121,9 @@ networks:
     name: rnd-ai-network
 
 volumes:
-  chromadb-data:
+  qdrant-data:
     driver: local
-    name: rnd-ai-chromadb-data
+    name: rnd-ai-qdrant-data
 
 # Usage:
 # ------
@@ -139,7 +134,7 @@ volumes:
 # 3. View logs:
 #    docker-compose logs -f web
 #    docker-compose logs -f ai
-#    docker-compose logs -f chromadb
+#    docker-compose logs -f qdrant
 #
 # 4. Stop all services:
 #    docker-compose down
@@ -154,4 +149,5 @@ volumes:
 # -------
 # Web App: http://localhost:3000
 # AI Service: http://localhost:3001
-# ChromaDB: http://localhost:8000
+# Qdrant: http://localhost:6333
+# Qdrant gRPC: http://localhost:6334

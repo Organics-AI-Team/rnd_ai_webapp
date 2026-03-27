@@ -1,5 +1,90 @@
 # Changelog
 
+## [2026-03-27] Tasks 14 & 15: Replace ChromaDB with Qdrant in docker-compose + env
+
+### Summary
+- Replaced ChromaDB service with Qdrant in `docker-compose.yml`
+- Updated `.env.production` to use Qdrant and DO Managed MongoDB URIs
+
+### Details — docker-compose.yml (Task 14)
+- Removed `chromadb` service; added `qdrant` service (qdrant/qdrant:latest) with mem_limit 512m, healthcheck
+- Added `mem_limit: 768m` to both `web` and `ai` services
+- Updated `depends_on`: chromadb -> qdrant (ai uses `condition: service_healthy`)
+- Replaced `VECTOR_DB_PROVIDER` + `CHROMA_URL` with `QDRANT_URL=http://qdrant:6333`
+- Removed `PINECONE_API_KEY` from both services
+- Removed old chromadb-data volume mount from ai service
+- Renamed volume: `chromadb-data` -> `qdrant-data` (rnd-ai-qdrant-data)
+
+### Details — .env.production (Task 15)
+- Replaced MongoDB Atlas URIs with DO Managed MongoDB template URIs (tls=true&authSource=admin)
+- Replaced `VECTOR_DB_PROVIDER` + `CHROMA_URL` with `QDRANT_URL` and `QDRANT_API_KEY`
+- Added `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_CSE_ID` (optional, for ReAct web_search)
+- Removed `PINECONE_API_KEY`
+
+### Files Changed
+- `docker-compose.yml` — Replaced ChromaDB with Qdrant, added mem_limit, updated depends_on/volumes
+- `.env.production` — Qdrant + DO MongoDB URIs + Google Search keys
+
+---
+
+## [2026-03-27] Task 9: Update EnhancedHybridSearchService to Use Qdrant
+
+### Summary
+- Migrated `apps/ai/services/rag/enhanced-hybrid-search-service.ts` from ChromaDB to Qdrant.
+- All search strategies (semantic, keyword, fuzzy, metadata, hybrid) remain functional.
+
+### Details
+- **Import swap**: `getChromaService / ChromaService` replaced with `get_qdrant_service / QdrantService`
+- **Property rename**: `chromaService` -> `qdrantService`, `chromaCollectionName` -> `qdrantCollectionName`
+- **Initialize**: Calls `qdrantService.ensure_initialised()` + `get_collection_info()` instead of ChromaDB `initialize()` / `getCollectionStats()`
+- **Semantic search**: ChromaDB `query()` replaced with Qdrant `search()` using `QdrantSearchOptions` (topK, scoreThreshold, filter, ef, withPayload)
+- **Filter conversion**: ChromaDB where-filter `{ category, userId: { $ne } }` converted to Qdrant `must` / `must_not` conditions
+- **Result mapping**: `match.document` -> `match.payload.details || match.payload.content`, `match.metadata` -> `match.payload`, score used directly (Qdrant returns similarity score, not distance)
+- MongoDB text search (keyword), metadata search, and fuzzy search strategies unchanged
+
+### Files Changed
+- `apps/ai/services/rag/enhanced-hybrid-search-service.ts` — MODIFIED: ChromaDB -> Qdrant migration
+
+---
+
+## [2026-03-27] Task 13: Create Qdrant Re-Indexing Script
+
+### Summary
+- Created `apps/ai/scripts/index-qdrant.ts` to read raw materials from MongoDB and index them into Qdrant.
+
+### Details
+- **Index targets**:
+  1. `rnd_ai.raw_materials_console` → Qdrant `raw_materials_fda` (RAG service: rawMaterialsAllAI)
+  2. `raw_materials.raw_materials_real_stock` → Qdrant `raw_materials_stock` (RAG service: rawMaterialsAI)
+- **Flow**: CLI arg parsing → Qdrant collection provisioning → cursor-based streaming from MongoDB → `batch_process_documents()` per batch → progress tracking (rate, ETA) → verification via `get_collection_info`
+- **CLI flags**: `--collection <name>` to index a specific collection, `--batch-size <n>` to override default (env BATCH_SIZE or 50)
+- **Environment**: reads MONGODB_URI, RAW_MATERIALS_REAL_STOCK_MONGODB_URI, BATCH_SIZE, GEMINI_API_KEY, QDRANT_URL, QDRANT_API_KEY
+- **Pattern**: matches `index-chromadb-simple.ts` — cursor streaming, batch processing, progress logging, final verification
+- All functions use snake_case, have docstrings, and include console.log entry/exit logging
+
+### Files Changed
+- `apps/ai/scripts/index-qdrant.ts` — NEW: Qdrant re-indexing script (MongoDB → embeddings → Qdrant)
+
+---
+
+## [2026-03-27] Task 12: Wire ReactAgentService into API Routes
+
+### Summary
+- Wired `ReactAgentService` into both `raw-materials-agent` and `enhanced-chat` API routes.
+- ReAct agent is attempted first; on success it returns immediately. On failure or non-success, the existing flow runs as fallback.
+
+### Details
+- Added `import { ReactAgentService } from '@/ai/agents/react/react-agent-service'` to both route files.
+- Inserted a try/catch ReAct agent block in each POST handler before existing logic.
+- Response includes `type: 'react-agent'`, tool call metadata, iteration count, and processing time.
+- Existing code paths (enhanced response, Gemini service, ML learning) remain intact as fallback.
+
+### Files Changed
+- `apps/web/app/api/ai/raw-materials-agent/route.ts` — MODIFIED: Added ReactAgentService import and ReAct agent path in POST handler
+- `apps/web/app/api/ai/enhanced-chat/route.ts` — MODIFIED: Added ReactAgentService import and ReAct agent path in POST handler
+
+---
+
 ## [2026-03-27] Task 8: Create ReactAgentService (Main Reasoning Loop)
 
 ### Summary
