@@ -201,7 +201,7 @@ export const QDRANT_COLLECTIONS: Record<string, QdrantCollectionSchema> = {
 
   raw_materials_myskin: {
     name: 'raw_materials_myskin',
-    vector_size: 768,
+    vector_size: 3072,
     distance: 'Cosine',
     hnsw_config: { ...DEFAULT_HNSW_CONFIG },
     on_disk_payload: true,

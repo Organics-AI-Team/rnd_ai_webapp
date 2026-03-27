@@ -30,7 +30,7 @@ const MONGO_COLLECTION = 'raw_materials_myskin';
 const QDRANT_COLLECTION = 'raw_materials_myskin';
 const BATCH_SIZE = 20;
 const EMBEDDING_MODEL = 'gemini-embedding-001';
-const VECTOR_SIZE = 768;
+const VECTOR_SIZE = 3072;
 
 // ---------------------------------------------------------------------------
 // Helpers
