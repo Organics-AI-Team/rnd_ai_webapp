@@ -1,22 +1,30 @@
 # Changelog
 
-## [2026-03-27] Feature: Add Prisma ORM with MongoDB schema (20 models, 30+ indexes)
+## [2026-03-27] Feature: Add Prisma ORM v6.19 with MongoDB schema (20 models, 30+ indexes)
 
 ### Summary
-- Added Prisma with MongoDB provider — schema covers all 20 collections
+- Added Prisma v6.19 with MongoDB provider — Prisma v7 does NOT support MongoDB yet
+- Schema covers all 20 collections with relations, enums, embedded types, indexes
 - Models: Account, Session, User, Organization, RawMaterial, Product, StockEntry,
   Formula, Order, CreditTransaction, ProductLog, UserLog, Conversation, Feedback,
   AiResponse, PriceCalculation
 - Pushed schema to DO MongoDB — all collections and indexes created
-- Prisma client singleton in shared-database package
-- Dockerfile updated with `prisma generate` step
+- Prisma client singleton in shared-database package (imports from @prisma/client)
+- Docker build verified — copies .prisma + @prisma to runner stage
+
+### Issues Resolved
+- Prisma 7 `prisma-client` generator outputs .ts files — Next.js 14 can't transpile node_modules .ts
+- Prisma 7 engine type "client" requires adapter/accelerateUrl — no MongoDB adapter exists yet
+- Solution: Downgraded to Prisma v6.19 (latest v6, full MongoDB support, prisma-client-js generator)
+- Fixed import path: `@prisma/client` instead of relative `../../../../generated/prisma`
+- Fixed Dockerfile: copy `node_modules/.prisma` + `node_modules/@prisma` instead of `generated/`
 
 ### Files Changed
-- `prisma/schema.prisma` — Full MongoDB schema with relations, enums, indexes
-- `prisma.config.ts` — Prisma config with DATABASE_URL
-- `packages/shared-database/src/prisma/client.ts` — Singleton client
+- `prisma/schema.prisma` — Full MongoDB schema with `url = env("DATABASE_URL")` in datasource
+- `prisma.config.ts` — Prisma config (v6 compatible)
+- `packages/shared-database/src/prisma/client.ts` — Singleton client, imports from @prisma/client
 - `packages/shared-database/src/index.ts` — Export prisma client
-- `apps/web/Dockerfile` — Added prisma generate + copy generated client
+- `apps/web/Dockerfile` — prisma generate + copy .prisma/@prisma to runner stage
 - `docker-compose.yml` — Added DATABASE_URL env var
 - `.env.production` — Added DATABASE_URL template
 

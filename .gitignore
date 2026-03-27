@@ -59,3 +59,5 @@ next-env.d.ts
 # Archive and backup files
 _archive/
 *.backup
+
+/generated/prisma

@@ -88,8 +88,9 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
-# Copy generated Prisma client
-COPY --from=builder --chown=nextjs:nodejs /app/generated ./generated
+# Copy Prisma client (engine binaries + generated types)
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 
 # Copy public assets if they exist
 RUN mkdir -p ./apps/web/public

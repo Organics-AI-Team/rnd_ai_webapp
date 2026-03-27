@@ -7,7 +7,7 @@
  * @returns PrismaClient — cached singleton instance
  */
 
-import { PrismaClient } from '../../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 const global_for_prisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
