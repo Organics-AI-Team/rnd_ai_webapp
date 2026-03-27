@@ -47,7 +47,7 @@ export default function VectorIndexingPage() {
           <h1 className="text-2xl font-bold">Vector Database Indexing</h1>
         </div>
         <p className="text-gray-600">
-          Index raw materials data into Pinecone vector database for semantic search
+          Index raw materials data into Qdrant vector database for semantic search
         </p>
       </div>
 
@@ -63,13 +63,13 @@ export default function VectorIndexingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 bg-gray-50 rounded-lg">
               <div className="text-2xl font-bold text-blue-600">
-                {statsQuery.data?.success ? statsQuery.data.mongoDBCount : '...'}
+                {statsQuery.data?.success ? (statsQuery.data as any).mongoDBCount : '...'}
               </div>
               <div className="text-sm text-gray-600">MongoDB Documents</div>
             </div>
             <div className="text-center p-4 bg-gray-50 rounded-lg">
               <div className="text-2xl font-bold text-green-600">
-                {statsQuery.data?.success ? statsQuery.data.indexedCount : '...'}
+                {statsQuery.data?.success ? (statsQuery.data as any).indexedCount : '...'}
               </div>
               <div className="text-sm text-gray-600">Indexed Vectors</div>
             </div>
