@@ -15,6 +15,7 @@ services:
       - "3000:3000"
     environment:
       # Database
+      - DATABASE_URL=${DATABASE_URL}
       - MONGODB_URI=${MONGODB_URI}
       - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI}
 

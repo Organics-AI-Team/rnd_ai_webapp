@@ -1,5 +1,27 @@
 # Changelog
 
+## [2026-03-27] Feature: Add Prisma ORM with MongoDB schema (20 models, 30+ indexes)
+
+### Summary
+- Added Prisma with MongoDB provider — schema covers all 20 collections
+- Models: Account, Session, User, Organization, RawMaterial, Product, StockEntry,
+  Formula, Order, CreditTransaction, ProductLog, UserLog, Conversation, Feedback,
+  AiResponse, PriceCalculation
+- Pushed schema to DO MongoDB — all collections and indexes created
+- Prisma client singleton in shared-database package
+- Dockerfile updated with `prisma generate` step
+
+### Files Changed
+- `prisma/schema.prisma` — Full MongoDB schema with relations, enums, indexes
+- `prisma.config.ts` — Prisma config with DATABASE_URL
+- `packages/shared-database/src/prisma/client.ts` — Singleton client
+- `packages/shared-database/src/index.ts` — Export prisma client
+- `apps/web/Dockerfile` — Added prisma generate + copy generated client
+- `docker-compose.yml` — Added DATABASE_URL env var
+- `.env.production` — Added DATABASE_URL template
+
+---
+
 ## [2026-03-27] Deploy: R&D AI Management live on DigitalOcean Droplet
 
 ### Summary

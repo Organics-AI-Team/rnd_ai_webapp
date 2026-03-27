@@ -24,6 +24,9 @@ export {
   raw_materials_client_promise
 } from './mongodb/connections';
 
+// Prisma Client
+export { prisma, PrismaClient } from './prisma/client';
+
 // Utilities
 export { parseArrayField } from './utils/array-utils';
 

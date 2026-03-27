@@ -28,7 +28,12 @@
     "index:qdrant": "npm run index:qdrant --workspace=apps/ai",
     "check:qdrant": "npm run check:qdrant --workspace=apps/ai"
   },
-  "keywords": ["monorepo", "ai", "nextjs", "typescript"],
+  "keywords": [
+    "monorepo",
+    "ai",
+    "nextjs",
+    "typescript"
+  ],
   "author": "",
   "license": "ISC",
   "repository": {
@@ -38,5 +43,9 @@
   "devDependencies": {
     "@types/node": "^24.6.2",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.5.0",
+    "prisma": "^7.5.0"
   }
 }

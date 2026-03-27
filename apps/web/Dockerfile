@@ -43,6 +43,11 @@ COPY apps/web ./apps/web
 # Copy AI service (needed for imports)
 COPY apps/ai ./apps/ai
 
+# Copy Prisma schema and config, then generate client
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN npx prisma generate
+
 # Set environment to production for optimized build
 ENV NODE_ENV=production
 
@@ -82,6 +87,9 @@ RUN adduser --system --uid 1001 nextjs
 # Copy Next.js build output
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+
+# Copy generated Prisma client
+COPY --from=builder --chown=nextjs:nodejs /app/generated ./generated
 
 # Copy public assets if they exist
 RUN mkdir -p ./apps/web/public
