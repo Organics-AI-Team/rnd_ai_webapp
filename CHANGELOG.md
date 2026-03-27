@@ -1,5 +1,23 @@
 # Changelog
 
+## [2026-03-27] Deploy: R&D AI Management live on DigitalOcean Droplet
+
+### Summary
+- Created droplet `rnd-ai-droplet` (2vCPU/4GB, sgp1, Ubuntu 24.04) — IP: 165.245.181.97
+- Created managed MongoDB `rnd-ai-mongodb` (MongoDB 8, sgp1, 1 node)
+- Firewall configured: SSH(22), HTTP(80), HTTPS(443), App(3000)
+- Fixed Dockerfile: removed non-existent `apps/web/node_modules` COPY (npm workspaces hoist to root)
+- Fixed Qdrant healthcheck: replaced wget with bash /dev/tcp probe (Qdrant image has no wget/curl)
+- App is live at http://165.245.181.97:3000
+- Qdrant collections empty — ready for data indexing
+
+### Infrastructure
+- Droplet ID: 561184147 | DB ID: 28d32669-76af-4d48-aff8-063d6f9902f6
+- Both assigned to `organicsai` project
+- DB trusted sources: droplet + local dev IP
+
+---
+
 ## [2026-03-27] Fix: Final Pinecone→Qdrant migration cleanup — zero migration TS errors
 
 ### Summary
