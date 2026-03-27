@@ -301,9 +301,9 @@ export async function POST(request: NextRequest) {
       const reactAgent = new ReactAgentService();
       const reactResult = await reactAgent.execute({
         prompt: body.prompt,
-        userId: body.userId,
-        sessionId: body.conversationHistory?.[0]?.sessionId,
-        conversationHistory: body.conversationHistory?.map((m: any) => ({
+        user_id: body.userId,
+        session_id: body.conversationHistory?.[0]?.sessionId,
+        conversation_history: body.conversationHistory?.map((m: any) => ({
           role: m.role || 'user',
           content: m.content || '',
         })),
@@ -318,15 +318,15 @@ export async function POST(request: NextRequest) {
           id: `react-${Date.now()}`,
           type: 'react-agent',
           features: {
-            searchEnabled: reactResult.toolCalls.some((t: any) => t.name === 'qdrant_search'),
+            searchEnabled: reactResult.tool_calls.some((t: any) => t.name === 'qdrant_search'),
             mlEnabled: false,
-            searchResultsCount: reactResult.toolCalls.filter((t: any) => t.name === 'qdrant_search').length,
-            optimizationsApplied: reactResult.toolCalls.map((t: any) => t.name),
+            searchResultsCount: reactResult.tool_calls.filter((t: any) => t.name === 'qdrant_search').length,
+            optimizationsApplied: reactResult.tool_calls.map((t: any) => t.name),
           },
-          toolCalls: reactResult.toolCalls,
+          toolCalls: reactResult.tool_calls,
           metadata: {
             iterations: reactResult.iterations,
-            processingTime: reactResult.processingTime,
+            processingTime: reactResult.processing_time,
             agent: 'react',
           },
         });

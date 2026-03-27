@@ -80,9 +80,9 @@ export async function POST(request: NextRequest) {
       const reactAgent = new ReactAgentService();
       const reactResult = await reactAgent.execute({
         prompt: body.prompt,
-        userId: body.userId,
-        sessionId: body.conversationHistory?.[0]?.sessionId,
-        conversationHistory: body.conversationHistory?.map((m: any) => ({
+        user_id: body.userId,
+        session_id: body.conversationHistory?.[0]?.sessionId,
+        conversation_history: body.conversationHistory?.map((m: any) => ({
           role: m.role || 'user',
           content: m.content || '',
         })),

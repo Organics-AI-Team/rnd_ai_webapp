@@ -3,9 +3,11 @@
 ## [2026-03-27] Fix: Final Pinecone→Qdrant migration cleanup — zero migration TS errors
 
 ### Summary
-- Fixed `enhanced-chat/route.ts`: `toolCalls` → `tool_calls`, `processingTime` → `processing_time` (snake_case per ReactAgentResponse interface)
+- Fixed `enhanced-chat/route.ts` and `raw-materials-agent/route.ts`: snake_case alignment with ReactAgent interfaces
+  - `toolCalls` → `tool_calls`, `processingTime` → `processing_time`
+  - `userId` → `user_id`, `sessionId` → `session_id`, `conversationHistory` → `conversation_history`
 - Fixed `ai-chat.tsx` and `raw-materials-chat.tsx`: redirected deleted `pinecone-client` import → `qdrant-rag-service`
-- All migration-related TypeScript errors now resolved. Remaining 355 errors are pre-existing (legacy UI module refs, langgraph API, regulatory types).
+- All migration-related TypeScript errors now resolved. Remaining 43 errors (web app) are pre-existing (langgraph API, cosmetic services types, calculations router).
 
 ### Files Changed
 - `apps/web/app/api/ai/enhanced-chat/route.ts` — `reactResult.toolCalls` → `reactResult.tool_calls`, `reactResult.processingTime` → `reactResult.processing_time`
