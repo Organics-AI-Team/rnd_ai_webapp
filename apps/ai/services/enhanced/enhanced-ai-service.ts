@@ -61,7 +61,7 @@ export class EnhancedAIService extends BaseAIService {
 
   constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
     const defaultConfig: AIModelConfig = {
-      model: config?.model || 'gemini-2.0-flash-exp',
+      model: config?.model || process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
       temperature: 0.7,
       maxTokens: 9000,
       ...config

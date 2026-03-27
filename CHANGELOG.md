@@ -1,5 +1,92 @@
 # Changelog
 
+## [2026-03-27] Upgrade: Gemini 3 Flash Preview + Web Search Grounding
+
+### Summary
+- Upgraded all AI model references from gemini-2.0-flash-exp to gemini-3-flash-preview (Pro-level intelligence at Flash pricing)
+- All model references now configurable via GEMINI_MODEL env var for easy switching
+- Web search tool rewritten to use Gemini Google Search grounding (@google/genai SDK) — no external API keys needed
+- Search model uses gemini-2.5-flash (stable, confirmed grounding support)
+
+### Files Changed
+- `apps/ai/agents/react/react-agent-service.ts` — Default model → gemini-3-flash-preview
+- `apps/ai/services/providers/gemini-service.ts` — Default model → gemini-3-flash-preview
+- `apps/ai/services/enhanced/enhanced-ai-service.ts` — Default model → gemini-3-flash-preview
+- `apps/web/app/api/ai/cosmetic-enhanced/route.ts` — Model → gemini-3-flash-preview
+- `apps/web/app/api/ai/raw-materials-agent/route.ts` — Model → gemini-3-flash-preview
+- `apps/web/app/api/ai/enhanced-chat/route.ts` — Model → gemini-3-flash-preview
+- `apps/ai/agents/react/tool-handlers/web-search-handler.ts` — Full rewrite: Gemini Google Search grounding
+
+---
+
+## [2026-03-27] Fix: Remove all OpenAI/Pinecone dependencies — Gemini + Qdrant everywhere
+
+### Summary
+- All 3 AI API routes now use Gemini + Qdrant exclusively (zero OpenAI/Pinecone dependency)
+- cosmetic-enhanced: ReAct agent as primary path, GeminiService fallback (was OpenAI GPT-4 + Pinecone)
+- raw-materials-agent: Removed PINECONE_API_KEY guard, search uses Qdrant directly
+- enhanced-chat: Same Pinecone removal, Qdrant-based search
+- EnhancedAIService: Default model changed from gpt-4 to gemini-2.0-flash-exp
+- ReAct system prompt: Routes all qdrant_search to raw_materials_myskin (only indexed collection)
+- All health checks pass: toolService, searchService, mlService, geminiAI, knowledgeService, etc.
+
+### Verification
+- POST /api/ai/raw-materials-agent → success=true, type=react-agent
+- POST /api/ai/enhanced-chat → success=true, type=react-agent
+- POST /api/ai/cosmetic-enhanced → success=true, type=react-agent
+- All GET ?action=health → all services true
+- Container: healthy
+
+### Files Changed
+- `apps/web/app/api/ai/cosmetic-enhanced/route.ts` — Gemini+Qdrant, ReAct primary path
+- `apps/web/app/api/ai/raw-materials-agent/route.ts` — Remove Pinecone guard
+- `apps/web/app/api/ai/enhanced-chat/route.ts` — Remove Pinecone guard
+- `apps/ai/services/enhanced/enhanced-ai-service.ts` — Default model → gemini-2.0-flash-exp
+- `apps/ai/agents/react/react-system-prompt.ts` — Route all search to myskin collection
+
+---
+
+## [2026-03-27] Fix: UI consistency — all light mode, black text, no CSS variable issues
+
+### Summary
+- Fixed CSS variable color references that Tailwind couldn't resolve (broke opacity modifiers)
+- Converted ALL components from CSS variable references to direct Tailwind gray-scale colors
+- Switched sidebar from dark (#1b1b1b) to light white with gray-200 borders
+- All text now uses explicit gray-900 (black) for primary, gray-500 for secondary
+- Removed all custom CSS color tokens from tailwind.config.ts (sidebar, primary, etc.)
+- globals.css simplified to just --background/#ffffff and --foreground/#111111
+- Body background: #f8f9fa (light gray), all cards: bg-white
+
+### Root Cause
+- Tailwind CSS variables (e.g., `bg-primary/90`) require colors in RGB/HSL format without wrappers
+- Hex values in CSS variables break Tailwind's opacity modifier, causing invisible/wrong colors
+- Fix: replaced all `text-foreground`, `bg-muted`, `border-border` etc. with `text-gray-900`, `bg-gray-50`, `border-gray-200`
+
+### Files Changed (37 files — all re-touched)
+- All `components/ui/*.tsx` — direct gray colors, white bg, gray borders
+- `navigation.tsx`, `admin-navigation.tsx` — white sidebar, gray-200 border
+- `globals.css` — simplified, no custom tokens
+- `tailwind.config.ts` — removed sidebar/primary/secondary/etc. color tokens
+- All AI components — gray-900 text, gray-50 backgrounds
+- All pages — gray-900 headings, gray-500 descriptions
+
+---
+
+## [2026-03-27] Deploy: Full stack deployment — MySkin + UI redesign live on production
+
+### Summary
+- Rebuilt and deployed web container with all MySkin search tools + Cloudflare UI redesign
+- Qdrant collection `raw_materials_myskin`: 4,652 vectors (3072-dim, gemini-embedding-001), status green
+- E2E verified: login API, AI chat with MySkin semantic search (hyaluronic acid query returned 5 results)
+- All 35 UI component files committed and deployed (Cloudflare-inspired dark sidebar, compact spacing)
+
+### Verification Results
+- Login: 200 OK, returns admin user
+- AI Chat (ReAct agent): qdrant_search → raw_materials_myskin → 5 HA variants (scores 70.7-71.6%)
+- Qdrant: green status, 4652 points, optimizer OK, HNSW indexing active
+
+---
+
 ## [2026-03-27] Feature: MySkin Search Tools — 4 AI chatbot tools for 4,652 cosmetic ingredients
 
 ### Summary

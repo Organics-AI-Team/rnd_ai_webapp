@@ -83,7 +83,7 @@ export interface ReactAgentResponse {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CONFIG: ReactAgentConfig = {
-  model: 'gemini-2.0-flash',
+  model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
   temperature: 0.7,
   max_tokens: 9000,
   max_iterations: 5,

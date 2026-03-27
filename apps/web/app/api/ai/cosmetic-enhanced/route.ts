@@ -55,7 +55,7 @@ function initializeServices() {
     regulatoryService = new CosmeticRegulatoryService();
     credibilityService = new CosmeticCredibilityWeightingService();
     thresholdsService = new CosmeticQualityThresholdsService();
-    enhancedAIService = new GeminiService(GEMINI_API_KEY, { model: 'gemini-2.0-flash-exp', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
+    enhancedAIService = new GeminiService(GEMINI_API_KEY, { model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
     responseReranker = new ResponseReranker();
 
     console.log('✅ [CosmeticEnhancedAPI] All services initialized successfully');

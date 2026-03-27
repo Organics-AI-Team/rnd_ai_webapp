@@ -35,7 +35,7 @@ function initialize_services() {
     GEMINI_API_KEY,
     toolRegistry,
     {
-      model: 'gemini-2.0-flash-exp',
+      model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
       temperature: 0.7,
       maxTokens: 9000
     },

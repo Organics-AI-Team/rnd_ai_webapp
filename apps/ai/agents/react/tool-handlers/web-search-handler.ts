@@ -1,29 +1,26 @@
 /**
  * Web Search Tool Handler
- * Handles the `web_search` ReAct tool by querying the Google Custom Search API
- * when credentials are configured, or returning a graceful fallback message
- * that instructs the LLM to use training-data knowledge instead.
+ * Handles the `web_search` ReAct tool using Gemini's built-in Google Search
+ * grounding. No external API keys needed — uses GEMINI_API_KEY only.
  *
- * Configuration (both env vars required for live search):
- *   - GOOGLE_SEARCH_API_KEY  — Google API key with Custom Search enabled
- *   - GOOGLE_SEARCH_CSE_ID   — Custom Search Engine ID (cx parameter)
+ * Uses @google/genai SDK with `googleSearch` tool to get real-time web results
+ * with source citations and grounding metadata.
+ *
+ * Configuration:
+ *   - GEMINI_API_KEY — Required (same key used by the rest of the AI system)
  *
  * @author AI Management System
  * @date 2026-03-27
  */
 
+import { GoogleGenAI } from '@google/genai';
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Google Custom Search JSON API base endpoint */
-const GOOGLE_CSE_API_URL = 'https://www.googleapis.com/customsearch/v1';
-
-/** Hard cap on results to keep response token count manageable */
-const MAX_RESULTS_CAP = 10;
-
-/** Default number of results when caller omits max_results */
-const DEFAULT_MAX_RESULTS = 5;
+/** Gemini model used for search-grounded queries */
+const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,8 +29,8 @@ const DEFAULT_MAX_RESULTS = 5;
 /**
  * Input parameters for the web_search tool handler.
  *
- * @param query       - Search query string to send to Google or use as context
- * @param max_results - Maximum results to return (default: 5, capped at 10)
+ * @param query       - Search query string
+ * @param max_results - Maximum results to return (advisory — Gemini decides actual count)
  */
 interface WebSearchParams {
   query: string;
@@ -41,11 +38,11 @@ interface WebSearchParams {
 }
 
 /**
- * Normalised representation of a single search result.
+ * Normalised representation of a single search result source.
  *
- * @param title   - Page title from Google search result
- * @param url     - Full URL of the result page
- * @param snippet - Short excerpt shown in search results
+ * @param title   - Page title from grounding chunk
+ * @param url     - Full URL of the source page
+ * @param snippet - Relevant text excerpt from the source
  */
 interface SearchResult {
   title: string;
@@ -54,69 +51,85 @@ interface SearchResult {
 }
 
 // ---------------------------------------------------------------------------
-// Google CSE Fetcher
+// Singleton GenAI Client
+// ---------------------------------------------------------------------------
+
+let genai_client: GoogleGenAI | null = null;
+
+/**
+ * Get or create the GoogleGenAI client singleton.
+ *
+ * @returns GoogleGenAI instance
+ * @throws Error if GEMINI_API_KEY is not set
+ */
+function get_genai_client(): GoogleGenAI {
+  if (genai_client) return genai_client;
+
+  const api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  if (!api_key) {
+    throw new Error('GEMINI_API_KEY not configured — required for web search');
+  }
+
+  genai_client = new GoogleGenAI({ apiKey: api_key });
+  console.log('[web-search-handler] GoogleGenAI client initialised');
+  return genai_client;
+}
+
+// ---------------------------------------------------------------------------
+// Gemini Search with Grounding
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch results from Google Custom Search API.
+ * Execute a web search using Gemini's built-in Google Search grounding.
+ * Gemini automatically searches the web and returns a grounded answer
+ * with source citations.
  *
- * @param query       - Search query string
- * @param num_results - Number of results to request (1–10)
- * @param api_key     - Google API key
- * @param cse_id      - Custom Search Engine ID
- * @returns Array of normalised SearchResult objects
- * @throws Error on network failure or non-OK HTTP response
+ * @param query - Search query string
+ * @returns Object with answer text and extracted search results
  */
-async function fetch_google_results(
+async function search_with_gemini_grounding(
   query: string,
-  num_results: number,
-  api_key: string,
-  cse_id: string,
-): Promise<SearchResult[]> {
-  console.log('[web-search-handler] fetch_google_results — start', {
-    query,
-    num_results,
+): Promise<{ answer: string; sources: SearchResult[] }> {
+  console.log('[web-search-handler] search_with_gemini_grounding — start', { query });
+
+  const ai = get_genai_client();
+
+  const response = await ai.models.generateContent({
+    model: SEARCH_MODEL,
+    contents: `Search the web and provide factual, current information about: ${query}\n\nProvide a concise summary with key facts. Include specific data points, dates, and numbers when available.`,
+    config: {
+      tools: [{ googleSearch: {} }],
+    },
   });
 
-  // Google CSE API accepts 1–10 results per request
-  const safe_num = Math.min(Math.max(num_results, 1), 10);
+  const answer = response.text || 'No answer generated.';
 
-  const url = new URL(GOOGLE_CSE_API_URL);
-  url.searchParams.set('key', api_key);
-  url.searchParams.set('cx', cse_id);
-  url.searchParams.set('q', query);
-  url.searchParams.set('num', String(safe_num));
+  // Extract grounding metadata for source citations
+  const metadata = response.candidates?.[0]?.groundingMetadata;
+  const sources: SearchResult[] = [];
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    // Generous timeout: CSE can be slow on first request
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `Google CSE API returned HTTP ${response.status}: ${body.substring(0, 200)}`,
-    );
+  if (metadata?.groundingChunks) {
+    for (const chunk of metadata.groundingChunks) {
+      if (chunk.web) {
+        sources.push({
+          title: chunk.web.title || 'Web Source',
+          url: chunk.web.uri || '',
+          snippet: '', // Gemini grounding chunks don't include snippets directly
+        });
+      }
+    }
   }
 
-  const data = await response.json() as Record<string, unknown>;
+  // Extract search queries used by Gemini for transparency
+  const search_queries = metadata?.webSearchQueries || [];
 
-  // Extract items array; CSE returns empty items when no results found
-  const items = (data.items as Record<string, string>[] | undefined) ?? [];
-
-  const results: SearchResult[] = items.map((item) => ({
-    title: item.title ?? 'No title',
-    url: item.link ?? '',
-    snippet: item.snippet ?? '',
-  }));
-
-  console.log('[web-search-handler] fetch_google_results — done', {
-    returned: results.length,
+  console.log('[web-search-handler] search_with_gemini_grounding — done', {
+    answer_length: answer.length,
+    source_count: sources.length,
+    search_queries,
   });
 
-  return results;
+  return { answer, sources };
 }
 
 // ---------------------------------------------------------------------------
@@ -124,26 +137,36 @@ async function fetch_google_results(
 // ---------------------------------------------------------------------------
 
 /**
- * Format an array of SearchResult objects into a readable numbered list.
+ * Format the Gemini grounded search response into a readable string
+ * for the ReAct agent to consume.
  *
  * @param query   - Original query for context in the header
- * @param results - Array of search results to format
- * @returns Multi-line formatted string
+ * @param answer  - Gemini's grounded answer text
+ * @param sources - Array of source citations from grounding metadata
+ * @returns Multi-line formatted string with answer and sources
  */
-function format_search_results(query: string, results: SearchResult[]): string {
+function format_grounded_response(
+  query: string,
+  answer: string,
+  sources: SearchResult[],
+): string {
+  console.log('[web-search-handler] format_grounded_response — start');
+
   const header =
-    `Web search results for: "${query}" (${results.length} result${results.length !== 1 ? 's' : ''})\n` +
+    `Web search results for: "${query}" (Gemini Google Search grounding)\n` +
     '─'.repeat(60);
 
-  const formatted = results.map((r, i) => {
-    return [
-      `[${i + 1}] ${r.title}`,
-      `    URL:     ${r.url}`,
-      `    Excerpt: ${r.snippet.replace(/\n/g, ' ')}`,
-    ].join('\n');
-  });
+  const parts = [header, '', answer];
 
-  return [header, ...formatted].join('\n\n');
+  if (sources.length > 0) {
+    parts.push('', '─'.repeat(60), 'Sources:');
+    sources.forEach((s, i) => {
+      parts.push(`  [${i + 1}] ${s.title} — ${s.url}`);
+    });
+  }
+
+  console.log('[web-search-handler] format_grounded_response — done');
+  return parts.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -153,15 +176,12 @@ function format_search_results(query: string, results: SearchResult[]): string {
 /**
  * Handle the `web_search` ReAct tool call.
  *
- * When GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CSE_ID are both set:
- *   1. Calls Google Custom Search API
- *   2. Returns formatted results
- *
- * When credentials are not configured:
- *   Returns a fallback message instructing the LLM to answer from training data.
+ * Uses Gemini's built-in Google Search grounding to search the web
+ * and return a grounded answer with source citations.
+ * Requires only GEMINI_API_KEY (no Google CSE keys needed).
  *
  * @param params - WebSearchParams with query and optional max_results
- * @returns Formatted string of web results or a training-data fallback message
+ * @returns Formatted string with grounded web search answer and sources
  * @throws Never throws directly — errors are caught and returned as strings
  */
 export async function handle_web_search(params: WebSearchParams): Promise<string> {
@@ -177,44 +197,28 @@ export async function handle_web_search(params: WebSearchParams): Promise<string
     return 'Error: query parameter is required and must not be empty.';
   }
 
-  const num_results = Math.min(params.max_results ?? DEFAULT_MAX_RESULTS, MAX_RESULTS_CAP);
-
-  // --- Check credentials ---
-  const api_key = process.env.GOOGLE_SEARCH_API_KEY;
-  const cse_id = process.env.GOOGLE_SEARCH_CSE_ID;
-
-  if (!api_key || !cse_id) {
-    console.log('[web-search-handler] handle_web_search — credentials not configured, returning fallback');
-
+  // --- Check Gemini API key ---
+  const api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  if (!api_key) {
     const elapsed = Date.now() - start_ts;
-    console.log('[web-search-handler] handle_web_search — done (fallback)', { elapsed_ms: elapsed });
+    console.log('[web-search-handler] handle_web_search — no GEMINI_API_KEY, fallback', { elapsed_ms: elapsed });
 
     return (
-      `Web search not configured. Based on training data: ` +
-      `Please answer the following query using your knowledge up to your training cutoff: "${params.query}". ` +
-      `Note: For real-time data (prices, availability, regulations updated after training), ` +
-      `results may not reflect the latest information.`
+      `Web search not configured (missing GEMINI_API_KEY). ` +
+      `Please answer the following query using your knowledge: "${params.query}".`
     );
   }
 
-  // --- Execute live search ---
+  // --- Execute Gemini-grounded web search ---
   try {
-    const results = await fetch_google_results(params.query, num_results, api_key, cse_id);
+    const { answer, sources } = await search_with_gemini_grounding(params.query);
 
     const elapsed = Date.now() - start_ts;
-
-    if (results.length === 0) {
-      console.log('[web-search-handler] handle_web_search — no results', { elapsed_ms: elapsed });
-      return (
-        `Web search returned no results for: "${params.query}". ` +
-        `Try a different query or check the Custom Search Engine configuration.`
-      );
-    }
-
-    const formatted = format_search_results(params.query, results);
+    const formatted = format_grounded_response(params.query, answer, sources);
 
     console.log('[web-search-handler] handle_web_search — done', {
-      result_count: results.length,
+      answer_length: answer.length,
+      source_count: sources.length,
       elapsed_ms: elapsed,
     });
 
@@ -227,7 +231,7 @@ export async function handle_web_search(params: WebSearchParams): Promise<string
       elapsed_ms: elapsed,
     });
 
-    // On API error, degrade gracefully to training-data fallback
+    // On error, degrade gracefully to training-data fallback
     return (
       `Web search encountered an error: ${err_msg}. ` +
       `Falling back to training data for query: "${params.query}".`

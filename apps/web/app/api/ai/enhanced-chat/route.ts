@@ -26,7 +26,7 @@ async function initializeServices() {
       const geminiApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if (geminiApiKey) {
         geminiService = new GeminiService(geminiApiKey, {
-          model: 'gemini-2.0-flash-exp',
+          model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
           temperature: 0.7,
           maxTokens: 9000
         }, 'enhanced-chat');

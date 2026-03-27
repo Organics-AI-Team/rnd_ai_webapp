@@ -12,7 +12,7 @@ export class GeminiService extends BaseAIService {
 
   constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
     const defaultConfig: AIModelConfig = {
-      model: 'gemini-2.5-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
       temperature: 0.7,
       maxTokens: 9000,
       ...config
