@@ -40,7 +40,7 @@ export class LangGraphRawMaterialsAgent {
   constructor(geminiApiKey: string) {
     // Initialize the LLM
     this.llm = new ChatGoogleGenerativeAI({
-      model: 'gemini-2.0-flash-exp',
+      model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
       apiKey: geminiApiKey,
       temperature: 0.7,
       maxOutputTokens: 4000

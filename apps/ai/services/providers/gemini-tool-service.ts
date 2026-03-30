@@ -24,7 +24,7 @@ export class GeminiToolService extends BaseAIService {
     serviceName?: string
   ) {
     const defaultConfig: AIModelConfig = {
-      model: 'gemini-2.0-flash-exp',
+      model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
       temperature: 0.7,
       maxTokens: 9000,
       ...config

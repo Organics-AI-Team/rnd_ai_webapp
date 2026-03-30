@@ -35,7 +35,7 @@ function initialize_services() {
     GEMINI_API_KEY,
     toolRegistry,
     {
-      model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
+      model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
       temperature: 0.7,
       maxTokens: 9000
     },
@@ -153,7 +153,7 @@ async function handleEnhancedResponse(
     return NextResponse.json({
       success: true,
       response: enhancedResponse.response,
-      model: enhancedResponse.model || 'gemini-2.0-flash-exp',
+      model: enhancedResponse.model || 'gemini-3.1-pro-preview',
       id: enhancedResponse.id,
       type: 'enhanced',
       features: {

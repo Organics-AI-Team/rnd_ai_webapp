@@ -16,7 +16,11 @@ const nextConfig = {
   // Disable minification in development to avoid webpack compatibility issues
   // Production builds can be optimized once dependencies are resolved
   compiler: {
+    // Keep console.error and console.warn in production for AI agent debugging
+    // Only strip console.log and console.debug to reduce noise
     removeConsole: process.env.NODE_ENV === 'production'
+      ? { exclude: ['error', 'warn'] }
+      : false
   },
 
   // Fix for Pinecone fs module issue and MongoDB browser compatibility

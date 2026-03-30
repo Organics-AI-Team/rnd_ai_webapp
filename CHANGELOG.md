@@ -1,5 +1,61 @@
 # Changelog
 
+## [2026-03-30] Fix: AI chat failures — model upgrade to Gemini 3.1 Pro + production logging
+
+### Root Cause
+- `removeConsole: true` in next.config.js stripped ALL logging in production — AI errors silently swallowed
+- Default model `gemini-3-flash-preview` intermittently failing in ReAct loop's 2nd iteration
+- All fallback paths used same broken model → cascade failure → empty response → "Sorry, I could not process your request"
+- `Failed to find Server Action "x"` errors from stale Next.js build
+
+### Fixes Applied
+1. **next.config.js** — `removeConsole` now preserves `console.error` and `console.warn` in production
+2. **All AI services** — Default model changed from `gemini-3-flash-preview` to `gemini-3.1-pro-preview` (verified working via API)
+3. **docker-compose.yml** — Added `GEMINI_MODEL` env var for runtime model switching
+4. **react-agent-service.ts** — Key request tracking logs upgraded to `console.warn` for production visibility
+5. **All hardcoded `gemini-2.0-flash-exp` references** — Replaced with `process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview'`
+
+### Files Changed
+- `apps/web/next.config.js` — removeConsole: exclude error/warn
+- `apps/ai/agents/react/react-agent-service.ts` — Model + logging
+- `apps/ai/services/providers/gemini-service.ts` — Model
+- `apps/ai/services/providers/gemini-tool-service.ts` — Model
+- `apps/ai/services/providers/agent-api-service.ts` — Model
+- `apps/ai/services/enhanced/enhanced-ai-service.ts` — Model
+- `apps/ai/agents/raw-materials-ai/langgraph-agent.ts` — Model
+- `apps/web/app/api/ai/raw-materials-agent/route.ts` — Model
+- `apps/web/app/api/ai/enhanced-chat/route.ts` — Model
+- `apps/web/app/api/ai/cosmetic-enhanced/route.ts` — Model
+- `docker-compose.yml` — GEMINI_MODEL env var
+
+### Verification
+- `gemini-3.1-pro-preview` confirmed available and responsive via Google AI API
+- Zero remaining `gemini-3-flash-preview` or `gemini-2.0-flash-exp` hardcoded references in source
+
+---
+
+## [2026-03-30] Feature: CAS Number mapping from MySkin to products table
+
+### Summary
+- Added CAS No. column to `/products` and `/ingredients` tables
+- CAS numbers are resolved at runtime by joining `raw_materials_console.inci_name` → `raw_materials_myskin.inci_name` → `cas_no`
+- No data migration needed — uses batch lookup via `build_cas_no_map()` helper
+- CAS numbers are searchable in the products search bar
+- CAS No. shown in ingredient detail dialog
+
+### Approach
+- `raw_materials_console` never had `cas_no` — the field only exists in `raw_materials_myskin` (4,652 MySkin cosmetic ingredients)
+- Join key: `inci_name` (INCI Name) — the international standard identifier for cosmetic ingredients
+- Case-insensitive regex matching handles variations ("glycerin" vs "Glycerin")
+- Materials without a matching INCI in MySkin show "-" (no CAS available)
+
+### Files Changed
+- `apps/ai/server/routers/products.ts` — Added `build_cas_no_map()` helper, CAS lookup in list/getById, cas_no in search filter
+- `apps/web/app/products/page.tsx` — Added CAS No. table column, updated search placeholder
+- `apps/web/app/ingredients/page.tsx` — Added CAS No. table column, detail dialog field, updated search placeholder
+
+---
+
 ## [2026-03-27] Upgrade: Gemini 3 Flash Preview + Web Search Grounding
 
 ### Summary

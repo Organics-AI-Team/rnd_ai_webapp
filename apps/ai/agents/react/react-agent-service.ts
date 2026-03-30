@@ -83,7 +83,7 @@ export interface ReactAgentResponse {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CONFIG: ReactAgentConfig = {
-  model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
+  model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
   temperature: 0.7,
   max_tokens: 9000,
   max_iterations: 5,
@@ -175,11 +175,12 @@ export class ReactAgentService {
    */
   async execute(request: ReactAgentRequest): Promise<ReactAgentResponse> {
     const start_time = Date.now();
-    console.log('[ReactAgentService] execute() - start', {
+    console.warn('[ReactAgentService] execute() - start', {
       user_id: request.user_id,
       session_id: request.session_id,
       prompt_length: request.prompt.length,
       history_turns: request.conversation_history?.length ?? 0,
+      model: this.config.model,
     });
 
     const tool_calls: ReactAgentResponse['tool_calls'] = [];
@@ -297,7 +298,7 @@ export class ReactAgentService {
 
       const processing_time = Date.now() - start_time;
 
-      console.log('[ReactAgentService] execute() - complete', {
+      console.warn('[ReactAgentService] execute() - complete', {
         iterations,
         tool_call_count: tool_calls.length,
         processing_time_ms: processing_time,
