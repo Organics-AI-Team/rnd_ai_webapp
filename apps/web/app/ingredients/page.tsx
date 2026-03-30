@@ -229,7 +229,7 @@ export default function IngredientsPage() {
               <div className="flex-1 relative">
                 <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-gray-400" />
                 <Input
-                  placeholder="Search code, name, INCI, benefits..."
+                  placeholder="Search code, name, INCI, CAS No., benefits..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyPress={handleKeyPress}
@@ -270,6 +270,7 @@ export default function IngredientsPage() {
                   <TableHead>Code</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>INCI</TableHead>
+                  <TableHead>CAS No.</TableHead>
                   <TableHead>Supplier</TableHead>
                   <TableHead>Benefits</TableHead>
                   <TableHead>Use Cases</TableHead>
@@ -287,6 +288,9 @@ export default function IngredientsPage() {
                     </TableCell>
                     <TableCell className="text-xs text-gray-500 max-w-[160px]">
                       <div className="break-words whitespace-normal">{product.inci_name || "-"}</div>
+                    </TableCell>
+                    <TableCell className="text-xs font-mono text-gray-500">
+                      {product.cas_no || "-"}
                     </TableCell>
                     <TableCell className="text-xs max-w-[100px]">
                       <div className="break-words whitespace-normal">{product.supplier || "-"}</div>
@@ -419,6 +423,7 @@ export default function IngredientsPage() {
                   { label: "Code", value: viewingIngredient.productCode, mono: true },
                   { label: "Name", value: viewingIngredient.productName },
                   { label: "INCI Name", value: viewingIngredient.inci_name || "-" },
+                  { label: "CAS No.", value: viewingIngredient.cas_no || "-", mono: true },
                   { label: "Supplier", value: viewingIngredient.supplier || "-" },
                   { label: "Price", value: viewingIngredient.price ? `${viewingIngredient.price.toFixed(2)} THB` : "-" },
                   { label: "Category", value: viewingIngredient.category || "-" },

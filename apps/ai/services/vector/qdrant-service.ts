@@ -62,7 +62,7 @@ export interface QdrantSearchOptions {
   scoreThreshold?: number;
   filter?: Record<string, unknown>;
   ef?: number;
-  withPayload?: boolean | string[];
+  withPayload?: boolean | string[] | { include: string[] };
 }
 
 /**

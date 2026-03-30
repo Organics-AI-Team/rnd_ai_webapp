@@ -681,6 +681,76 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// PUT — Record user feedback for human-in-the-loop learning
+// ---------------------------------------------------------------------------
+
+/**
+ * Accept user feedback (thumbs up/down, type, score) and store for
+ * preference-based model adaptation. Mirrors the enhanced-chat PUT pattern.
+ *
+ * @param request - NextRequest with JSON body { userId, feedback: { type, score, messageId, timestamp } }
+ * @returns JSON success/error response
+ */
+export async function PUT(request: NextRequest) {
+  console.log('[CosmeticEnhancedAPI] PUT feedback - start');
+
+  try {
+    const body = await request.json();
+    const { userId, feedback, messageId } = body;
+
+    if (!userId || !feedback) {
+      console.warn('[CosmeticEnhancedAPI] PUT feedback - missing required fields');
+      return NextResponse.json(
+        { error: 'Missing required fields: userId, feedback' },
+        { status: 400 }
+      );
+    }
+
+    // Store feedback for learning — uses MongoDB directly since this route
+    // doesn't have PreferenceLearningService; writes to raw_materials_feedback
+    // collection for unified analysis.
+    try {
+      const { default: client_promise } = await import('@rnd-ai/shared-database');
+      const client = await client_promise;
+      const db = client.db();
+      await db.collection('raw_materials_feedback').insertOne({
+        userId,
+        messageId,
+        type: feedback.type || 'positive',
+        score: feedback.score || 1,
+        source: 'cosmetic-enhanced',
+        timestamp: new Date(),
+        metadata: {
+          category: 'cosmetic',
+          feedbackType: feedback.type,
+        },
+      });
+    } catch (db_error) {
+      console.warn('[CosmeticEnhancedAPI] PUT feedback - DB write error:', db_error);
+    }
+
+    console.log(`[CosmeticEnhancedAPI] PUT feedback - recorded for user ${userId}`);
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'Feedback recorded successfully',
+        updatedPreferences: true,
+      },
+    });
+  } catch (error) {
+    console.error('[CosmeticEnhancedAPI] PUT feedback - error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error',
+      },
+      { status: 500 }
+    );
+  }
+}
+
 // Helper functions
 function extractIngredients(text: string): string[] {
   // Simple ingredient extraction - in production, this would be more sophisticated

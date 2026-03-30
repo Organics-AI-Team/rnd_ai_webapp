@@ -22,6 +22,20 @@ const MAX_TOP_K = 20;
 /** Default score threshold when not specified by caller or collection defaults */
 const FALLBACK_SCORE_THRESHOLD = 0.55;
 
+/**
+ * Payload fields actually used by format_result().
+ * Projected via Qdrant's withPayload.include to reduce bandwidth ~10-20%.
+ */
+const PROJECTED_PAYLOAD_FIELDS = [
+  'rm_code', 'code',
+  'trade_name', 'tradeName',
+  'inci_name', 'INCI_name', 'inci',
+  'supplier',
+  'cost',
+  'benefits', 'Function', 'function',
+  'stock_status', 'stockStatus',
+];
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -189,13 +203,13 @@ export async function handle_qdrant_search(params: QdrantSearchParams): Promise<
     // --- Build filter ---
     const qdrant_filter = build_qdrant_filter(params.filters);
 
-    // --- Execute search ---
+    // --- Execute search (with field projection to reduce bandwidth) ---
     const qdrant = get_qdrant_service();
     const results = await qdrant.search(params.collection, query_vector, {
       topK: top_k,
       scoreThreshold: score_threshold,
       filter: qdrant_filter,
-      withPayload: true,
+      withPayload: { include: PROJECTED_PAYLOAD_FIELDS },
     });
 
     console.log('[qdrant-search-handler] handle_qdrant_search — search done', {

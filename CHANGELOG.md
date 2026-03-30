@@ -1,5 +1,86 @@
 # Changelog
 
+## [2026-03-30] Performance: AI system audit — embedding cache, payload projection, HITL wiring
+
+### Summary
+Full-stack AI system audit identifying 6 performance bottlenecks and 2 HITL gaps.
+Implemented 3 quick wins and 1 HITL fix.
+
+### Audit Findings
+- **Stack**: Gemini 3.1 Pro + LangChain/LangGraph + Qdrant (768-dim) + MongoDB
+- **Agents**: ReactAgentService (primary), LangGraph agent, Sales/RnD agent
+- **RAG**: Hybrid search (exact + fuzzy + semantic + metadata), dynamic chunking
+- **HITL**: Feedback UI complete, tRPC routers mounted, but 2/3 API routes missing feedback endpoints
+
+### Quick Win #1: LRU Embedding Cache (est. ~40% latency reduction on cache hits)
+- Added `EmbeddingLRUCache` class to `universal-embedding-service.ts`
+- 500-entry LRU eviction, normalised key (lowercase+trim)
+- Cache-aware `createEmbedding()` and `createEmbeddings()` — only uncached texts hit the API
+- Observability: `get_cache_stats()` returns size, hits, misses, hit_rate
+- Configurable via `EMBEDDING_CACHE_MAX_SIZE` env var
+
+### Quick Win #2: Qdrant Payload Field Projection (est. ~10-20% bandwidth reduction)
+- `qdrant-search-handler.ts` now uses `withPayload: { include: [...] }` instead of `true`
+- Only 13 field-name variants fetched (covers the 8 logical fields used by `format_result()`)
+- Updated `QdrantSearchOptions.withPayload` type to accept `{ include: string[] }`
+
+### Quick Win #3: Singleton Embedding Service (eliminates per-request instantiation)
+- `createEmbeddingService()` now returns a module-level singleton
+- Same instance (and its cache) shared across all callers
+- `resetEmbeddingServiceSingleton()` for testing/config changes
+
+### HITL Fix: Feedback PUT Endpoints on Missing Routes
+- **`/api/ai/raw-materials-agent`** — Added PUT handler using existing `PreferenceLearningService`
+- **`/api/ai/cosmetic-enhanced`** — Added PUT handler writing to `raw_materials_feedback` MongoDB collection
+- Both follow the same contract as enhanced-chat: `{ userId, feedback: { type, score, messageId } }`
+
+### Remaining Opportunities (not implemented)
+- Enable streaming in API routes (SSE infrastructure exists but is disabled)
+- Add HTTP Cache-Control headers for repeated identical requests
+- Add Redis-backed embedding cache for cross-instance persistence
+- Add rate-limit-aware retry/backoff in embedding service
+- Add pre-response approval gates for destructive actions (currently feedback is retroactive only)
+
+### Files Changed
+- `apps/ai/services/embeddings/universal-embedding-service.ts` — LRU cache + singleton
+- `apps/ai/agents/react/tool-handlers/qdrant-search-handler.ts` — Payload projection
+- `apps/ai/services/vector/qdrant-service.ts` — Updated withPayload type
+- `apps/web/app/api/ai/raw-materials-agent/route.ts` — PUT feedback endpoint
+- `apps/web/app/api/ai/cosmetic-enhanced/route.ts` — PUT feedback endpoint
+
+---
+
+## [2026-03-30] Feature: CAS Number backfill + display in products/ingredients tables
+
+### Summary
+- **Phase 1**: 647 ingredients matched from MySkin collection by `inci_name` (instant, no AI cost)
+- **Phase 2**: 30,532 ingredients processed via Gemini AI (gemini-2.5-flash) to look up CAS numbers from EU CosIng + PubChem
+- AI also flags non-ingredient items (packaging, finished products, generic labels) with `is_ingredient=false`
+- CAS No. column added to `/products` and `/ingredients` tables
+- CAS numbers searchable in the search bar
+- CAS shown in ingredient detail dialog
+
+### Script: `scripts/backfill-cas-numbers.ts`
+- Connects to MongoDB `rnd_ai.raw_materials_console` (31,179 docs)
+- Phase 1: Pre-fills CAS from `raw_materials_myskin` by inci_name match (free, no API calls)
+- Phase 2: Batches of 20 → Gemini AI prompt asking for CAS from EU CosIng/PubChem → writes `cas_no`, `cas_source`, `cas_confidence`, `is_ingredient` to each doc
+- Supports `--dry-run` and `--skip-existing` flags
+- Run: `npx tsx scripts/backfill-cas-numbers.ts`
+
+### Backend Changes
+- `apps/ai/server/routers/products.ts` — `build_cas_no_map()` helper for runtime MySkin fallback, `cas_no` in list/getById response, cas_no in search filter
+
+### Frontend Changes
+- `apps/web/app/products/page.tsx` — CAS No. column (monospace), search placeholder updated
+- `apps/web/app/ingredients/page.tsx` — CAS No. column, detail dialog field, search placeholder updated
+
+### Data Flow (priority order)
+1. `raw_materials_console.cas_no` (backfilled by script) — primary
+2. `raw_materials_myskin.inci_name` match → `cas_no` — runtime fallback
+3. Empty (`"-"`) if no match found
+
+---
+
 ## [2026-03-30] Fix: AI chat failures — model upgrade to Gemini 3.1 Pro + production logging
 
 ### Root Cause

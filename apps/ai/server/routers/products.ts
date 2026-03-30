@@ -7,6 +7,64 @@ import { logActivity } from "@/lib/userLog";
 import { logProductActivity } from "@/lib/productLog";
 import { auto_index_material, auto_delete_material } from "../services/auto-index-service";
 
+/**
+ * Batch-lookup CAS numbers from raw_materials_myskin by inci_name.
+ * Collects unique inci_names from the given materials, queries myskin
+ * collection once, and returns a Map<lowercase_inci_name, cas_no>.
+ *
+ * @param db - MongoDB Db instance
+ * @param materials - Array of raw_materials_console documents
+ * @returns Map from lowercase inci_name to cas_no string
+ */
+async function build_cas_no_map(
+  db: any,
+  materials: any[]
+): Promise<Map<string, string>> {
+  console.log("[products] build_cas_no_map — start, materials:", materials.length);
+
+  const inci_names = [
+    ...new Set(
+      materials
+        .map((m: any) => (m.INCI_name || m.inci_name || "").trim())
+        .filter((n: string) => n.length > 0)
+    ),
+  ] as string[];
+
+  if (inci_names.length === 0) {
+    console.log("[products] build_cas_no_map — no inci_names to lookup");
+    return new Map();
+  }
+
+  // Case-insensitive regex match for each inci_name
+  const myskin_docs = await db
+    .collection("raw_materials_myskin")
+    .find({
+      inci_name: {
+        $in: inci_names.map((n: string) => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i")),
+      },
+      cas_no: { $exists: true, $ne: "" },
+    })
+    .project({ inci_name: 1, cas_no: 1 })
+    .toArray();
+
+  const cas_map = new Map<string, string>();
+  for (const doc of myskin_docs) {
+    const key = (doc.inci_name || "").toLowerCase().trim();
+    if (key && doc.cas_no && !cas_map.has(key)) {
+      cas_map.set(key, doc.cas_no);
+    }
+  }
+
+  console.log(
+    "[products] build_cas_no_map — done, matched:",
+    cas_map.size,
+    "of",
+    inci_names.length,
+    "inci_names"
+  );
+  return cas_map;
+}
+
 export const productsRouter = router({
   // Get all products for organization (from raw_materials_console collection)
   list: protectedProcedure
@@ -29,7 +87,7 @@ export const productsRouter = router({
     const sortDirection = input?.sortDirection || "asc";
     const searchTerm = input?.searchTerm || "";
 
-    // Build search filter
+    // Build search filter (includes cas_no for CAS number search)
     const searchFilter: any = {};
     if (searchTerm) {
       searchFilter.$or = [
@@ -37,6 +95,7 @@ export const productsRouter = router({
         { trade_name: { $regex: searchTerm, $options: "i" } },
         { INCI_name: { $regex: searchTerm, $options: "i" } },
         { inci_name: { $regex: searchTerm, $options: "i" } },
+        { cas_no: { $regex: searchTerm, $options: "i" } },
         { supplier: { $regex: searchTerm, $options: "i" } },
         { benefits: { $regex: searchTerm, $options: "i" } },
         { benefits_cached: { $regex: searchTerm, $options: "i" } },
@@ -85,6 +144,9 @@ export const productsRouter = router({
     });
     const favorites = organization?.favoriteIngredients || [];
 
+    // Batch-lookup CAS numbers from raw_materials_myskin by inci_name
+    const cas_no_map = await build_cas_no_map(db, rawMaterials);
+
     // Map raw_materials_console fields to product fields for frontend compatibility
     const products = rawMaterials.map((material: any, index: number) => {
 
@@ -93,11 +155,17 @@ export const productsRouter = router({
       const inciName = material.INCI_name || material.inci_name || "";
       const productName = tradeName || inciName;
 
+      // Lookup CAS number: prefer direct field, then myskin lookup by inci_name
+      const cas_no = material.cas_no
+        || (inciName ? cas_no_map.get(inciName.toLowerCase().trim()) : "")
+        || "";
+
       return {
         _id: material._id.toString(),
         productCode: material.rm_code || `RM${String(offset + index + 1).padStart(6, '0')}`,
         productName: productName,
         inci_name: inciName,
+        cas_no,
         description: material.Chem_IUPAC_Name_Description || material.Function || "",
         price: material.rm_cost || 0,
         supplier: material.supplier || "",
@@ -140,11 +208,18 @@ export const productsRouter = router({
       const inciName = material.INCI_name || material.inci_name || "";
       const productName = tradeName || inciName;
 
+      // Lookup CAS number from myskin collection
+      const cas_no_map = await build_cas_no_map(db, [material]);
+      const cas_no = material.cas_no
+        || (inciName ? cas_no_map.get(inciName.toLowerCase().trim()) : "")
+        || "";
+
       return {
         _id: material._id.toString(),
         productCode: material.rm_code || "",
         productName: productName,
         inci_name: inciName,
+        cas_no,
         description: material.Chem_IUPAC_Name_Description || material.Function || "",
         price: material.rm_cost || 0,
         supplier: material.supplier || "",

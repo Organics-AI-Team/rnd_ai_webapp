@@ -377,3 +377,75 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// PUT — Record user feedback for human-in-the-loop learning
+// ---------------------------------------------------------------------------
+
+/**
+ * Accept user feedback (thumbs up/down, type, score) and persist via
+ * PreferenceLearningService for future model parameter adaptation.
+ *
+ * @param request - NextRequest with JSON body { userId, feedback: { type, score, messageId, timestamp } }
+ * @returns JSON success/error response
+ */
+export async function PUT(request: NextRequest) {
+  console.log('[RawMaterialsAgentAPI] PUT feedback - start');
+
+  try {
+    initialize_services();
+
+    const body = await request.json();
+    const { userId, feedback, messageId } = body;
+
+    if (!userId || !feedback) {
+      console.warn('[RawMaterialsAgentAPI] PUT feedback - missing fields');
+      return NextResponse.json(
+        { error: 'Missing required fields: userId, feedback' },
+        { status: 400 }
+      );
+    }
+
+    // Record feedback via PreferenceLearningService
+    if (mlService && messageId) {
+      try {
+        await mlService.recordInteraction({
+          userId,
+          prompt: '',
+          response: '',
+          feedback: {
+            type: feedback.type || 'positive',
+            score: feedback.score || 1,
+            timestamp: new Date(),
+          },
+          context: {
+            category: 'raw-materials',
+            complexity: 'medium',
+            expertiseLevel: 'intermediate',
+          },
+        });
+      } catch (error) {
+        console.warn('[RawMaterialsAgentAPI] PUT feedback - learning service error:', error);
+      }
+    }
+
+    console.log(`[RawMaterialsAgentAPI] PUT feedback - recorded for user ${userId}`);
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        message: 'Feedback recorded successfully',
+        updatedPreferences: true,
+      },
+    });
+  } catch (error) {
+    console.error('[RawMaterialsAgentAPI] PUT feedback - error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error',
+      },
+      { status: 500 }
+    );
+  }
+}

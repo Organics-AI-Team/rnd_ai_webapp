@@ -510,7 +510,7 @@ function ProductsContent() {
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="ค้นหา รหัสสาร, ชื่อสาร, INCI, Benefits, Use Cases..."
+                    placeholder="ค้นหา รหัสสาร, ชื่อสาร, INCI, CAS No., Benefits, Use Cases..."
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyPress={handleKeyPress}
@@ -555,6 +555,7 @@ function ProductsContent() {
                     <TableHead>รหัสสาร</TableHead>
                     <TableHead>ชื่อสาร (Trade Name)</TableHead>
                     <TableHead>INCI Name</TableHead>
+                    <TableHead>CAS No.</TableHead>
                     <TableHead>Supplier</TableHead>
                     <TableHead>Price (฿)</TableHead>
                     <TableHead className="max-w-xs">Benefits</TableHead>
@@ -573,6 +574,9 @@ function ProductsContent() {
                       </TableCell>
                       <TableCell className="text-sm text-gray-600">
                         {product.inci_name || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm font-mono text-gray-600">
+                        {product.cas_no || "-"}
                       </TableCell>
                       <TableCell className="text-sm">
                         {product.supplier || "-"}
