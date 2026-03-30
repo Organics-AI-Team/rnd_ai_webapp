@@ -139,7 +139,7 @@ async function handleEnhancedResponse(
           context: {
             category: 'raw-materials',
             hasSearchResults: searchResults.length > 0,
-            confidence: enhancedResponse.metadata?.confidence || 0.8
+            confidence: enhancedResponse.metadata?.confidence || 0.5
           }
         });
         console.log('📚 [RawMaterialsAgentAPI] Recorded interaction for ML learning');

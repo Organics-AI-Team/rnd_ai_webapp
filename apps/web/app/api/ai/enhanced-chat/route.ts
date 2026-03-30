@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         response: geminiResponse.response,
-        confidence: 0.8, // Default confidence for Gemini responses
+        confidence: geminiResponse.metadata?.confidence || 0.5,
         sources: [], // Sources not yet implemented in Gemini service
         metadata: geminiResponse.metadata || {},
         searchResults: searchResults.length > 0 ? searchResults : undefined,

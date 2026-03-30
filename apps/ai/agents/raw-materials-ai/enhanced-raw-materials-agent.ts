@@ -11,6 +11,7 @@ import { ResponseReranker } from '@/ai/services/response/response-reranker';
 import { get_tool_registry } from '../core/tool-registry';
 import { separatedSearchTools } from './tools/separated-search-tools';
 import { myskinSearchTools } from './tools/myskin-search-tools';
+import { compute_search_confidence, round_confidence } from '../../utils/confidence-calculator';
 
 // Initialize services
 let knowledgeService: CosmeticKnowledgeService | null = null;
@@ -232,17 +233,24 @@ function mergeKnowledgeResults(
   // Add enhanced knowledge results first (highest priority)
   if (knowledgeResult && knowledgeResult.sources) {
     knowledgeResult.sources.forEach((source: any, index: number) => {
+      const rm_credibility = source.source.credibilityWeight || 0.6;
+      const rm_score = source.score || 0.5;
       merged.push({
         type: 'enhanced_knowledge',
         title: source.content?.title || `Knowledge Result ${index + 1}`,
         content: source.content,
         source: source.source.name,
-        credibility: source.source.credibilityWeight || 0.8,
-        score: source.score,
+        credibility: rm_credibility,
+        score: rm_score,
         relevance: calculateRelevance(source, materials, knowledgeResult.query),
-        confidence: source.confidence || 0.8,
+        confidence: source.confidence || round_confidence(compute_search_confidence({
+          score: rm_score,
+          match_type: 'semantic',
+          source_count: knowledgeResult.sources?.length || 1,
+          credibility: rm_credibility,
+        })),
         metadata: source.metadata,
-        synthesis: knowledgeResult.synthesis
+        synthesis: knowledgeResult.synthesis,
       });
     });
   }
@@ -252,17 +260,22 @@ function mergeKnowledgeResults(
     const resultData = Array.isArray(result.data) ? result.data : [result.data];
 
     resultData.forEach((item: any) => {
+      const tool_score = item.score || 0.6;
       merged.push({
         type: result.tool,
         title: item.title || `${result.tool} Result ${index + 1}`,
         content: item.content || item.description || JSON.stringify(item),
         source: item.source || result.tool,
-        credibility: 0.7, // Traditional tools get standard credibility
-        score: item.score || 0.7,
+        credibility: 0.7,
+        score: tool_score,
         relevance: calculateRelevance(item, materials, ''),
-        confidence: 0.7,
+        confidence: round_confidence(compute_search_confidence({
+          score: tool_score,
+          match_type: 'metadata',
+          credibility: 0.7,
+        })),
         metadata: item.metadata || {},
-        toolData: item
+        toolData: item,
       });
     });
   });

@@ -12,8 +12,6 @@
  */
 const REQUIRED_ENV_VARS = [
   'MONGODB_URI',
-  'ADMIN_EMAIL',
-  'ADMIN_PASSWORD',
 ] as const;
 
 /**

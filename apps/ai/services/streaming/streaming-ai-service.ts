@@ -9,6 +9,7 @@ import { START, END, StateGraph, MessagesAnnotation } from '@langchain/langgraph
 import { BaseMessage } from '@langchain/core/messages';
 import { concat } from '@langchain/core/utils/stream';
 import { AIRequest, AIResponse } from '../../types/ai-types';
+import { assess_content_quality } from '../../utils/confidence-calculator';
 
 export interface StreamingChunk {
   type: 'content' | 'metadata' | 'error' | 'complete';
@@ -349,29 +350,14 @@ Remember to be helpful, accurate, and professional while maintaining an engaging
   /**
    * Assess response confidence
    */
+  /**
+   * Assess response confidence using shared content quality analysis.
+   *
+   * @param content - Response text to assess
+   * @returns Confidence score between 0.3 and 0.98
+   */
   private assessConfidence(content: string): number {
-    // Simple heuristic-based confidence assessment
-    let confidence = 0.7; // Base confidence
-
-    // Boost confidence for scientific content
-    const scientificIndicators = [
-      'study', 'research', 'clinical', 'data', 'evidence',
-      'according to', 'based on', 'shown to', 'demonstrated'
-    ];
-
-    const scientificCount = scientificIndicators.filter(indicator =>
-      content.toLowerCase().includes(indicator)
-    ).length;
-
-    confidence += scientificCount * 0.05;
-
-    // Boost confidence for structured content
-    if (content.includes('\n') || content.match(/\d+\./)) {
-      confidence += 0.1;
-    }
-
-    // Cap at 1.0
-    return Math.min(confidence, 1.0);
+    return assess_content_quality(content);
   }
 
   /**

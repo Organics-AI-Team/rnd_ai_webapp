@@ -1,5 +1,166 @@
 # Changelog
 
+## [2026-03-30] Fix: Replace hardcoded 80% confidence with computed scoring
+
+### Summary
+Replaced all hardcoded `0.8` confidence defaults across the entire AI pipeline with
+real computed values. Created a shared `confidence-calculator.ts` utility that derives
+confidence from actual signals: similarity scores, match types, source count, content
+quality indicators, and data completeness.
+
+### Root Cause
+The confidence pipeline was designed as a pass-through — each layer passed `confidence`
+from the layer below with a `|| 0.8` fallback. Since no layer computed it, the fallback
+triggered at the bottom and propagated up unchanged. Functions like `assessTrendAlignment()`
+were stubs that always returned 0.8 regardless of inputs.
+
+### Approach
+1. **Created shared utility** `apps/ai/utils/confidence-calculator.ts` with:
+   - `compute_search_confidence()` — derives confidence from score × match_type_weight + field_bonus + source_bonus + credibility_adjustment
+   - `compute_response_confidence()` — weighted average of source scores (70%) + content quality (20%) + coverage (10%)
+   - `compute_analysis_confidence()` — accounts for data_completeness, recency, and whether data is real vs estimated
+   - `compute_trend_alignment()` — keyword overlap between concept attributes and trend descriptions
+   - `assess_content_quality()` — scores scientific terms, structure, specificity, domain relevance
+
+2. **Wired through all layers:**
+   - Source layer: hybrid-search-service (exact, metadata, fuzzy, semantic strategies)
+   - Agent layer: enhanced-sales-rnd-agent, enhanced-raw-materials-agent
+   - Scoring layer: response-reranker (replaced stub with real quality + relevance computation)
+   - Service layer: enhanced-ai-service, langgraph-agent, streaming-ai-service
+   - API layer: enhanced-chat route, raw-materials-agent route
+   - Frontend layer: raw-materials-ai page, sales-rnd-ai page
+
+3. **Changed fallback default from 0.8 → 0.5** so missing confidence is visibly
+   "uncertain" (yellow) instead of misleadingly "confident" (green).
+
+### Files Created
+- `apps/ai/utils/confidence-calculator.ts` — Shared confidence computation utility
+
+### Files Updated
+- `apps/ai/services/rag/hybrid-search-service.ts` — 4 search strategies now compute confidence from scores
+- `apps/ai/agents/sales-rnd-ai/enhanced-sales-rnd-agent.ts` — Real confidence for knowledge, market, cost results; fixed assessTrendAlignment and assessMarketPotential stubs
+- `apps/ai/agents/raw-materials-ai/enhanced-raw-materials-agent.ts` — Real confidence for knowledge and tool results
+- `apps/ai/services/response/response-reranker.ts` — Replaced stub scoreResponse with real quality + relevance + source scoring
+- `apps/ai/services/enhanced/enhanced-ai-service.ts` — Fallback 0.8 → 0.5
+- `apps/ai/agents/raw-materials-ai/langgraph-agent.ts` — Fallback 0.8 → 0.5
+- `apps/ai/services/streaming/streaming-ai-service.ts` — Uses shared assess_content_quality
+- `apps/web/app/api/ai/enhanced-chat/route.ts` — Passes through computed confidence, fallback 0.5
+- `apps/web/app/api/ai/raw-materials-agent/route.ts` — Fallback 0.8 → 0.5
+- `apps/web/app/ai/raw-materials-ai/page.tsx` — Fallback 0.8 → 0.5
+- `apps/web/app/ai/sales-rnd-ai/page.tsx` — Fallback 0.8 → 0.5
+
+### Confidence Signal Map
+| Signal | Source | Weight |
+|--------|--------|--------|
+| Similarity score | Qdrant/fuzzy match | Primary (scaled by match_type) |
+| Match type | exact > hybrid > metadata > fuzzy > semantic | 1.0 → 0.7 multiplier |
+| Matched fields | Document field hits | +0.04/field, max +0.12 |
+| Source count | Corroborating sources | +0.05 × log2, max +0.10 |
+| Content quality | Scientific terms, structure, specificity | 20% of response confidence |
+| Data completeness | Market/cost field coverage | Primary for analysis confidence |
+| Data recency | Age of analytical data | Penalty after 90 days |
+
+---
+
+## [2026-03-30] Feature: Structured Formulation Engine + Persistent Conversation History
+
+### Summary
+Three-part enhancement addressing R&D client feedback on formula quality and adding persistent chat history with org-scoped threads.
+
+### Part 1: Structured Formulation Engine (Formula Accuracy)
+
+**Problem:** `generate-formula-handler.ts` used pure vector-similarity scoring with flat score-weighted percentage distribution. R&D clients reported: wrong percentages, no phase structure, no regulatory awareness, output felt like a rough guess.
+
+**Solution: 3-Layer Pipeline**
+
+1. **Layer 1 — Phase-Aware Ingredient Selection**: Ingredients classified into 7 formulation phases (water, oil, active, emulsifier, preservative, pH adjuster, fragrance) using keyword matching against category/benefits/INCI fields. Each phase gets a percentage budget from product-type templates. Aqua (water) absorbs the remainder to guarantee 100% total.
+
+2. **Layer 2 — Regulatory & Safety Validation**: Post-generation validation checks:
+   - `usage_max_pct` from Qdrant payload (4.6K ingredients have this data)
+   - Fallback to hardcoded `REGULATORY_LIMITS` config (EU Cosmetics Regulation Annex III/IV)
+   - `usage_min_pct` enforcement for minimum effective concentration
+   - 8 known incompatible ingredient pairs with severity levels
+   - Mandatory ingredient check (preservative + pH adjuster auto-added if missing)
+   - Percentage adjustment + warnings in output
+
+3. **Layer 3 — Structured Output Formatting**: Phase-grouped ingredient table, warnings section, estimated cost, backward-compatible flat list.
+
+**Files:**
+- `apps/ai/agents/react/config/formulation-rules.ts` — NEW: Central config with phase budgets, regulatory limits, incompatible pairs, mandatory ingredients (all data-driven, not hardcoded in handler)
+- `apps/ai/agents/react/tool-handlers/generate-formula-handler.ts` — REWRITTEN: 3-layer pipeline replacing flat score-weighted distribution
+
+### Part 2: Persistent Conversation History (Backend)
+
+**Problem:** Conversations were ephemeral (React `useState` only). Existing `Conversation` model had no `organizationId`, no thread concept, no agent type scoping.
+
+**Solution: New ChatThread + ChatMessage models**
+- `ChatThread`: org-scoped, user-owned, agent-type-scoped, with denormalized `messageCount` + `lastMessageAt`
+- `ChatMessage`: belongs to thread, stores role/content/metadata
+- Thread title auto-generated from first user message (truncated to 50 chars)
+- tRPC router with: list, create, getMessages, addMessage, archive, updateTitle
+
+**Files:**
+- `prisma/schema.prisma` — Added ChatThread + ChatMessage models, AgentType enum, Organization relation
+- `apps/ai/server/routers/chat-threads.ts` — NEW: Full tRPC router for thread CRUD
+- `apps/ai/server/index.ts` — Mounted chatThreadsRouter
+
+### Part 3: Frontend History Sidebar
+
+**Problem:** No conversation history UI. Messages lost on page refresh.
+
+**Solution: Toggleable sidebar with date-grouped threads**
+- `AIChatSidebar` — History panel with "+ New Chat", date groups (Today/Yesterday/7 Days/Older), active highlight, archive on hover
+- `AIChatLayout` — Wraps sidebar + chat area with toggle animation (240px open, 0px closed)
+- `SidebarToggleButton` — PanelLeft/PanelLeftClose icon toggle in chat header
+- `use_chat_threads` hook — Manages thread CRUD via tRPC with optimistic updates, auto-thread creation on first message
+- Both AI pages refactored: messages now persist to MongoDB via tRPC instead of local useState
+
+**Files:**
+- `apps/web/components/ai/ai_chat_sidebar.tsx` — NEW: History sidebar component
+- `apps/web/components/ai/ai_chat_layout.tsx` — NEW: Layout wrapper with toggle
+- `apps/web/hooks/use_chat_threads.ts` — NEW: Thread management hook
+- `apps/web/components/ai/index.ts` — Added exports for new components
+- `apps/web/app/ai/raw-materials-ai/page.tsx` — REWRITTEN: Uses persistent threads + sidebar
+- `apps/web/app/ai/sales-rnd-ai/page.tsx` — REWRITTEN: Uses persistent threads + sidebar
+
+### Design Spec
+- `docs/superpowers/specs/2026-03-30-formula-accuracy-conversation-history-design.md` — Full approved design document
+
+---
+
+## [2026-03-30] Cleanup: Remove legacy REST auth system — single tRPC auth path
+
+### Summary
+Removed the unused legacy REST API auth system (`/api/auth/login`, `/api/auth/logout`, `/api/auth/verify`) that checked `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars and set `rnd-ai-auth-session` cookies. The active auth system uses tRPC (`auth.signup` / `auth.login` / `auth.logout` / `auth.me`) with bcrypt + MongoDB sessions + `auth_token` cookie.
+
+### Root Cause
+Two auth systems coexisted — the legacy REST routes were dead code (nothing imported or called them) but created confusion. The middleware checked for `auth_token` (new system) while legacy routes set `rnd-ai-auth-session` (old system). Config files advertised stale route paths.
+
+### Files Deleted
+- `apps/web/app/api/auth/login/route.ts` — Legacy env-var credential check
+- `apps/web/app/api/auth/logout/route.ts` — Legacy cookie-clearing endpoint
+- `apps/web/app/api/auth/verify/route.ts` — Legacy session verification
+- `apps/web/lib/auth.ts` — Legacy `useAuth()` hook calling REST endpoints
+- `apps/ai/lib/auth.ts` — Duplicate of above
+
+### Files Updated
+- `apps/web/lib/config.ts` — Session cookie updated to `auth_token`, removed `ROUTES.api.auth` legacy routes
+- `apps/ai/lib/config.ts` — Same as above
+- `apps/web/lib/env.ts` — Removed `ADMIN_EMAIL`/`ADMIN_PASSWORD` from required env vars and accessor functions
+- `apps/ai/lib/env.ts` — Same as above
+- `apps/web/lib/validate-env.ts` — Removed `ADMIN_EMAIL`/`ADMIN_PASSWORD` from required validation list
+- `apps/ai/lib/validate-env.ts` — Same as above
+- `.env.example` — Replaced admin credentials section with tRPC auth note
+- `.env.production` — Same as above
+
+### Active Auth Flow (unchanged)
+1. `/signup` → tRPC `auth.signup` → creates Account + Organization + User + Session
+2. `/login` → tRPC `auth.login` → bcrypt verify → creates Session → sets `auth_token` cookie
+3. Middleware checks `auth_token` cookie for route protection
+4. `auth-context.tsx` manages state via `AuthProvider`
+
+---
+
 ## [2026-03-30] Feature: AI Formula Tools — NPD generation, revision, comments, reference search
 
 ### Summary

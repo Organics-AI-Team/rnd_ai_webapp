@@ -14,6 +14,7 @@ import { ragRouter } from "./routers/rag";
 import { stockRouter } from "./routers/stock";
 import { calculationsRouter } from "./routers/calculations";
 import { formulaCommentsRouter } from "./routers/formula-comments";
+import { chatThreadsRouter } from "./routers/chat-threads";
 
 export const appRouter = router({
   auth: authRouter,
@@ -31,6 +32,7 @@ export const appRouter = router({
   stock: stockRouter,
   calculations: calculationsRouter,
   formulaComments: formulaCommentsRouter,
+  chatThreads: chatThreadsRouter,
 });
 
 export type AppRouter = typeof appRouter;

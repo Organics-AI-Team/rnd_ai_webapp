@@ -81,6 +81,7 @@ model Organization {
   products           Product[]
   creditTransactions CreditTransaction[]
   userLogs           UserLog[]
+  chatThreads        ChatThread[]
 
   @@map("organizations")
 }
@@ -447,6 +448,50 @@ model AiResponse {
 
   @@index([conversationId])
   @@map("ai_responses")
+}
+
+// ============================================
+// CHAT THREAD MODELS (Persistent Conversations)
+// ============================================
+
+model ChatThread {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId  String    @db.ObjectId
+  userId          String    @db.ObjectId
+  agentType       AgentType
+  title           String
+  messageCount    Int       @default(0)
+  lastMessageAt   DateTime  @default(now())
+  isArchived      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  messages     ChatMessage[]
+
+  @@index([organizationId, agentType])
+  @@index([userId, agentType])
+  @@index([lastMessageAt])
+  @@map("chat_threads")
+}
+
+enum AgentType {
+  raw_materials_ai
+  sales_rnd_ai
+}
+
+model ChatMessage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  threadId  String   @db.ObjectId
+  role      String
+  content   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@map("chat_messages")
 }
 
 // ============================================

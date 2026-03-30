@@ -53,19 +53,19 @@ export const APP_CONFIG = {
   },
 
   /**
-   * Session Configuration
+   * Session Configuration (tRPC auth system)
    */
   session: {
     /**
      * Maximum age for session cookies (in seconds)
-     * Default: 7 days
+     * Default: 30 days (matches tRPC auth.signup/login token expiry)
      */
-    max_age: 7 * 24 * 60 * 60,
+    max_age: 30 * 24 * 60 * 60,
 
     /**
-     * Session cookie name
+     * Session cookie name used by middleware and auth-context
      */
-    cookie_name: 'rnd-ai-auth-session',
+    cookie_name: 'auth_token',
   },
 
   /**
@@ -150,11 +150,7 @@ export const ROUTES = {
    */
   api: {
     trpc: '/api/trpc',
-    auth: {
-      login: '/api/auth/login',
-      logout: '/api/auth/logout',
-      session: '/api/auth/session',
-    },
+    /** Auth is handled entirely via tRPC (auth.login / auth.signup / auth.logout / auth.me) */
     agents: {
       list: '/api/agents',
       chat: (agent_id: string) => `/api/agents/${agent_id}/chat`,

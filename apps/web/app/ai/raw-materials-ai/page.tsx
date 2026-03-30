@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Package, Search, Brain } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { use_chat_threads } from '@/hooks/use_chat_threads';
 import {
   AIPageHeader,
   AIChatHeader,
@@ -11,7 +12,10 @@ import {
   AIChatMessagesArea,
   AIChatInputArea,
   AIAuthGuard,
-  type Message
+  AIChatSidebar,
+  AIChatLayout,
+  SidebarToggleButton,
+  type Message,
 } from '@/components/ai';
 
 /**
@@ -21,57 +25,68 @@ import {
  * and regulatory information for the cosmetics industry.
  *
  * Features:
- * - Gemini 2.0 Flash AI with tool calling
+ * - Persistent conversation threads linked to organization
+ * - Toggleable history sidebar with date-grouped threads
+ * - Gemini 3.1 Pro with ReAct agent and tool calling
  * - RAG-enhanced responses with database search
  * - User feedback collection
  * - Real-time confidence scoring
- * - Separated rendering for all UI components
- * - No hardcoded HTML - fully component-based
  */
 
 export default function RawMaterialsAIPage() {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const chat = use_chat_threads('raw_materials_ai');
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
   const [inputAreaHeight, setInputAreaHeight] = useState<number>(0);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   /**
-   * Sends user message to AI and processes response
-   * Uses Gemini 2.0 Flash with tool calling for enhanced accuracy
+   * Convert persistent ChatMessages to the Message type expected by UI components.
+   *
+   * @returns Array of Message objects for rendering
    */
-  const handle_send_message = async () => {
+  const display_messages: Message[] = chat.messages.map((m) => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    timestamp: new Date(m.createdAt),
+    metadata: m.metadata || undefined,
+  }));
+
+  /**
+   * Sends user message to AI and processes response.
+   * Persists both user and assistant messages to the active thread.
+   */
+  const handle_send_message = useCallback(async () => {
     if (!input.trim() || isLoading) return;
 
-    const user_message: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, user_message]);
+    const user_input = input;
     setInput('');
     setIsLoading(true);
+
+    console.log('[RawMaterialsAI] handle_send_message — start');
+
+    // Persist user message (creates thread if needed)
+    await chat.add_message('user', user_input);
 
     try {
       const response = await fetch('/api/ai/raw-materials-agent', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: input,
+          prompt: user_input,
           userId: user?.id || 'anonymous',
-          conversationHistory: messages.map(m => ({
+          conversationHistory: chat.messages.map((m) => ({
             role: m.role,
-            content: m.content
+            content: m.content,
           })),
-          enableEnhancements: true,     // ✅ Enable enhanced features for tool calling
-          enableStreaming: false,        // Keep disabled for stability
-          enableMLOptimizations: true,   // ✅ Enable ML personalization
-          enableSearch: true             // ✅ CRITICAL: Enable database search and tool calls
+          enableEnhancements: true,
+          enableStreaming: false,
+          enableMLOptimizations: true,
+          enableSearch: true,
         }),
       });
 
@@ -80,39 +95,34 @@ export default function RawMaterialsAIPage() {
       }
 
       const data = await response.json();
-
-      const assistant_message: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.response || 'Sorry, I could not process your request at the moment.',
-        timestamp: new Date(),
-        metadata: {
-          sources: data.searchResults || [],
-          confidence: data.metadata?.confidence || 0.8,
-          ragUsed: data.features?.searchEnabled || false,
-          responseTime: data.metadata?.latency || 0
-        }
+      const ai_content = data.response || 'Sorry, I could not process your request at the moment.';
+      const ai_metadata = {
+        sources: data.searchResults || [],
+        confidence: data.metadata?.confidence || 0.5,
+        ragUsed: data.features?.searchEnabled || false,
+        responseTime: data.metadata?.latency || 0,
       };
 
-      setMessages(prev => [...prev, assistant_message]);
+      // Persist assistant message
+      await chat.add_message('assistant', ai_content, ai_metadata);
+
+      console.log('[RawMaterialsAI] handle_send_message — done');
     } catch (error) {
-      console.error('Error sending message:', error);
-
-      const error_message: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Sorry, I encountered an error while searching the database. Please try again later.',
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, error_message]);
+      console.error('[RawMaterialsAI] handle_send_message — error', error);
+      await chat.add_message(
+        'assistant',
+        'Sorry, I encountered an error while searching the database. Please try again later.',
+      );
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [input, isLoading, user, chat]);
 
   /**
-   * Submits user feedback for ML preference learning
+   * Submits user feedback for ML preference learning.
+   *
+   * @param messageId  - The message ID being rated
+   * @param isPositive - Whether the feedback is positive
    */
   const handle_feedback = async (messageId: string, isPositive: boolean) => {
     if (feedbackSubmitted.has(messageId)) return;
@@ -120,25 +130,23 @@ export default function RawMaterialsAIPage() {
     try {
       const response = await fetch('/api/ai/enhanced-chat', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user?.id,
           feedback: {
             messageId,
             type: isPositive ? 'positive' : 'negative',
             score: isPositive ? 5 : 2,
-            timestamp: new Date()
-          }
+            timestamp: new Date(),
+          },
         }),
       });
 
       if (response.ok) {
-        setFeedbackSubmitted(prev => new Set([...prev, messageId]));
+        setFeedbackSubmitted((prev) => new Set([...prev, messageId]));
       }
     } catch (error) {
-      console.error('Error submitting feedback:', error);
+      console.error('[RawMaterialsAI] handle_feedback — error', error);
     }
   };
 
@@ -156,7 +164,7 @@ export default function RawMaterialsAIPage() {
   return (
     <div className="container mx-auto px-6 pt-2 pb-1 h-[calc(100vh-1rem)]">
       <div className="flex flex-col h-full gap-1">
-        {/* Header Section - Component */}
+        {/* Header Section */}
         <AIPageHeader
           icon={<Package className="w-8 h-8" />}
           title="Raw Materials AI Assistant"
@@ -164,58 +172,84 @@ export default function RawMaterialsAIPage() {
           iconColor="text-blue-600"
         />
 
-        {/* Messages Container - Separate Component with overflow constraint */}
-        <div className="flex-1 min-h-0 flex flex-col relative">
-          <AIChatMessagesContainer
-            header={
-              <AIChatHeader
-                icon={<Brain className="w-5 h-5" />}
-                title="Raw Materials AI Chat"
-                iconColor="text-blue-600"
-                badgeText="RAG Enhanced"
-                badgeColor="bg-green-50 border-green-300"
+        {/* Chat Layout with Sidebar */}
+        <div className="flex-1 min-h-0">
+          <AIChatLayout
+            is_sidebar_open={isSidebarOpen}
+            on_toggle_sidebar={() => setIsSidebarOpen((prev) => !prev)}
+            sidebar={
+              <AIChatSidebar
+                threads={chat.threads}
+                active_thread_id={chat.active_thread?.id || null}
+                loading={chat.threads_loading}
+                on_select={chat.select_thread}
+                on_new_chat={chat.start_new_chat}
+                on_archive={chat.archive_thread}
+                is_new_chat={chat.is_new_chat}
+                theme_color="blue"
               />
             }
-            messagesArea={
-              <AIChatMessagesArea
-                messages={messages}
-                isLoading={isLoading}
-                themeColor="blue"
-                emptyStateIcon={<Package className="w-12 h-12" />}
-                emptyStateGreeting="Hello! I'm your Raw Materials AI assistant. Ask me about:"
-                emptyStateSuggestions={[
-                  'Raw materials and ingredients',
-                  'Formulation guidance',
-                  'Regulatory compliance (FDA)',
-                  'Supplier information',
-                  'Material safety and usage'
-                ]}
-                loadingMessage="Searching database..."
-                metadataIcon={<Search className="w-3 h-3" />}
-                metadataLabel="Database Enhanced"
-                inputAreaHeight={inputAreaHeight}
-                bottomPadding={8}
+          >
+            {/* Chat Messages + Input */}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <AIChatMessagesContainer
+                header={
+                  <div className="flex items-center gap-2">
+                    <SidebarToggleButton
+                      is_open={isSidebarOpen}
+                      on_toggle={() => setIsSidebarOpen((prev) => !prev)}
+                    />
+                    <AIChatHeader
+                      icon={<Brain className="w-5 h-5" />}
+                      title={chat.active_thread?.title || 'Raw Materials AI Chat'}
+                      iconColor="text-blue-600"
+                      badgeText="RAG Enhanced"
+                      badgeColor="bg-green-50 border-green-300"
+                    />
+                  </div>
+                }
+                messagesArea={
+                  <AIChatMessagesArea
+                    messages={display_messages}
+                    isLoading={isLoading}
+                    themeColor="blue"
+                    emptyStateIcon={<Package className="w-12 h-12" />}
+                    emptyStateGreeting="Hello! I'm your Raw Materials AI assistant. Ask me about:"
+                    emptyStateSuggestions={[
+                      'Raw materials and ingredients',
+                      'Formulation guidance',
+                      'Regulatory compliance (FDA)',
+                      'Supplier information',
+                      'Material safety and usage',
+                    ]}
+                    loadingMessage="Searching database..."
+                    metadataIcon={<Search className="w-3 h-3" />}
+                    metadataLabel="Database Enhanced"
+                    inputAreaHeight={inputAreaHeight}
+                    bottomPadding={8}
+                  />
+                }
               />
-            }
-          />
 
-          {/* Input Container - Sticky at bottom within scroll context */}
-          <AIChatInputContainer
-            inputArea={
-              <AIChatInputArea
-                input={input}
-                onInputChange={setInput}
-                onSend={handle_send_message}
-                placeholder="Ask about raw materials, ingredients, formulations, or regulatory information..."
-                disabled={isLoading}
-                messages={messages}
-                onFeedback={handle_feedback}
-                feedbackDisabled={feedbackSubmitted}
-                showFeedback={true}
-                onHeightChange={setInputAreaHeight}
+              {/* Input Container */}
+              <AIChatInputContainer
+                inputArea={
+                  <AIChatInputArea
+                    input={input}
+                    onInputChange={setInput}
+                    onSend={handle_send_message}
+                    placeholder="Ask about raw materials, ingredients, formulations, or regulatory information..."
+                    disabled={isLoading}
+                    messages={display_messages}
+                    onFeedback={handle_feedback}
+                    feedbackDisabled={feedbackSubmitted}
+                    showFeedback={true}
+                    onHeightChange={setInputAreaHeight}
+                  />
+                }
               />
-            }
-          />
+            </div>
+          </AIChatLayout>
         </div>
       </div>
     </div>

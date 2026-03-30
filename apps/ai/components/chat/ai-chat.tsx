@@ -126,7 +126,7 @@ export function AIChat({
           if (response.metadata) {
             setMessageMetrics({
               responseTime: response.metadata.latency || 0,
-              confidence: 0.8, // Default confidence since property doesn't exist
+              confidence: response.metadata.confidence || 0.5,
               category: 'general', // Default category since property doesn't exist
             });
           }

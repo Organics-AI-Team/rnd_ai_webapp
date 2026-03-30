@@ -18,6 +18,7 @@
 
 import { QdrantRAGService, RAGConfig, RawMaterialDocument } from './qdrant-rag-service';
 import { classify_query, QueryClassification, fuzzy_match_score } from '../../utils/query-classifier';
+import { compute_search_confidence } from '../../utils/confidence-calculator';
 import client_promise from '@rnd-ai/shared-database';
 
 export interface HybridSearchResult {
@@ -246,7 +247,7 @@ export class HybridSearchService extends QdrantRAGService {
           document: doc,
           score,
           match_type: 'exact' as const,
-          confidence: 0.95,
+          confidence: compute_search_confidence({ score, match_type: 'exact', matched_fields }),
           matched_fields,
           source: 'mongodb' as const
         };
@@ -293,14 +294,17 @@ export class HybridSearchService extends QdrantRAGService {
 
       console.log(`✅ [metadata-filter] Found ${results.length} metadata matches`);
 
-      return results.map(match => ({
-        document: match.metadata,
-        score: (match.score || 0.7) * 0.9, // Slight penalty for metadata-only match
-        match_type: 'metadata' as const,
-        confidence: 0.8,
-        matched_fields: ['metadata'],
-        source: 'qdrant' as const
-      }));
+      return results.map(match => {
+        const adjusted_score = (match.score || 0.7) * 0.9;
+        return {
+          document: match.metadata,
+          score: adjusted_score,
+          match_type: 'metadata' as const,
+          confidence: compute_search_confidence({ score: adjusted_score, match_type: 'metadata', matched_fields: ['metadata'] }),
+          matched_fields: ['metadata'],
+          source: 'qdrant' as const,
+        };
+      });
     } catch (error) {
       console.error('❌ [metadata-filter] Error:', error);
       return [];
@@ -357,9 +361,9 @@ export class HybridSearchService extends QdrantRAGService {
             document: doc,
             score: best_score,
             match_type: 'fuzzy' as const,
-            confidence: 0.75,
+            confidence: compute_search_confidence({ score: best_score, match_type: 'fuzzy', matched_fields }),
             matched_fields,
-            source: 'mongodb' as const
+            source: 'mongodb' as const,
           });
         }
       });
@@ -409,14 +413,17 @@ export class HybridSearchService extends QdrantRAGService {
 
       console.log(`✅ [semantic-search] Found ${unique_results.length} semantic matches`);
 
-      return unique_results.map(match => ({
-        document: match.metadata,
-        score: match.score || 0.6,
-        match_type: 'semantic' as const,
-        confidence: 0.7,
-        matched_fields: ['semantic'],
-        source: 'qdrant' as const
-      }));
+      return unique_results.map(match => {
+        const semantic_score = match.score || 0.6;
+        return {
+          document: match.metadata,
+          score: semantic_score,
+          match_type: 'semantic' as const,
+          confidence: compute_search_confidence({ score: semantic_score, match_type: 'semantic', matched_fields: ['semantic'] }),
+          matched_fields: ['semantic'],
+          source: 'qdrant' as const,
+        };
+      });
     } catch (error) {
       console.error('❌ [semantic-search] Error:', error);
       return [];

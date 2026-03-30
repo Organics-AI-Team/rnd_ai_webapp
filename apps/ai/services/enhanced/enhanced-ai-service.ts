@@ -218,7 +218,7 @@ Please provide a comprehensive, structured response that follows these guideline
 
     const structuredResponse: StructuredResponse = {
       answer,
-      confidence: (baseResponse as any).confidence || 0.8,
+      confidence: (baseResponse as any).confidence || 0.5,
       sources,
       relatedTopics,
       followUpQuestions,

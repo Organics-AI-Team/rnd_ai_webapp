@@ -135,7 +135,7 @@ export function RawMaterialsChat({
           if (response.metadata) {
             setMessageMetrics({
               responseTime: response.metadata.latency || 0,
-              confidence: 0.8, // Default confidence
+              confidence: response.metadata.confidence || 0.5,
               category: 'general', // Default category
             });
           }

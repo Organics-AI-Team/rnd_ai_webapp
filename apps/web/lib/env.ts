@@ -18,9 +18,7 @@
  * These MUST be set for the application to function
  */
 type RequiredEnvVar =
-  | 'MONGODB_URI'
-  | 'ADMIN_EMAIL'
-  | 'ADMIN_PASSWORD';
+  | 'MONGODB_URI';
 
 /**
  * Optional environment variable keys
@@ -130,12 +128,6 @@ export const env = {
     get_required_env('MONGODB_URI'),
 
   /**
-   * Authentication credentials
-   */
-  admin_email: () => get_required_env('ADMIN_EMAIL'),
-  admin_password: () => get_required_env('ADMIN_PASSWORD'),
-
-  /**
    * AI service API keys
    */
   gemini_api_key: () => {
@@ -226,8 +218,6 @@ export const env = {
 export function get_env_status(): Record<string, string> {
   const required: RequiredEnvVar[] = [
     'MONGODB_URI',
-    'ADMIN_EMAIL',
-    'ADMIN_PASSWORD',
   ];
 
   const optional: OptionalEnvVar[] = [

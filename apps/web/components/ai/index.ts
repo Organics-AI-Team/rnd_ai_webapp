@@ -24,3 +24,7 @@ export { AIPageHeader } from './ai_page_header';
 export { AIChatHeader } from './ai_chat_header';
 export { AIChatMessagesContainer } from './ai_chat_container';
 export { AIChatInputContainer } from './ai_chat_container';
+
+// Chat history components
+export { AIChatSidebar } from './ai_chat_sidebar';
+export { AIChatLayout, SidebarToggleButton } from './ai_chat_layout';

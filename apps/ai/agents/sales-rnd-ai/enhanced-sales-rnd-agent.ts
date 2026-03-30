@@ -10,6 +10,13 @@ import { CosmeticCredibilityWeightingService } from '@/ai/services/credibility/c
 import { ResponseReranker } from '@/ai/services/response/response-reranker';
 import { salesOrchestrator, OrchestratorResponse } from './orchestrator';
 import { followUpGeneratorTool, slideDrafterTool } from './tools';
+import {
+  compute_search_confidence,
+  compute_response_confidence,
+  compute_analysis_confidence,
+  compute_trend_alignment,
+  round_confidence,
+} from '../../utils/confidence-calculator';
 
 // Initialize services
 let knowledgeService: CosmeticKnowledgeService | null = null;
@@ -253,53 +260,73 @@ function mergeSalesKnowledgeResults(
   // Add enhanced knowledge results with sales weighting
   if (knowledgeResult && knowledgeResult.sources) {
     knowledgeResult.sources.forEach((source: any, index: number) => {
+      const source_credibility = source.source.credibilityWeight || 0.6;
+      const source_score = source.score || 0.5;
       merged.push({
         type: 'enhanced_knowledge',
         title: source.content?.title || `Knowledge Result ${index + 1}`,
         content: source.content,
         source: source.source.name,
-        credibility: source.source.credibilityWeight || 0.8,
-        score: source.score,
+        credibility: source_credibility,
+        score: source_score,
         relevance: calculateSalesRelevance(source, concepts, knowledgeResult.query),
-        confidence: source.confidence || 0.8,
+        confidence: source.confidence || compute_search_confidence({
+          score: source_score,
+          match_type: 'semantic',
+          source_count: knowledgeResult.sources?.length || 1,
+          credibility: source_credibility,
+        }),
         metadata: source.metadata,
         commercialViability: assessCommercialViability(source, concepts),
-        marketPotential: assessMarketPotential(source, concepts)
+        marketPotential: assessMarketPotential(source, concepts),
       });
     });
   }
 
   // Add market intelligence results
   marketIntelligence.forEach((intelligence, index) => {
+    const has_real_market_data = intelligence.marketSize > 0 && intelligence.growthRate !== 0.08;
+    const market_confidence = compute_analysis_confidence({
+      data_completeness: (intelligence.marketSize > 0 ? 0.5 : 0) + (intelligence.growthRate > 0 ? 0.3 : 0) + (intelligence.competition ? 0.2 : 0),
+      has_real_data: has_real_market_data,
+    });
     merged.push({
       type: 'market_intelligence',
       title: `Market Analysis: ${intelligence.concept}`,
       content: JSON.stringify(intelligence),
       source: 'Market Intelligence',
-      credibility: 0.85, // High credibility for market data
-      score: 0.8,
-      relevance: 0.9, // High relevance for sales decisions
-      confidence: intelligence.growthRate > 0.1 ? 0.8 : 0.6,
+      credibility: has_real_market_data ? 0.85 : 0.55,
+      score: market_confidence,
+      relevance: 0.9,
+      confidence: round_confidence(market_confidence),
       metadata: intelligence,
-      commercialViability: intelligence.marketSize > 1000000 ? 0.8 : 0.5,
-      marketPotential: intelligence.growthRate
+      commercialViability: intelligence.marketSize > 1000000 ? 0.8 : intelligence.marketSize > 100000 ? 0.6 : 0.4,
+      marketPotential: intelligence.growthRate,
     });
   });
 
   // Add cost analysis results
   if (costAnalysis.formulationCost.estimatedCOGS > 0) {
+    const cost_completeness =
+      (costAnalysis.formulationCost.estimatedCOGS > 0 ? 0.4 : 0) +
+      (costAnalysis.marketPositioning?.profitMargin > 0 ? 0.3 : 0) +
+      (costAnalysis.marketPositioning?.priceRange ? 0.3 : 0);
+    const cost_confidence = compute_analysis_confidence({
+      data_completeness: cost_completeness,
+      has_real_data: costAnalysis.formulationCost.estimatedCOGS !== 50, // mock returns 50
+    });
     merged.push({
       type: 'cost_analysis',
       title: 'Cost & Profitability Analysis',
       content: JSON.stringify(costAnalysis),
       source: 'Cost Analysis',
-      credibility: 0.9, // High credibility for cost data
-      score: 0.8,
-      relevance: 0.85, // High relevance for pricing decisions
-      confidence: 0.8,
+      credibility: 0.9,
+      score: cost_confidence,
+      relevance: 0.85,
+      confidence: round_confidence(cost_confidence),
       metadata: costAnalysis,
       commercialViability: costAnalysis.marketPositioning.profitMargin > 0.3 ? 0.8 : 0.4,
-      marketPotential: costAnalysis.formulationCost.estimatedCOGS < 50 ? 0.7 : 0.3
+      marketPotential: costAnalysis.formulationCost.estimatedCOGS < 50 ? 0.7 : 0.3,
     });
   }
 
@@ -709,9 +736,19 @@ function assessCommercialViability(source: any, concepts: ProductConcept[]): num
 }
 
 function assessMarketPotential(source: any, concepts: ProductConcept[]): number {
-  // This would integrate with market data sources
-  // For now, return a reasonable estimate
-  return 0.7;
+  const content = (typeof source.content === 'string' ? source.content : JSON.stringify(source.content || '')).toLowerCase();
+  let potential = 0.4; // Base for unknown
+
+  // Content-based signals
+  if (content.includes('growing') || content.includes('trending')) potential += 0.15;
+  if (content.includes('high demand') || content.includes('popular')) potential += 0.15;
+  if (content.includes('innovation') || content.includes('breakthrough')) potential += 0.1;
+  if (content.includes('declining') || content.includes('saturated')) potential -= 0.15;
+
+  // Concept alignment boost
+  if (concepts.length > 0 && source.score > 0.7) potential += 0.1;
+
+  return Math.max(0.2, Math.min(potential, 0.95));
 }
 
 function calculateSalesConfidence(results: SalesMergedResult[]): number {
@@ -785,7 +822,14 @@ function identifyMarketGaps(concept: ProductConcept): string[] {
 }
 
 function assessTrendAlignment(concept: ProductConcept, marketTrends?: string[]): number {
-  return 0.8; // 80% alignment
+  const concept_keywords = [
+    concept.category,
+    ...(concept.benefits || []),
+    ...(concept.claims || []),
+    concept.targetMarket,
+  ].filter(Boolean) as string[];
+
+  return compute_trend_alignment(concept_keywords, marketTrends);
 }
 
 function estimateIngredientCost(ingredient: string): number {

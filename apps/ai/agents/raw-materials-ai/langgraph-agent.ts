@@ -401,7 +401,7 @@ ${this.formatResultsForLLM(results)}
 
       return {
         response: response.content.toString(),
-        confidence: state.confidence || 0.8
+        confidence: state.confidence || 0.5
       };
     } catch (error) {
       console.error('❌ [LangGraphAgent] Response generation failed:', error);
