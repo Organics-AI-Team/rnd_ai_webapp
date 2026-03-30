@@ -316,6 +316,7 @@ export async function POST(request: NextRequest) {
       const reactResult = await reactAgent.execute({
         prompt: body.prompt,
         user_id: body.userId,
+        organization_id: body.organizationId,
         session_id: body.conversationHistory?.[0]?.sessionId,
         conversation_history: body.conversationHistory?.map((m: any) => ({
           role: m.role || 'user',

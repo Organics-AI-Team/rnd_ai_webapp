@@ -42,6 +42,10 @@ interface AIChatMessagesAreaProps {
   inputAreaHeight?: number;
   bottomPadding?: number;
   onSuggestionClick?: (suggestion: string) => void;
+  /** Callback when user submits feedback on a message */
+  onFeedback?: (messageId: string, isPositive: boolean) => void;
+  /** Set of message IDs that already have feedback submitted */
+  feedbackSubmitted?: Set<string>;
 }
 
 export function AIChatMessagesArea({
@@ -56,6 +60,8 @@ export function AIChatMessagesArea({
   metadataLabel = 'Enhanced',
   bottomPadding = 16,
   onSuggestionClick,
+  onFeedback,
+  feedbackSubmitted = new Set(),
 }: AIChatMessagesAreaProps) {
   const bottom_ref = useRef<HTMLDivElement>(null);
   const scroll_container_ref = useRef<HTMLDivElement>(null);
@@ -127,6 +133,8 @@ export function AIChatMessagesArea({
                 themeColor={themeColor}
                 metadataIcon={metadataIcon}
                 metadataLabel={metadataLabel}
+                onFeedback={onFeedback}
+                feedbackSubmitted={feedbackSubmitted.has(message.id)}
               />
             ))
           )}

@@ -86,6 +86,7 @@ export default function RawMaterialsAIPage() {
         body: JSON.stringify({
           prompt: user_input,
           userId: user?.id || 'anonymous',
+          organizationId: user?.organizationId,
           conversationHistory: chat.messages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -221,6 +222,8 @@ export default function RawMaterialsAIPage() {
                 metadataLabel="Database"
                 inputAreaHeight={inputAreaHeight}
                 bottomPadding={8}
+                onFeedback={handle_feedback}
+                feedbackSubmitted={feedbackSubmitted}
               />
             }
           />
@@ -233,10 +236,6 @@ export default function RawMaterialsAIPage() {
                 onSend={handle_send_message}
                 placeholder="Ask about raw materials, ingredients, or formulations..."
                 disabled={isLoading}
-                messages={display_messages}
-                onFeedback={handle_feedback}
-                feedbackDisabled={feedbackSubmitted}
-                showFeedback={true}
                 onHeightChange={setInputAreaHeight}
               />
             }

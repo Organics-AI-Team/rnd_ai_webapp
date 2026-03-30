@@ -17,6 +17,7 @@ import {
   ReactToolName,
 } from './tool-definitions';
 import { get_react_system_prompt } from './react-system-prompt';
+import type { ToolHandlerContext } from './types';
 
 // Tool handler imports — files created by parallel tasks.
 // If a handler does not exist yet, runtime will throw a clear error on first call.
@@ -49,17 +50,22 @@ export interface ReactAgentConfig {
   max_iterations: number;
 }
 
+// Re-export ToolHandlerContext for backward compatibility
+export type { ToolHandlerContext } from './types';
+
 /**
  * Inbound request payload for the ReAct agent.
  *
  * @property prompt               - The user's natural-language query (required).
  * @property user_id              - Authenticated user identifier (required).
+ * @property organization_id      - User's organization ID for DB writes (optional).
  * @property session_id           - Optional chat session ID for context_memory lookups.
  * @property conversation_history - Optional prior turns for multi-turn context.
  */
 export interface ReactAgentRequest {
   prompt: string;
   user_id: string;
+  organization_id?: string;
   session_id?: string;
   conversation_history?: Array<{ role: string; content: string }>;
 }
@@ -100,20 +106,21 @@ const DEFAULT_CONFIG: ReactAgentConfig = {
 
 /**
  * Central registry that maps each ReactToolName to its async handler.
- * Each handler receives (args, session_id?) and returns a serialised string result.
+ * Each handler receives (args, context?) and returns a serialised string result.
+ * Context carries user_id, organization_id, session_id for DB persistence.
  */
 const TOOL_HANDLER_MAP: Record<
   ReactToolName,
-  (args: Record<string, unknown>, session_id?: string) => Promise<string>
+  (args: Record<string, unknown>, context?: ToolHandlerContext) => Promise<string>
 > = {
   qdrant_search: (args) => handle_qdrant_search(args as any),
   mongo_query: (args) => handle_mongo_query(args as any),
   formula_calculate: (args) => handle_formula_calculate(args as any),
   web_search: (args) => handle_web_search(args as any),
-  context_memory: (args) => handle_context_memory(args as any),
-  generate_formula: (args) => handle_generate_formula(args as any),
+  context_memory: (args, ctx) => handle_context_memory(args as any),
+  generate_formula: (args, ctx) => handle_generate_formula(args as any, ctx),
   search_reference_formulas: (args) => handle_search_reference_formulas(args as any),
-  revise_formula: (args) => handle_revise_formula(args as any),
+  revise_formula: (args, ctx) => handle_revise_formula(args as any, ctx),
   get_formula_with_comments: (args) => handle_get_formula_with_comments(args as any),
 };
 
@@ -196,6 +203,13 @@ export class ReactAgentService {
     let iterations = 0;
     let final_response = '';
 
+    // Build handler context from request for DB persistence
+    const handler_context: ToolHandlerContext = {
+      user_id: request.user_id,
+      organization_id: request.organization_id,
+      session_id: request.session_id,
+    };
+
     try {
       // ----- 1. Build Gemini model with tools & system prompt -----
       const tool_declarations = get_react_tool_declarations();
@@ -270,7 +284,7 @@ export class ReactAgentService {
           const tool_result = await this._execute_tool(
             tool_name,
             tool_args,
-            request.session_id
+            handler_context
           );
 
           tool_calls.push({
@@ -349,15 +363,15 @@ export class ReactAgentService {
   /**
    * Execute a single tool by name, routing through TOOL_HANDLER_MAP.
    *
-   * @param tool_name  - One of the ReactToolName values.
-   * @param args       - Arguments extracted from the model's functionCall.
-   * @param session_id - Optional session ID forwarded to context_memory handler.
+   * @param tool_name - One of the ReactToolName values.
+   * @param args      - Arguments extracted from the model's functionCall.
+   * @param context   - User/org context forwarded to handlers for DB writes.
    * @returns Serialised string result (JSON or plain text).
    */
   private async _execute_tool(
     tool_name: ReactToolName,
     args: Record<string, unknown>,
-    session_id?: string
+    context?: ToolHandlerContext
   ): Promise<string> {
     console.log(`[ReactAgentService] _execute_tool() - start: ${tool_name}`);
 
@@ -370,7 +384,7 @@ export class ReactAgentService {
     }
 
     try {
-      const result = await handler(args, session_id);
+      const result = await handler(args, context);
       console.log(
         `[ReactAgentService] _execute_tool() - complete: ${tool_name}, result_length=${result.length}`
       );

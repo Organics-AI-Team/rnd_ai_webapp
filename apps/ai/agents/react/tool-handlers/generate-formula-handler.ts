@@ -15,6 +15,8 @@
 
 import { get_qdrant_service } from '../../../services/vector/qdrant-service';
 import { createEmbeddingService } from '../../../services/embeddings/universal-embedding-service';
+import client_promise from '@rnd-ai/shared-database';
+import type { ToolHandlerContext } from '../types';
 import {
   type FormulaPhase,
   FORMULA_PHASES,
@@ -542,6 +544,94 @@ function allocate_percentages(
 }
 
 // ---------------------------------------------------------------------------
+// DB Persistence — Auto-save generated formulas to MongoDB
+// ---------------------------------------------------------------------------
+
+/**
+ * Persist a generated formula to the `formulas` MongoDB collection.
+ * Auto-generates a sequential formulaCode (F000001 format) matching
+ * the tRPC formulas.create logic.
+ *
+ * @param formula     - The structured formula output from the generation pipeline
+ * @param ingredients - Flat array of GeneratedIngredient for mapping to DB schema
+ * @param context     - ToolHandlerContext with user_id and organization_id
+ * @returns Object with formula_id and formula_code of the persisted document
+ */
+async function persist_formula_to_db(
+  formula: Record<string, any>,
+  ingredients: GeneratedIngredient[],
+  context: ToolHandlerContext,
+): Promise<{ formula_id: string; formula_code: string }> {
+  console.log('[generate-formula] persist_formula_to_db — start', {
+    organization_id: context.organization_id,
+    user_id: context.user_id,
+    ingredient_count: ingredients.length,
+  });
+
+  const client = await client_promise;
+  const db = client.db();
+
+  // Auto-generate formulaCode: same logic as tRPC formulas.create
+  const total_count = await db.collection('formulas').countDocuments();
+  const latest_formula = await db
+    .collection('formulas')
+    .find({})
+    .sort({ _id: -1 })
+    .limit(1)
+    .toArray();
+
+  let max_number = total_count;
+  if (latest_formula.length > 0 && latest_formula[0].formulaCode) {
+    const match = latest_formula[0].formulaCode.toString().match(/(\d+)/);
+    if (match) {
+      const code_number = parseInt(match[1], 10);
+      max_number = Math.max(max_number, code_number);
+    }
+  }
+  const formula_code = `F${String(max_number + 1).padStart(6, '0')}`;
+
+  // Map GeneratedIngredient[] to the DB ingredient schema
+  const db_ingredients = ingredients.map((ing) => ({
+    materialId: '',
+    rm_code: ing.rm_code,
+    productName: ing.trade_name,
+    inci_name: ing.inci_name,
+    amount: ing.amount_grams,
+    percentage: ing.percentage,
+    notes: `${ing.phase_label} — ${ing.rationale}`,
+  }));
+
+  const result = await db.collection('formulas').insertOne({
+    organizationId: context.organization_id,
+    formulaCode: formula_code,
+    formulaName: formula.formula_name,
+    version: 1,
+    client: '',
+    targetBenefits: formula.target_benefits || [],
+    ingredients: db_ingredients,
+    totalAmount: formula.batch_size_grams || 100,
+    remarks: `AI-generated: ${formula.generation_prompt || ''}`,
+    status: 'draft',
+    aiGenerated: true,
+    generationPrompt: formula.generation_prompt,
+    warnings: formula.warnings || [],
+    createdBy: context.user_id,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  console.log('[generate-formula] persist_formula_to_db — done', {
+    formula_id: result.insertedId.toString(),
+    formula_code,
+  });
+
+  return {
+    formula_id: result.insertedId.toString(),
+    formula_code,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main Handler
 // ---------------------------------------------------------------------------
 
@@ -557,10 +647,11 @@ function allocate_percentages(
  *   6. Run regulatory & safety validation (Layer 2)
  *   7. Calculate amounts and format structured output (Layer 3)
  *
- * @param params - GenerateFormulaParams with product_type, target_benefits, etc.
+ * @param params  - GenerateFormulaParams with product_type, target_benefits, etc.
+ * @param context - Optional user/org context for persisting to MongoDB
  * @returns JSON string with the structured formula
  */
-export async function handle_generate_formula(params: GenerateFormulaParams): Promise<string> {
+export async function handle_generate_formula(params: GenerateFormulaParams, context?: ToolHandlerContext): Promise<string> {
   const start_ts = Date.now();
   console.log('[generate-formula] handle_generate_formula — start', {
     product_type: params.product_type,
@@ -768,10 +859,40 @@ export async function handle_generate_formula(params: GenerateFormulaParams): Pr
       ].filter(Boolean),
     };
 
+    // --- Step 8: Persist to MongoDB if user context is available ---
+    let saved_formula_id: string | null = null;
+    let saved_formula_code: string | null = null;
+
+    if (context?.organization_id) {
+      try {
+        const persist_result = await persist_formula_to_db(formula, ingredients, context);
+        saved_formula_id = persist_result.formula_id;
+        saved_formula_code = persist_result.formula_code;
+        console.log('[generate-formula] persisted to MongoDB', {
+          formula_id: saved_formula_id,
+          formula_code: saved_formula_code,
+        });
+      } catch (persist_error) {
+        console.error('[generate-formula] MongoDB persist failed (non-fatal)', {
+          error: persist_error instanceof Error ? persist_error.message : String(persist_error),
+        });
+      }
+    } else {
+      console.log('[generate-formula] skipping DB persistence — no organization_id in context');
+    }
+
+    // Attach persistence info to output
+    if (saved_formula_id) {
+      (formula as any).saved_to_db = true;
+      (formula as any).formula_id = saved_formula_id;
+      (formula as any).formula_code = saved_formula_code;
+    }
+
     const elapsed = Date.now() - start_ts;
     console.log('[generate-formula] handle_generate_formula — done', {
       ingredient_count: ingredients.length,
       warning_count: warnings.length,
+      saved_to_db: !!saved_formula_id,
       elapsed_ms: elapsed,
     });
 

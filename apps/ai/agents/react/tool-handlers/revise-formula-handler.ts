@@ -15,6 +15,7 @@ import client_promise from '@rnd-ai/shared-database';
 import { ObjectId } from 'mongodb';
 import { get_qdrant_service } from '../../../services/vector/qdrant-service';
 import { createEmbeddingService } from '../../../services/embeddings/universal-embedding-service';
+import type { ToolHandlerContext } from '../types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -171,10 +172,11 @@ async function search_alternatives(
  * 5. Build a revised formula with changelog explaining each change
  * 6. Return the revision as a structured JSON ready for creating a new version
  *
- * @param params - ReviseFormulaParams with formula_id and optional revision_focus
+ * @param params  - ReviseFormulaParams with formula_id and optional revision_focus
+ * @param context - Optional user/org context for persisting revised formula to MongoDB
  * @returns JSON string with revised formula + changelog
  */
-export async function handle_revise_formula(params: ReviseFormulaParams): Promise<string> {
+export async function handle_revise_formula(params: ReviseFormulaParams, context?: ToolHandlerContext): Promise<string> {
   const start_ts = Date.now();
   console.log('[revise-formula] handle_revise_formula — start', {
     formula_id: params.formula_id,
@@ -354,6 +356,58 @@ export async function handle_revise_formula(params: ReviseFormulaParams): Promis
       changelog_entries: changelog.length,
       elapsed_ms: elapsed,
     });
+
+    // --- Persist revised formula to MongoDB as a new version ---
+    const org_id = context?.organization_id || formula.organizationId;
+    if (org_id) {
+      try {
+        // Auto-generate formulaCode
+        const total_count = await db.collection('formulas').countDocuments();
+        const latest = await db.collection('formulas').find({}).sort({ _id: -1 }).limit(1).toArray();
+        let max_number = total_count;
+        if (latest.length > 0 && latest[0].formulaCode) {
+          const code_match = latest[0].formulaCode.toString().match(/(\d+)/);
+          if (code_match) max_number = Math.max(max_number, parseInt(code_match[1], 10));
+        }
+        const new_formula_code = `F${String(max_number + 1).padStart(6, '0')}`;
+
+        const insert_result = await db.collection('formulas').insertOne({
+          organizationId: org_id,
+          formulaCode: new_formula_code,
+          formulaName: revision.revised_formula.formula_name,
+          version: revision.revised_formula.version,
+          client: formula.client || '',
+          targetBenefits: revision.revised_formula.target_benefits,
+          ingredients: revised_ingredients,
+          totalAmount: formula.totalAmount || 0,
+          remarks: revision.revised_formula.remarks,
+          status: 'draft',
+          aiGenerated: true,
+          parentFormulaId: formula._id.toString(),
+          generationPrompt: revision.revised_formula.generation_prompt,
+          changelog,
+          createdBy: context?.user_id || 'ai-system',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Attach persistence info to output
+        (revision as any).saved_to_db = true;
+        (revision as any).new_formula_id = insert_result.insertedId.toString();
+        (revision as any).new_formula_code = new_formula_code;
+
+        console.log('[revise-formula] revised formula persisted to MongoDB', {
+          formula_id: insert_result.insertedId.toString(),
+          formula_code: new_formula_code,
+        });
+      } catch (persist_error) {
+        console.error('[revise-formula] MongoDB persist failed (non-fatal)', {
+          error: persist_error instanceof Error ? persist_error.message : String(persist_error),
+        });
+      }
+    } else {
+      console.log('[revise-formula] skipping DB persistence — no organizationId available');
+    }
 
     // --- Add a revision_note comment to track this AI revision ---
     try {

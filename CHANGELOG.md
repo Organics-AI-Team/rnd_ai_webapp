@@ -1,5 +1,45 @@
 # Changelog
 
+## [2026-03-30] feat: Per-message feedback + auto-save AI-generated formulas to DB
+
+### Summary
+Two features: (1) Moved HITL Yes/No feedback buttons from the input area to under each assistant message for better ML signal granularity. (2) AI-generated formulas (generate_formula and revise_formula tools) now auto-persist to MongoDB `formulas` collection so they appear on `/formulas` page.
+
+### Changes — Per-message feedback
+- `ai_chat_message.tsx` — Added `onFeedback` and `feedbackSubmitted` props; renders `AIFeedbackButtons` under each assistant message
+- `ai_chat_messages_area.tsx` — Added `onFeedback` and `feedbackSubmitted` props; passes to each `AIChatMessage`
+- `ai_chat_input_area.tsx` — Removed all feedback-related props and rendering (simplified to input + height reporting)
+- `raw-materials-ai/page.tsx` — Moved `onFeedback`/`feedbackSubmitted` from `AIChatInputArea` to `AIChatMessagesArea`
+- `sales-rnd-ai/page.tsx` — Same prop migration as raw-materials page
+
+### Changes — Auto-save formulas to DB
+- `apps/ai/agents/react/types.ts` — NEW: Shared `ToolHandlerContext` interface (user_id, organization_id, session_id)
+- `react-agent-service.ts` — Handler map signature expanded from `(args, session_id?)` to `(args, context?)`; builds `ToolHandlerContext` from request and passes to handlers
+- `ReactAgentRequest` — Added optional `organization_id` field
+- `generate-formula-handler.ts` — Added `persist_formula_to_db()`: auto-generates formulaCode, maps ingredients to DB schema, inserts to `formulas` collection with `aiGenerated: true`
+- `revise-formula-handler.ts` — After building revision, persists as new formula version with `parentFormulaId` linking to original
+- `raw-materials-agent/route.ts` — Passes `organizationId` from request body to `ReactAgentService.execute()`
+- `raw-materials-ai/page.tsx` — Sends `organizationId: user?.organizationId` in API request body
+
+### Architecture
+- `ToolHandlerContext` extracted to `apps/ai/agents/react/types.ts` to avoid circular imports
+- Re-exported from `react-agent-service.ts` for backward compatibility
+- Formula persistence is non-fatal: DB write failures are logged but don't block the AI response
+
+### Files Changed
+- `apps/ai/agents/react/types.ts` (NEW)
+- `apps/ai/agents/react/react-agent-service.ts`
+- `apps/ai/agents/react/tool-handlers/generate-formula-handler.ts`
+- `apps/ai/agents/react/tool-handlers/revise-formula-handler.ts`
+- `apps/web/app/ai/raw-materials-ai/page.tsx`
+- `apps/web/app/ai/sales-rnd-ai/page.tsx`
+- `apps/web/app/api/ai/raw-materials-agent/route.ts`
+- `apps/web/components/ai/ai_chat_input_area.tsx`
+- `apps/web/components/ai/ai_chat_message.tsx`
+- `apps/web/components/ai/ai_chat_messages_area.tsx`
+
+---
+
 ## [2026-03-30] UI: Redesign stock page — Cloudflare-minimal design system
 
 ### Summary

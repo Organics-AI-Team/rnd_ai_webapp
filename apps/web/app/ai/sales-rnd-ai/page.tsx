@@ -221,6 +221,8 @@ export default function SalesRndAIPage() {
                 metadataLabel="Market"
                 inputAreaHeight={inputAreaHeight}
                 bottomPadding={8}
+                onFeedback={handle_feedback}
+                feedbackSubmitted={feedbackSubmitted}
               />
             }
           />
@@ -233,10 +235,6 @@ export default function SalesRndAIPage() {
                 onSend={handle_send_message}
                 placeholder="Ask about sales strategies, market trends, or formulations..."
                 disabled={isLoading}
-                messages={display_messages}
-                onFeedback={handle_feedback}
-                feedbackDisabled={feedbackSubmitted}
-                showFeedback={true}
                 onHeightChange={setInputAreaHeight}
               />
             }

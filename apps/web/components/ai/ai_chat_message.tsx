@@ -4,6 +4,7 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Bot, User } from 'lucide-react';
 import { MarkdownRenderer } from '@/ai/components/chat/markdown-renderer';
+import { AIFeedbackButtons } from './ai_feedback_buttons';
 
 /**
  * AI Chat Message - ChatGPT-style full-width message rows
@@ -32,6 +33,10 @@ interface AIChatMessageProps {
   themeColor?: 'blue' | 'green' | 'purple' | 'orange';
   metadataIcon?: React.ReactNode;
   metadataLabel?: string;
+  /** Callback when user clicks Yes/No feedback on this message */
+  onFeedback?: (messageId: string, isPositive: boolean) => void;
+  /** Whether feedback has already been submitted for this message */
+  feedbackSubmitted?: boolean;
 }
 
 const themeColorMap = {
@@ -49,7 +54,9 @@ export const AIChatMessage = React.memo(function AIChatMessage({
   message,
   themeColor = 'blue',
   metadataIcon,
-  metadataLabel = 'Enhanced'
+  metadataLabel = 'Enhanced',
+  onFeedback,
+  feedbackSubmitted = false,
 }: AIChatMessageProps) {
   const colors = themeColorMap[themeColor];
 
@@ -102,6 +109,15 @@ export const AIChatMessage = React.memo(function AIChatMessage({
               </span>
             )}
           </div>
+        )}
+
+        {/* Per-message feedback — shown under every assistant message */}
+        {message.role === 'assistant' && onFeedback && (
+          <AIFeedbackButtons
+            messageId={message.id}
+            onFeedback={onFeedback}
+            disabled={feedbackSubmitted}
+          />
         )}
       </div>
     </div>
