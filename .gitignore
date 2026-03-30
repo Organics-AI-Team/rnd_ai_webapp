@@ -61,3 +61,8 @@ _archive/
 *.backup
 
 /generated/prisma
+
+# Local tool directories
+.claude/
+.planning/
+.playwright-mcp/
