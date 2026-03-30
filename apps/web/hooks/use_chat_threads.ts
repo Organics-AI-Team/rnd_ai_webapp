@@ -83,6 +83,17 @@ export function use_chat_threads(agent_type: AgentType): UseChatThreadsReturn {
   const [optimistic_messages, set_optimistic_messages] = useState<ChatMessage[]>([]);
   const pending_thread_ref = useRef<string | null>(null);
 
+  /**
+   * Ref that mirrors active_thread_id state.
+   * Needed because add_message's useCallback closure captures stale state —
+   * between user message (creates thread) and assistant message (same turn),
+   * React hasn't re-rendered yet so the closure still sees null.
+   */
+  const active_thread_id_ref = useRef<string | null>(null);
+  useEffect(() => {
+    active_thread_id_ref.current = active_thread_id;
+  }, [active_thread_id]);
+
   // --- tRPC queries ---
   const threads_query = trpc.chatThreads.list.useQuery(
     { agentType: agent_type, limit: 30 },
@@ -133,6 +144,8 @@ export function use_chat_threads(agent_type: AgentType): UseChatThreadsReturn {
    */
   const select_thread = useCallback((thread_id: string) => {
     console.log('[use_chat_threads] select_thread', { thread_id });
+    active_thread_id_ref.current = thread_id;
+    pending_thread_ref.current = null;
     set_active_thread_id(thread_id);
     set_is_new_chat(false);
     set_optimistic_messages([]);
@@ -144,6 +157,8 @@ export function use_chat_threads(agent_type: AgentType): UseChatThreadsReturn {
    */
   const start_new_chat = useCallback(() => {
     console.log('[use_chat_threads] start_new_chat');
+    active_thread_id_ref.current = null;
+    pending_thread_ref.current = null;
     set_active_thread_id(null);
     set_is_new_chat(true);
     set_optimistic_messages([]);
@@ -164,31 +179,28 @@ export function use_chat_threads(agent_type: AgentType): UseChatThreadsReturn {
     content: string,
     metadata?: any,
   ): Promise<string | null> => {
-    console.log('[use_chat_threads] add_message — start', { role, has_thread: !!active_thread_id });
+    // Read from ref — NOT the stale closure — so assistant messages
+    // in the same turn see the thread created by the user message.
+    let thread_id = active_thread_id_ref.current || pending_thread_ref.current;
+    console.log('[use_chat_threads] add_message — start', { role, has_thread: !!thread_id });
 
     try {
-      let thread_id = active_thread_id;
-
       // Create thread on first message
       if (!thread_id) {
-        // Prevent duplicate thread creation if already in progress
-        if (pending_thread_ref.current) {
-          thread_id = pending_thread_ref.current;
-        } else {
-          const title = role === 'user'
-            ? content.slice(0, 50) + (content.length > 50 ? '...' : '')
-            : 'New Chat';
+        const title = role === 'user'
+          ? content.slice(0, 50) + (content.length > 50 ? '...' : '')
+          : 'New Chat';
 
-          const new_thread = await create_mutation.mutateAsync({
-            agentType: agent_type,
-            title,
-          });
+        const new_thread = await create_mutation.mutateAsync({
+          agentType: agent_type,
+          title,
+        });
 
-          thread_id = new_thread.id;
-          pending_thread_ref.current = thread_id;
-          set_active_thread_id(thread_id);
-          set_is_new_chat(false);
-        }
+        thread_id = new_thread.id;
+        pending_thread_ref.current = thread_id;
+        active_thread_id_ref.current = thread_id;
+        set_active_thread_id(thread_id);
+        set_is_new_chat(false);
       }
 
       // Add optimistic message immediately for snappy UI
@@ -213,11 +225,6 @@ export function use_chat_threads(agent_type: AgentType): UseChatThreadsReturn {
         metadata,
       });
 
-      // Clear pending ref after successful save
-      if (pending_thread_ref.current === thread_id) {
-        pending_thread_ref.current = null;
-      }
-
       // Refresh thread list to update lastMessageAt + messageCount
       threads_query.refetch();
 
@@ -228,10 +235,9 @@ export function use_chat_threads(agent_type: AgentType): UseChatThreadsReturn {
       return result.id;
     } catch (error) {
       console.error('[use_chat_threads] add_message — error', error);
-      pending_thread_ref.current = null;
       return null;
     }
-  }, [active_thread_id, agent_type, create_mutation, add_message_mutation, threads_query, messages_query]);
+  }, [agent_type, create_mutation, add_message_mutation, threads_query, messages_query]);
 
   /**
    * Archive (soft delete) a thread.
