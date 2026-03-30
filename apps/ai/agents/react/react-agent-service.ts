@@ -4,7 +4,8 @@
  * Implements a Thought -> Action -> Observation -> Answer loop using
  * Google Gemini's native function calling. Routes tool calls to dedicated
  * handlers for Qdrant search, MongoDB queries, formula calculations,
- * web search, and context memory retrieval.
+ * web search, context memory retrieval, formula generation, reference
+ * formula search, formula revision, and formula-with-comments loading.
  *
  * @author AI Management System
  * @date 2026-03-27
@@ -24,6 +25,10 @@ import { handle_mongo_query } from './tool-handlers/mongo-query-handler';
 import { handle_formula_calculate } from './tool-handlers/formula-calc-handler';
 import { handle_web_search } from './tool-handlers/web-search-handler';
 import { handle_context_memory } from './tool-handlers/context-memory-handler';
+import { handle_generate_formula } from './tool-handlers/generate-formula-handler';
+import { handle_search_reference_formulas } from './tool-handlers/search-reference-formulas-handler';
+import { handle_revise_formula } from './tool-handlers/revise-formula-handler';
+import { handle_get_formula_with_comments } from './tool-handlers/get-formula-with-comments-handler';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,7 +91,7 @@ const DEFAULT_CONFIG: ReactAgentConfig = {
   model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
   temperature: 0.7,
   max_tokens: 9000,
-  max_iterations: 5,
+  max_iterations: 8,
 };
 
 // ---------------------------------------------------------------------------
@@ -106,6 +111,10 @@ const TOOL_HANDLER_MAP: Record<
   formula_calculate: (args) => handle_formula_calculate(args as any),
   web_search: (args) => handle_web_search(args as any),
   context_memory: (args) => handle_context_memory(args as any),
+  generate_formula: (args) => handle_generate_formula(args as any),
+  search_reference_formulas: (args) => handle_search_reference_formulas(args as any),
+  revise_formula: (args) => handle_revise_formula(args as any),
+  get_formula_with_comments: (args) => handle_get_formula_with_comments(args as any),
 };
 
 // ---------------------------------------------------------------------------

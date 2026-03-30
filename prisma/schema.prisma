@@ -175,25 +175,32 @@ enum StockStatus {
 // ============================================
 
 model Formula {
-  id             String            @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId String            @db.ObjectId
-  formulaCode    String?
-  formulaName    String
-  version        Int               @default(1)
-  client         String?
-  targetBenefits String[]          @default([])
-  ingredients    FormulaIngredient[]
-  totalAmount    Float?
-  remarks        String?
-  status         FormulaStatus     @default(draft)
-  createdBy      String
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id                  String            @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId      String            @db.ObjectId
+  formulaCode         String?
+  formulaName         String
+  version             Int               @default(1)
+  client              String?
+  targetBenefits      String[]          @default([])
+  ingredients         FormulaIngredient[]
+  totalAmount         Float?
+  remarks             String?
+  status              FormulaStatus     @default(draft)
+  // AI generation metadata
+  parentFormulaId     String?           @db.ObjectId
+  referenceFormulaIds String[]          @default([])
+  aiGenerated         Boolean           @default(false)
+  generationPrompt    String?
+  createdBy           String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  comments     FormulaComment[]
 
   @@index([organizationId])
   @@index([formulaCode])
+  @@index([parentFormulaId])
   @@map("formulas")
 }
 
@@ -212,6 +219,34 @@ enum FormulaStatus {
   testing
   approved
   rejected
+}
+
+model FormulaComment {
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  formulaId       String      @db.ObjectId
+  userId          String
+  userName        String
+  content         String
+  commentType     CommentType @default(feedback)
+  parentCommentId String?     @db.ObjectId
+  metadata        Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  formula Formula @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+
+  @@index([formulaId])
+  @@index([userId])
+  @@index([parentCommentId])
+  @@map("formula_comments")
+}
+
+enum CommentType {
+  feedback
+  suggestion
+  approval
+  rejection
+  revision_note
 }
 
 // ============================================

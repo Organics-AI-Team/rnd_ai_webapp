@@ -13,6 +13,7 @@ import { rawMaterialsFeedbackRouter } from "./routers/raw-materials-feedback";
 import { ragRouter } from "./routers/rag";
 import { stockRouter } from "./routers/stock";
 import { calculationsRouter } from "./routers/calculations";
+import { formulaCommentsRouter } from "./routers/formula-comments";
 
 export const appRouter = router({
   auth: authRouter,
@@ -29,6 +30,7 @@ export const appRouter = router({
   rag: ragRouter,
   stock: stockRouter,
   calculations: calculationsRouter,
+  formulaComments: formulaCommentsRouter,
 });
 
 export type AppRouter = typeof appRouter;

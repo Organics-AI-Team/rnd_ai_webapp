@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
-import { Beaker, ArrowLeft, Search, Plus, Edit, Trash2, Eye } from "lucide-react";
+import { Beaker, ArrowLeft, Search, Plus, Edit, Trash2, Eye, Sparkles, MessageSquare, GitBranch } from "lucide-react";
 import { useState } from "react";
+import { FormulaComments } from "@/components/formula-comments";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -187,7 +189,12 @@ export default function FormulasPage() {
                       {formula.formulaCode}
                     </TableCell>
                     <TableCell className="font-medium text-sm">
-                      {formula.formulaName}
+                      <div className="flex items-center gap-1.5">
+                        {formula.formulaName}
+                        {formula.aiGenerated && (
+                          <Sparkles className="h-3 w-3 text-purple-500" title="AI Generated" />
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">v{formula.version}</Badge>
@@ -255,6 +262,24 @@ export default function FormulasPage() {
           </DialogHeader>
           {viewingFormula && (
             <div className="space-y-4">
+              {/* AI Generated / Derived From badges */}
+              {(viewingFormula.aiGenerated || viewingFormula.parentFormulaId) && (
+                <div className="flex flex-wrap gap-2">
+                  {viewingFormula.aiGenerated && (
+                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      AI Generated
+                    </Badge>
+                  )}
+                  {viewingFormula.parentFormulaId && (
+                    <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">
+                      <GitBranch className="h-3 w-3 mr-1" />
+                      Derived from {viewingFormula.parentFormulaId}
+                    </Badge>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: "Code", value: viewingFormula.formulaCode, mono: true },
@@ -320,6 +345,26 @@ export default function FormulasPage() {
                   <p className="text-xs bg-gray-50 p-2.5 rounded-md">{viewingFormula.remarks}</p>
                 </div>
               )}
+
+              {/* Generation prompt for AI-generated formulas */}
+              {viewingFormula.generationPrompt && (
+                <div>
+                  <p className="text-2xs text-gray-500 mb-1">
+                    <Sparkles className="h-3 w-3 inline mr-1" />
+                    Generation Prompt
+                  </p>
+                  <p className="text-xs bg-purple-50 text-purple-700 p-2.5 rounded-md">
+                    {viewingFormula.generationPrompt}
+                  </p>
+                </div>
+              )}
+
+              {/* Comments Section */}
+              <Separator />
+              <FormulaComments
+                formula_id={viewingFormula._id}
+                user_name={user?.name}
+              />
             </div>
           )}
         </DialogContent>

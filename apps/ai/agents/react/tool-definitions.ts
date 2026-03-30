@@ -2,12 +2,16 @@
  * ReAct Agent Tool Definitions
  * Gemini function calling declarations for the ReAct (Reason + Act) agent.
  *
- * Defines 5 tools:
- *   1. qdrant_search   - Semantic similarity search across Qdrant collections
- *   2. mongo_query      - Direct MongoDB read-only queries
- *   3. formula_calculate - Batch cost, scaling, unit conversion
- *   4. web_search       - External web search
- *   5. context_memory   - Conversation history look-back
+ * Defines 9 tools:
+ *   1. qdrant_search             - Semantic similarity search across Qdrant collections
+ *   2. mongo_query               - Direct MongoDB read-only queries
+ *   3. formula_calculate         - Batch cost, scaling, unit conversion
+ *   4. web_search                - External web search
+ *   5. context_memory            - Conversation history look-back
+ *   6. generate_formula          - AI creates formula from concept brief
+ *   7. search_reference_formulas - Look up existing formulas as references
+ *   8. revise_formula            - AI reads comments and improves a formula
+ *   9. get_formula_with_comments - Load formula + comment discussion thread
  *
  * All declarations use the plain-object format expected by
  * `@google/generative-ai` FunctionDeclaration[].
@@ -29,7 +33,11 @@ export type ReactToolName =
   | 'mongo_query'
   | 'formula_calculate'
   | 'web_search'
-  | 'context_memory';
+  | 'context_memory'
+  | 'generate_formula'
+  | 'search_reference_formulas'
+  | 'revise_formula'
+  | 'get_formula_with_comments';
 
 /**
  * Gemini-compatible function declaration shape.
@@ -303,6 +311,189 @@ function build_context_memory_declaration(): GeminiFunctionDeclaration {
 }
 
 // ---------------------------------------------------------------------------
+// NPD Formula Tool Declarations
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the generate_formula tool declaration.
+ *
+ * @returns GeminiFunctionDeclaration for AI formula generation from a concept brief.
+ *          Searches Qdrant for ingredients, selects best matches, calculates percentages.
+ */
+function build_generate_formula_declaration(): GeminiFunctionDeclaration {
+  console.log('[ReActTools] Building generate_formula declaration');
+
+  return {
+    name: 'generate_formula',
+    description:
+      'Generate a new cosmetic formula from a concept brief. Searches the ingredient ' +
+      'database for suitable raw materials, selects the best matches based on benefits ' +
+      'and product type, and calculates suggested percentages. Use when users want to ' +
+      'create a new formula, brainstorm product concepts, or get ingredient recommendations ' +
+      'for a specific product type.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        product_type: {
+          type: 'STRING',
+          description:
+            'Type of cosmetic product to formulate.',
+          enum: ['serum', 'cream', 'lotion', 'toner', 'cleanser', 'mask', 'sunscreen', 'shampoo'],
+        },
+        target_benefits: {
+          type: 'ARRAY',
+          description:
+            'Desired benefits for the product, e.g. ["anti-aging", "moisturizing", "brightening"]. ' +
+            'Can be in Thai or English.',
+          items: { type: 'STRING' },
+        },
+        constraints: {
+          type: 'OBJECT',
+          description:
+            'Optional constraints: budget_per_kg (THB), excluded_ingredients (INCI names to avoid), ' +
+            'max_ingredients (cap on ingredient count).',
+          properties: {
+            budget_per_kg: { type: 'NUMBER', description: 'Maximum cost per kg in THB.' },
+            excluded_ingredients: {
+              type: 'ARRAY',
+              description: 'INCI names to exclude from the formula.',
+              items: { type: 'STRING' },
+            },
+            max_ingredients: {
+              type: 'NUMBER',
+              description: 'Maximum number of ingredients (default: 12).',
+            },
+          },
+        },
+        batch_size_grams: {
+          type: 'NUMBER',
+          description: 'Target batch size in grams (default: 100g for lab sample).',
+        },
+        reference_notes: {
+          type: 'STRING',
+          description:
+            'Additional context or styling notes, e.g. "lightweight gel texture" or "for sensitive skin".',
+        },
+      },
+      required: ['product_type', 'target_benefits'],
+    },
+  };
+}
+
+/**
+ * Build the search_reference_formulas tool declaration.
+ *
+ * @returns GeminiFunctionDeclaration for searching existing formulas as references.
+ */
+function build_search_reference_formulas_declaration(): GeminiFunctionDeclaration {
+  console.log('[ReActTools] Building search_reference_formulas declaration');
+
+  return {
+    name: 'search_reference_formulas',
+    description:
+      'Search existing formulas in the database as references or inspiration. ' +
+      'Matches by formula name, ingredients, benefits, client, or remarks. ' +
+      'Use when users want to find similar formulas, compare ingredients, or ' +
+      'look up what formulas exist for a specific product type or client.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: {
+          type: 'STRING',
+          description:
+            'Search text, e.g. "anti-aging serum", "vitamin C", or a client name.',
+        },
+        status: {
+          type: 'STRING',
+          description: 'Filter by formula status.',
+          enum: ['draft', 'testing', 'approved', 'rejected'],
+        },
+        client: {
+          type: 'STRING',
+          description: 'Filter by client name (partial match).',
+        },
+        benefits: {
+          type: 'ARRAY',
+          description: 'Filter by target benefits.',
+          items: { type: 'STRING' },
+        },
+        limit: {
+          type: 'NUMBER',
+          description: 'Max results to return (default: 10, max: 20).',
+        },
+      },
+      required: ['query'],
+    },
+  };
+}
+
+/**
+ * Build the revise_formula tool declaration.
+ *
+ * @returns GeminiFunctionDeclaration for AI-driven formula revision based on comments.
+ */
+function build_revise_formula_declaration(): GeminiFunctionDeclaration {
+  console.log('[ReActTools] Building revise_formula declaration');
+
+  return {
+    name: 'revise_formula',
+    description:
+      'Revise an existing formula based on its comment feedback. Loads the formula ' +
+      'and all comments, analyzes suggestions/rejections, searches for better ' +
+      'ingredient alternatives, and generates an improved version with a detailed ' +
+      'changelog. Use when R&D or stakeholders have left feedback and want AI to ' +
+      'propose improvements.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        formula_id: {
+          type: 'STRING',
+          description: 'MongoDB ObjectId of the formula to revise.',
+        },
+        revision_focus: {
+          type: 'STRING',
+          description: 'Focus area for the revision.',
+          enum: ['cost', 'performance', 'safety', 'all'],
+        },
+        additional_notes: {
+          type: 'STRING',
+          description: 'Extra instructions for the revision (e.g. "prioritise natural ingredients").',
+        },
+      },
+      required: ['formula_id'],
+    },
+  };
+}
+
+/**
+ * Build the get_formula_with_comments tool declaration.
+ *
+ * @returns GeminiFunctionDeclaration for loading a formula with its full comment thread.
+ */
+function build_get_formula_with_comments_declaration(): GeminiFunctionDeclaration {
+  console.log('[ReActTools] Building get_formula_with_comments declaration');
+
+  return {
+    name: 'get_formula_with_comments',
+    description:
+      'Load a formula with its full comment/discussion thread. Returns the complete ' +
+      'formula detail (ingredients, percentages, status) plus all comments sorted by ' +
+      'date. Use to review formula feedback, understand discussion context, or prepare ' +
+      'for a revision.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        formula_id: {
+          type: 'STRING',
+          description: 'MongoDB ObjectId of the formula to load.',
+        },
+      },
+      required: ['formula_id'],
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -319,7 +510,7 @@ function build_context_memory_declaration(): GeminiFunctionDeclaration {
  * });
  * ```
  *
- * @returns GeminiFunctionDeclaration[] - Array of 5 tool declarations.
+ * @returns GeminiFunctionDeclaration[] - Array of 9 tool declarations.
  */
 export function get_react_tool_declarations(): GeminiFunctionDeclaration[] {
   console.log('[ReActTools] get_react_tool_declarations() - start');
@@ -330,6 +521,10 @@ export function get_react_tool_declarations(): GeminiFunctionDeclaration[] {
     build_formula_calculate_declaration(),
     build_web_search_declaration(),
     build_context_memory_declaration(),
+    build_generate_formula_declaration(),
+    build_search_reference_formulas_declaration(),
+    build_revise_formula_declaration(),
+    build_get_formula_with_comments_declaration(),
   ];
 
   console.log(

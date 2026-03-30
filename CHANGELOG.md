@@ -1,5 +1,67 @@
 # Changelog
 
+## [2026-03-30] Feature: AI Formula Tools — NPD generation, revision, comments, reference search
+
+### Summary
+Major AI enhancement: 4 new ReAct tools for New Product Development (NPD) formula workflows.
+AI can now generate formulas from concept briefs, search reference formulas, revise formulas
+based on human feedback/comments, and load formulas with their discussion threads.
+
+### New ReAct Tools (9 total, up from 5)
+1. **`generate_formula`** — AI creates cosmetic formulas from concept briefs
+   - Searches Qdrant (raw_materials_myskin) for ingredients matching product type + target benefits
+   - Assigns percentages based on product-type templates (serum, cream, toner, etc.)
+   - De-duplicates, ranks by similarity score, normalises percentages
+   - Returns structured JSON with ingredients, rationale, estimated cost
+
+2. **`search_reference_formulas`** — Look up existing formulas as inspiration
+   - MongoDB regex search across formula name, ingredients, benefits, client, remarks
+   - Optional filters: status, client, benefits array
+   - Returns full ingredient breakdowns for each matching formula
+
+3. **`revise_formula`** — AI reads comments and improves a formula (HITL closer)
+   - Loads formula + all comments, extracts feedback themes (suggestions, rejections, approvals)
+   - Searches Qdrant for alternative ingredients based on actionable feedback
+   - Generates revised formula with changelog documenting every change + which comment drove it
+   - Saves a `revision_note` comment to track AI revisions in the discussion thread
+   - Supports revision_focus: cost, performance, safety, or all
+
+4. **`get_formula_with_comments`** — Load formula + comment discussion thread
+   - Returns complete formula detail + all comments sorted chronologically
+   - Includes summary: total comments, breakdown by type, has_approval/has_rejection flags
+   - Loads parent formula name if `parentFormulaId` exists
+
+### System Prompt Updates
+- Added NPD domain knowledge: formula architecture (water/oil/active/emulsifier/preservative phases)
+- Added 4 new intent categories: FORMULA_GENERATION, FORMULA_REFERENCE, FORMULA_REVISION, FORMULA_REVIEW
+- Added Thai/English phrase-to-tool mapping for formula tools
+- Added formula generation and revision workflow instructions
+- Bumped max tool calls from 5 to 8 for complex multi-step NPD workflows
+
+### tRPC Router: formulaComments
+- Mounted `formulaCommentsRouter` in app router (list, create, update, delete, count)
+- Full CRUD for formula comments with typed categories (feedback, suggestion, approval, rejection, revision_note)
+- Author-only update/delete enforcement
+- Aggregation pipeline for comment count by type
+
+### Database (Prisma Schema — done in prior session)
+- FormulaComment model with formulaId, commentType enum, parentCommentId for threading
+- Formula model additions: parentFormulaId, referenceFormulaIds, aiGenerated, generationPrompt
+
+### Files Changed
+- `apps/ai/server/index.ts` — Mounted formulaCommentsRouter
+- `apps/ai/agents/react/tool-handlers/generate-formula-handler.ts` — NEW
+- `apps/ai/agents/react/tool-handlers/search-reference-formulas-handler.ts` — NEW
+- `apps/ai/agents/react/tool-handlers/revise-formula-handler.ts` — NEW
+- `apps/ai/agents/react/tool-handlers/get-formula-with-comments-handler.ts` — NEW
+- `apps/ai/agents/react/tool-definitions.ts` — Added 4 new tool declarations (9 total)
+- `apps/ai/agents/react/react-system-prompt.ts` — NPD domain knowledge + formula tool selection
+- `apps/ai/agents/react/react-agent-service.ts` — 4 new handler imports + TOOL_HANDLER_MAP entries + max_iterations 8
+- `apps/ai/server/routers/formula-comments.ts` — NEW (tRPC router)
+- `prisma/schema.prisma` — FormulaComment model + Formula field additions
+
+---
+
 ## [2026-03-30] Performance: AI system audit — embedding cache, payload projection, HITL wiring
 
 ### Summary
