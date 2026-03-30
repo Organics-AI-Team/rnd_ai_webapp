@@ -74,14 +74,16 @@ export interface UseChatThreadsReturn {
 /**
  * Hook for managing persistent AI chat threads.
  *
- * @param agent_type - The AI agent type to scope threads to
+ * @param agent_type        - The AI agent type to scope threads to
+ * @param initial_thread_id - Optional thread ID to auto-select on mount (e.g. from URL ?thread= param)
  * @returns Chat thread state and actions
  */
-export function use_chat_threads(agent_type: AgentType): UseChatThreadsReturn {
-  const [active_thread_id, set_active_thread_id] = useState<string | null>(null);
+export function use_chat_threads(agent_type: AgentType, initial_thread_id?: string | null): UseChatThreadsReturn {
+  const [active_thread_id, set_active_thread_id] = useState<string | null>(initial_thread_id ?? null);
   const [is_new_chat, set_is_new_chat] = useState(false);
   const [optimistic_messages, set_optimistic_messages] = useState<ChatMessage[]>([]);
   const pending_thread_ref = useRef<string | null>(null);
+  const initial_thread_applied_ref = useRef(false);
 
   /**
    * Ref that mirrors active_thread_id state.
@@ -110,12 +112,28 @@ export function use_chat_threads(agent_type: AgentType): UseChatThreadsReturn {
   const add_message_mutation = trpc.chatThreads.addMessage.useMutation();
   const archive_mutation = trpc.chatThreads.archive.useMutation();
 
-  // --- Auto-select most recent thread on first load ---
+  // --- Auto-select thread: prioritize initial_thread_id from URL, then most recent ---
   useEffect(() => {
-    if (threads_query.data && threads_query.data.length > 0 && !active_thread_id && !is_new_chat) {
+    if (!threads_query.data || threads_query.data.length === 0) return;
+
+    // If initial_thread_id was provided and hasn't been applied yet, select it
+    if (initial_thread_id && !initial_thread_applied_ref.current) {
+      const target = threads_query.data.find((t: any) => t.id === initial_thread_id);
+      if (target) {
+        console.log('[use_chat_threads] auto-select initial_thread_id', { initial_thread_id });
+        active_thread_id_ref.current = initial_thread_id;
+        set_active_thread_id(initial_thread_id);
+        set_is_new_chat(false);
+        initial_thread_applied_ref.current = true;
+        return;
+      }
+    }
+
+    // Fallback: auto-select most recent thread if nothing is active
+    if (!active_thread_id && !is_new_chat) {
       set_active_thread_id(threads_query.data[0].id);
     }
-  }, [threads_query.data, active_thread_id, is_new_chat]);
+  }, [threads_query.data, active_thread_id, is_new_chat, initial_thread_id]);
 
   // --- Clear optimistic messages when real messages load ---
   useEffect(() => {

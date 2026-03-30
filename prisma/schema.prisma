@@ -217,14 +217,53 @@ type FormulaIngredient {
 
 enum FormulaStatus {
   draft
+  confirmed
   testing
   approved
   rejected
 }
 
+// ============================================
+// FORMULA VERSION LOG — Immutable audit trail
+// ============================================
+
+model FormulaVersionLog {
+  id                String              @id @default(auto()) @map("_id") @db.ObjectId
+  formulaId         String              @db.ObjectId
+  version           Int                 // 0 = pre-confirm draft, 1+ = confirmed versions
+  previousVersion   Int?                // version before this change (null for initial creation)
+  changeType        FormulaChangeType   // what happened
+  updatedBySource   FormulaUpdateSource // ai or user
+  updatedByUserId   String              // user ID or "ai-system"
+  updatedByName     String              // display name
+  status            String              // formula status at this point in time
+  ingredientSnapshot Json?              // full ingredients array snapshot
+  changelog         Json?               // array of change entries
+  remarks           String?             // human-readable summary of this version
+  createdAt         DateTime            @default(now())
+
+  @@index([formulaId])
+  @@index([formulaId, version])
+  @@map("formula_version_logs")
+}
+
+enum FormulaChangeType {
+  created           // initial AI generation
+  revised           // AI revised based on feedback
+  edited            // user manually edited
+  confirmed         // user confirmed draft → version bumped
+  status_changed    // status transition (e.g. confirmed → testing)
+}
+
+enum FormulaUpdateSource {
+  ai
+  user
+}
+
 model FormulaComment {
   id              String      @id @default(auto()) @map("_id") @db.ObjectId
   formulaId       String      @db.ObjectId
+  version         Int         @default(0)  // formula version this comment belongs to
   userId          String
   userName        String
   content         String
@@ -237,6 +276,7 @@ model FormulaComment {
   formula Formula @relation(fields: [formulaId], references: [id], onDelete: Cascade)
 
   @@index([formulaId])
+  @@index([formulaId, version])
   @@index([userId])
   @@index([parentCommentId])
   @@map("formula_comments")
@@ -248,6 +288,7 @@ enum CommentType {
   approval
   rejection
   revision_note
+  version_update
 }
 
 // ============================================

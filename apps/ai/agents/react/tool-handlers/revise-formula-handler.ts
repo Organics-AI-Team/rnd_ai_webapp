@@ -208,10 +208,11 @@ export async function handle_revise_formula(params: ReviseFormulaParams, context
       });
     }
 
-    // --- Load comments ---
+    // --- Load comments for current version only (version-scoped feedback) ---
+    const current_version = formula.version || 0;
     const comments = await db
       .collection('formula_comments')
-      .find({ formulaId: params.formula_id })
+      .find({ formulaId: params.formula_id, version: current_version })
       .sort({ createdAt: 1 })
       .toArray();
 
@@ -357,62 +358,73 @@ export async function handle_revise_formula(params: ReviseFormulaParams, context
       elapsed_ms: elapsed,
     });
 
-    // --- Persist revised formula to MongoDB as a new version ---
-    const org_id = context?.organization_id || formula.organizationId;
-    if (org_id) {
-      try {
-        // Auto-generate formulaCode
-        const total_count = await db.collection('formulas').countDocuments();
-        const latest = await db.collection('formulas').find({}).sort({ _id: -1 }).limit(1).toArray();
-        let max_number = total_count;
-        if (latest.length > 0 && latest[0].formulaCode) {
-          const code_match = latest[0].formulaCode.toString().match(/(\d+)/);
-          if (code_match) max_number = Math.max(max_number, parseInt(code_match[1], 10));
-        }
-        const new_formula_code = `F${String(max_number + 1).padStart(6, '0')}`;
+    // --- Persist revision in-place: update existing formula (keep same ID) ---
+    try {
+      // Map revised ingredients to DB schema
+      const db_revised_ingredients = revised_ingredients.map((ing: any) => ({
+        materialId: ing.materialId || '',
+        rm_code: ing.rm_code || '',
+        productName: ing.productName || '',
+        inci_name: ing.inci_name || '',
+        amount: ing.amount || 0,
+        percentage: ing.percentage || 0,
+        notes: ing.notes || '',
+      }));
 
-        const insert_result = await db.collection('formulas').insertOne({
-          organizationId: org_id,
-          formulaCode: new_formula_code,
-          formulaName: revision.revised_formula.formula_name,
-          version: revision.revised_formula.version,
-          client: formula.client || '',
-          targetBenefits: revision.revised_formula.target_benefits,
-          ingredients: revised_ingredients,
-          totalAmount: formula.totalAmount || 0,
-          remarks: revision.revised_formula.remarks,
-          status: 'draft',
-          aiGenerated: true,
-          parentFormulaId: formula._id.toString(),
-          generationPrompt: revision.revised_formula.generation_prompt,
-          changelog,
-          createdBy: context?.user_id || 'ai-system',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
+      await db.collection('formulas').updateOne(
+        { _id: object_id },
+        {
+          $set: {
+            ingredients: db_revised_ingredients,
+            status: 'draft', // Revision resets to draft — needs re-confirmation
+            remarks: revision.revised_formula.remarks,
+            generationPrompt: revision.revised_formula.generation_prompt,
+            updatedAt: new Date(),
+          },
+        },
+      );
 
-        // Attach persistence info to output
-        (revision as any).saved_to_db = true;
-        (revision as any).new_formula_id = insert_result.insertedId.toString();
-        (revision as any).new_formula_code = new_formula_code;
+      // Create version log entry (AI revised — draft)
+      await db.collection('formula_version_logs').insertOne({
+        formulaId: params.formula_id,
+        version: formula.version || 0,
+        previousVersion: formula.version || 0,
+        changeType: 'revised',
+        updatedBySource: 'ai',
+        updatedByUserId: context?.user_id || 'ai-system',
+        updatedByName: 'Dr. Arun (AI)',
+        status: 'draft',
+        ingredientSnapshot: db_revised_ingredients,
+        changelog,
+        remarks: `AI revision: ${changelog.length} change(s) based on ${comments.length} comment(s). Focus: ${params.revision_focus || 'general'}`,
+        createdAt: new Date(),
+      });
 
-        console.log('[revise-formula] revised formula persisted to MongoDB', {
-          formula_id: insert_result.insertedId.toString(),
-          formula_code: new_formula_code,
-        });
-      } catch (persist_error) {
-        console.error('[revise-formula] MongoDB persist failed (non-fatal)', {
-          error: persist_error instanceof Error ? persist_error.message : String(persist_error),
-        });
-      }
-    } else {
-      console.log('[revise-formula] skipping DB persistence — no organizationId available');
+      // Attach persistence info to output
+      (revision as any).saved_to_db = true;
+      (revision as any).formula_id = params.formula_id;
+      (revision as any).formula_code = formula.formulaCode;
+      (revision as any).status = 'draft';
+      (revision as any).pending_confirmation = true;
+      (revision as any).confirmation_instruction =
+        'This revised formula is saved as DRAFT. Ask the user if they want to confirm it. ' +
+        'If they approve, use confirm_formula tool with the formula_id to bump the version.';
+
+      console.log('[revise-formula] formula updated in-place + version log created', {
+        formula_id: params.formula_id,
+        formula_code: formula.formulaCode,
+      });
+    } catch (persist_error) {
+      console.error('[revise-formula] MongoDB update failed (non-fatal)', {
+        error: persist_error instanceof Error ? persist_error.message : String(persist_error),
+      });
     }
 
     // --- Add a revision_note comment to track this AI revision ---
     try {
       await db.collection('formula_comments').insertOne({
         formulaId: params.formula_id,
+        version: formula.version || 0,
         userId: 'ai-system',
         userName: 'Dr. Arun (AI)',
         content: `AI revision generated: ${changelog.length} change(s) based on ${comments.length} comment(s). Focus: ${params.revision_focus || 'general'}.`,

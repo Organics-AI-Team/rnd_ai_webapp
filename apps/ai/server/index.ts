@@ -14,6 +14,7 @@ import { ragRouter } from "./routers/rag";
 import { stockRouter } from "./routers/stock";
 import { calculationsRouter } from "./routers/calculations";
 import { formulaCommentsRouter } from "./routers/formula-comments";
+import { formulaVersionLogsRouter } from "./routers/formula-version-logs";
 import { chatThreadsRouter } from "./routers/chat-threads";
 
 export const appRouter = router({
@@ -32,6 +33,7 @@ export const appRouter = router({
   stock: stockRouter,
   calculations: calculationsRouter,
   formulaComments: formulaCommentsRouter,
+  formulaVersionLogs: formulaVersionLogsRouter,
   chatThreads: chatThreadsRouter,
 });
 

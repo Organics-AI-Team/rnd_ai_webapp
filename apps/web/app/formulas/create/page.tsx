@@ -3,7 +3,7 @@
 import { useAuth } from "@/lib/auth-context";
 import { FormulaForm } from "@/components/formula-form";
 import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ConsolePageShell } from "@/components/console_page_shell";
 
 /**
@@ -15,6 +15,8 @@ import { ConsolePageShell } from "@/components/console_page_shell";
 export default function CreateFormulaPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isEditMode = !!searchParams.get("edit");
 
   if (isLoading) {
     return (
@@ -68,8 +70,8 @@ export default function CreateFormulaPage() {
 
   return (
     <ConsolePageShell
-      title="เพิ่มสูตรใหม่"
-      subtitle="สร้างสูตรผลิตภัณฑ์เสริมอาหาร/เครื่องสำอาง"
+      title={isEditMode ? "แก้ไขสูตร" : "เพิ่มสูตรใหม่"}
+      subtitle={isEditMode ? "แก้ไขสูตรผลิตภัณฑ์" : "สร้างสูตรผลิตภัณฑ์เสริมอาหาร/เครื่องสำอาง"}
       show_action={false}
     >
       <div className="p-4">

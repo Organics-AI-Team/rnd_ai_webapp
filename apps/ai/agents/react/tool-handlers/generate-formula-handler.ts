@@ -605,7 +605,7 @@ async function persist_formula_to_db(
     organizationId: context.organization_id,
     formulaCode: formula_code,
     formulaName: formula.formula_name,
-    version: 1,
+    version: 0, // v0 = pre-confirmation draft; version bumps only on confirm
     client: '',
     targetBenefits: formula.target_benefits || [],
     ingredients: db_ingredients,
@@ -619,6 +619,27 @@ async function persist_formula_to_db(
     createdAt: new Date(),
     updatedAt: new Date(),
   });
+
+  // Create initial version log entry (AI created — draft)
+  try {
+    await db.collection('formula_version_logs').insertOne({
+      formulaId: result.insertedId.toString(),
+      version: 0,
+      previousVersion: null,
+      changeType: 'created',
+      updatedBySource: 'ai',
+      updatedByUserId: context.user_id || 'ai-system',
+      updatedByName: 'Dr. Arun (AI)',
+      status: 'draft',
+      ingredientSnapshot: db_ingredients,
+      changelog: null,
+      remarks: `AI-generated formula: ${formula.generation_prompt || formula.formula_name}`,
+      createdAt: new Date(),
+    });
+    console.log('[generate-formula] version log created for new formula');
+  } catch (log_error) {
+    console.warn('[generate-formula] version log creation failed (non-fatal)', { error: log_error });
+  }
 
   console.log('[generate-formula] persist_formula_to_db — done', {
     formula_id: result.insertedId.toString(),
@@ -886,6 +907,12 @@ export async function handle_generate_formula(params: GenerateFormulaParams, con
       (formula as any).saved_to_db = true;
       (formula as any).formula_id = saved_formula_id;
       (formula as any).formula_code = saved_formula_code;
+      (formula as any).status = 'draft';
+      (formula as any).version = 0;
+      (formula as any).pending_confirmation = true;
+      (formula as any).confirmation_instruction =
+        'This formula is saved as a DRAFT (v0). Ask the user if they want to confirm it. ' +
+        'If they approve, use confirm_formula tool with the formula_id to bump it to v01.';
     }
 
     const elapsed = Date.now() - start_ts;

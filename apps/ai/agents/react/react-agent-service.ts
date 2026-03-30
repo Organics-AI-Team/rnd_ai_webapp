@@ -30,6 +30,7 @@ import { handle_generate_formula } from './tool-handlers/generate-formula-handle
 import { handle_search_reference_formulas } from './tool-handlers/search-reference-formulas-handler';
 import { handle_revise_formula } from './tool-handlers/revise-formula-handler';
 import { handle_get_formula_with_comments } from './tool-handlers/get-formula-with-comments-handler';
+import { handle_confirm_formula } from './tool-handlers/confirm-formula-handler';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -122,6 +123,7 @@ const TOOL_HANDLER_MAP: Record<
   search_reference_formulas: (args) => handle_search_reference_formulas(args as any),
   revise_formula: (args, ctx) => handle_revise_formula(args as any, ctx),
   get_formula_with_comments: (args) => handle_get_formula_with_comments(args as any),
+  confirm_formula: (args, ctx) => handle_confirm_formula(args as any, ctx),
 };
 
 // ---------------------------------------------------------------------------

@@ -244,4 +244,106 @@ export const formulasRouter = router({
 
       return { success: true };
     }),
+
+  /**
+   * Confirm a draft formula — transitions status from 'draft' to 'confirmed',
+   * bumps the version number, and creates an immutable version log entry
+   * with a full ingredient snapshot.
+   *
+   * @param id      - Formula ID to confirm
+   * @param remarks - Optional confirmation remarks
+   * @returns Object with new version number and success flag
+   */
+  confirm: protectedProcedure
+    .input(z.object({
+      id: z.string(),
+      remarks: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      console.log("[formulas] confirm — start", { id: input.id, userId: ctx.userId });
+
+      const client = await client_promise;
+      const db = client.db();
+
+      // Load current formula
+      const formula = await db.collection("formulas").findOne({
+        _id: new ObjectId(input.id),
+        organizationId: ctx.user.organizationId,
+      });
+
+      if (!formula) {
+        throw new Error("Formula not found");
+      }
+
+      if (formula.status !== "draft") {
+        throw new Error(`Cannot confirm — formula is currently "${formula.status}", must be "draft"`);
+      }
+
+      // Calculate next version: current confirmed version + 1
+      const previous_version = formula.version || 0;
+      const next_version = previous_version + 1;
+
+      // Update formula: bump version + set confirmed
+      await db.collection("formulas").updateOne(
+        { _id: new ObjectId(input.id) },
+        {
+          $set: {
+            status: "confirmed",
+            version: next_version,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      // Create immutable version log entry
+      await db.collection("formula_version_logs").insertOne({
+        formulaId: input.id,
+        version: next_version,
+        previousVersion: previous_version,
+        changeType: "confirmed",
+        updatedBySource: "user",
+        updatedByUserId: ctx.userId,
+        updatedByName: ctx.user.name || "Unknown",
+        status: "confirmed",
+        ingredientSnapshot: formula.ingredients || [],
+        changelog: null,
+        remarks: input.remarks || `Confirmed by ${ctx.user.name} — v${String(next_version).padStart(2, "0")}`,
+        createdAt: new Date(),
+      });
+
+      // Add a version_update comment (attached to the new confirmed version)
+      await db.collection("formula_comments").insertOne({
+        formulaId: input.id,
+        version: next_version,
+        userId: ctx.userId,
+        userName: ctx.user.name || "Unknown",
+        content: `Confirmed as v${String(next_version).padStart(2, "0")}${input.remarks ? ` — ${input.remarks}` : ""}`,
+        commentType: "version_update",
+        parentCommentId: null,
+        metadata: { version: next_version, changeType: "confirmed" },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // Log activity
+      await logActivity({
+        db,
+        userId: ctx.userId,
+        userName: ctx.user.name,
+        activity: "confirm formula",
+        refId: input.id,
+        organizationId: ctx.user.organizationId,
+      });
+
+      console.log("[formulas] confirm — done", {
+        formulaId: input.id,
+        newVersion: next_version,
+      });
+
+      return {
+        success: true,
+        version: next_version,
+        versionLabel: `v${String(next_version).padStart(2, "0")}`,
+      };
+    }),
 });

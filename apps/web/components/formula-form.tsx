@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+/**
+ * Shape of an ingredient row in the formula form.
+ */
 interface FormulaIngredient {
   materialId: string;
   rm_code: string;
@@ -35,8 +39,18 @@ interface FormulaIngredient {
   notes?: string;
 }
 
+/**
+ * FormulaForm — Create or edit a formula.
+ * Reads `?edit=<id>` from the URL to determine edit mode.
+ * When editing, fetches the existing formula and pre-populates the form.
+ *
+ * @returns JSX.Element
+ */
 export function FormulaForm() {
   const utils = trpc.useUtils();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const isEditMode = !!editId;
 
   const [formulaName, setFormulaName] = useState("");
   const [version, setVersion] = useState(1);
@@ -46,15 +60,48 @@ export function FormulaForm() {
   const [ingredients, setIngredients] = useState<FormulaIngredient[]>([]);
   const [totalAmount, setTotalAmount] = useState(100);
   const [remarks, setRemarks] = useState("");
-  const [status, setStatus] = useState<"draft" | "testing" | "approved" | "rejected">("draft");
+  const [status, setStatus] = useState<"draft" | "confirmed" | "testing" | "approved" | "rejected">("draft");
+  const [formLoaded, setFormLoaded] = useState(false);
 
   const [showIngredientPicker, setShowIngredientPicker] = useState(false);
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [filterByBenefit, setFilterByBenefit] = useState("");
   const [filterByUseCase, setFilterByUseCase] = useState("");
 
+  // --- Fetch existing formula when in edit mode ---
+  const { data: existingFormula, isLoading: formulaLoading } = trpc.formulas.getById.useQuery(
+    { id: editId! },
+    { enabled: isEditMode }
+  );
+
+  // Pre-populate form fields when formula data arrives
+  useEffect(() => {
+    if (existingFormula && !formLoaded) {
+      console.log("[formula-form] populating edit form", { id: editId });
+      setFormulaName(existingFormula.formulaName || "");
+      setVersion(existingFormula.version || 1);
+      setClient(existingFormula.client || "");
+      setTargetBenefits(existingFormula.targetBenefits || []);
+      setTotalAmount(existingFormula.totalAmount || 100);
+      setRemarks(existingFormula.remarks || "");
+      setStatus((existingFormula.status as any) || "draft");
+      setIngredients(
+        (existingFormula.ingredients || []).map((ing: any) => ({
+          materialId: ing.materialId || "",
+          rm_code: ing.rm_code || "",
+          productName: ing.productName || "",
+          inci_name: ing.inci_name || "",
+          amount: ing.amount || 0,
+          percentage: ing.percentage || 0,
+          notes: ing.notes || "",
+        }))
+      );
+      setFormLoaded(true);
+    }
+  }, [existingFormula, formLoaded, editId]);
+
   const { data: productsData } = trpc.products.list.useQuery({
-    limit: 1000, // Get more products for formula creation
+    limit: 1000,
     offset: 0,
   });
   const products = productsData?.products || [];
@@ -62,7 +109,6 @@ export function FormulaForm() {
   const createFormula = trpc.formulas.create.useMutation({
     onSuccess: () => {
       utils.formulas.list.invalidate();
-      // Reset form
       setFormulaName("");
       setVersion(1);
       setClient("");
@@ -75,6 +121,17 @@ export function FormulaForm() {
     },
     onError: (error) => {
       alert(error.message || "ไม่สามารถสร้างสูตรได้");
+    },
+  });
+
+  const updateFormula = trpc.formulas.update.useMutation({
+    onSuccess: () => {
+      utils.formulas.list.invalidate();
+      utils.formulas.getById.invalidate({ id: editId! });
+      alert("บันทึกสูตรเรียบร้อยแล้ว!");
+    },
+    onError: (error) => {
+      alert(error.message || "ไม่สามารถบันทึกสูตรได้");
     },
   });
 
@@ -120,31 +177,51 @@ export function FormulaForm() {
     setIngredients(updated);
   };
 
+  /**
+   * Submit handler — creates new formula or updates existing one.
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[formula-form] handleSubmit", { isEditMode, editId });
 
     if (ingredients.length === 0) {
       alert("กรุณาเพิ่มสารอย่างน้อย 1 ชนิด");
       return;
     }
 
+    const mapped_ingredients = ingredients.map((ing) => ({
+      ...ing,
+      amount: Number(ing.amount),
+      percentage: ing.percentage ? Number(ing.percentage) : undefined,
+    }));
+
     try {
-      await createFormula.mutateAsync({
-        formulaName,
-        version,
-        client,
-        targetBenefits,
-        ingredients: ingredients.map((ing) => ({
-          ...ing,
-          amount: Number(ing.amount),
-          percentage: ing.percentage ? Number(ing.percentage) : undefined,
-        })),
-        totalAmount,
-        remarks,
-        status,
-      });
+      if (isEditMode && editId) {
+        await updateFormula.mutateAsync({
+          id: editId,
+          formulaName,
+          version,
+          client,
+          targetBenefits,
+          ingredients: mapped_ingredients,
+          totalAmount,
+          remarks,
+          status,
+        });
+      } else {
+        await createFormula.mutateAsync({
+          formulaName,
+          version,
+          client,
+          targetBenefits,
+          ingredients: mapped_ingredients,
+          totalAmount,
+          remarks,
+          status,
+        });
+      }
     } catch (error) {
-      console.error("Error creating formula:", error);
+      console.error("[formula-form] submit error:", error);
     }
   };
 
@@ -553,10 +630,12 @@ export function FormulaForm() {
       <div className="flex gap-2">
         <Button
           type="submit"
-          disabled={createFormula.isPending}
-          className="bg-green-600 hover:bg-green-700"
+          disabled={createFormula.isPending || updateFormula.isPending}
+          className="bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-[12px] h-8 px-4"
         >
-          {createFormula.isPending ? "กำลังบันทึก..." : "บันทึกสูตร"}
+          {(createFormula.isPending || updateFormula.isPending)
+            ? "กำลังบันทึก..."
+            : isEditMode ? "บันทึกการแก้ไข" : "บันทึกสูตร"}
         </Button>
       </div>
     </form>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { TrendingUp, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { use_chat_threads } from '@/hooks/use_chat_threads';
@@ -34,7 +35,9 @@ import {
 
 export default function SalesRndAIPage() {
   const { user } = useAuth();
-  const chat = use_chat_threads('sales_rnd_ai');
+  const search_params = useSearchParams();
+  const thread_param = search_params.get('thread');
+  const chat = use_chat_threads('sales_rnd_ai', thread_param);
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);

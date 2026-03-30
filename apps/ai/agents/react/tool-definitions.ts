@@ -37,7 +37,8 @@ export type ReactToolName =
   | 'generate_formula'
   | 'search_reference_formulas'
   | 'revise_formula'
-  | 'get_formula_with_comments';
+  | 'get_formula_with_comments'
+  | 'confirm_formula';
 
 /**
  * Gemini-compatible function declaration shape.
@@ -493,6 +494,39 @@ function build_get_formula_with_comments_declaration(): GeminiFunctionDeclaratio
   };
 }
 
+/**
+ * Build the confirm_formula tool declaration.
+ *
+ * @returns GeminiFunctionDeclaration for confirming a draft formula,
+ *          bumping its version number, and creating an audit log entry.
+ */
+function build_confirm_formula_declaration(): GeminiFunctionDeclaration {
+  console.log('[ReActTools] Building confirm_formula declaration');
+
+  return {
+    name: 'confirm_formula',
+    description:
+      'Confirm a draft formula — transitions it from draft to confirmed status, ' +
+      'bumps the version number (v01, v02, v03...), and creates an immutable version ' +
+      'log entry. Use when the user approves a generated or revised formula and wants ' +
+      'to save it as an official version. Only works on formulas with status "draft".',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        formula_id: {
+          type: 'STRING',
+          description: 'MongoDB ObjectId of the formula to confirm.',
+        },
+        remarks: {
+          type: 'STRING',
+          description: 'Optional confirmation remarks (e.g. "approved after adding vitamin E").',
+        },
+      },
+      required: ['formula_id'],
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -525,6 +559,7 @@ export function get_react_tool_declarations(): GeminiFunctionDeclaration[] {
     build_search_reference_formulas_declaration(),
     build_revise_formula_declaration(),
     build_get_formula_with_comments_declaration(),
+    build_confirm_formula_declaration(),
   ];
 
   console.log(

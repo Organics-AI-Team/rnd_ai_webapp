@@ -39,6 +39,8 @@ import {
 interface FormulaCommentsProps {
   /** MongoDB ObjectId string of the formula */
   formula_id: string;
+  /** Formula version to scope comments to */
+  version: number;
   /** Current user's name for display */
   user_name?: string;
 }
@@ -87,19 +89,19 @@ const COMMENT_TYPE_CONFIG: Record<string, {
  * @param user_name  - Display name for the current user
  * @returns JSX element with comment list and input form
  */
-export function FormulaComments({ formula_id, user_name }: FormulaCommentsProps) {
+export function FormulaComments({ formula_id, version, user_name }: FormulaCommentsProps) {
   const [new_comment, set_new_comment] = useState("");
   const [comment_type, set_comment_type] = useState<string>("feedback");
   const [is_submitting, set_is_submitting] = useState(false);
 
   const utils = trpc.useUtils();
 
-  // --- Queries ---
+  // --- Queries (scoped to version) ---
   const { data: comments, isLoading: comments_loading } =
-    trpc.formulaComments.list.useQuery({ formulaId: formula_id });
+    trpc.formulaComments.list.useQuery({ formulaId: formula_id, version });
 
   const { data: comment_count } =
-    trpc.formulaComments.count.useQuery({ formulaId: formula_id });
+    trpc.formulaComments.count.useQuery({ formulaId: formula_id, version });
 
   // --- Mutations ---
   const create_comment = trpc.formulaComments.create.useMutation({
@@ -107,8 +109,8 @@ export function FormulaComments({ formula_id, user_name }: FormulaCommentsProps)
       console.log("[FormulaComments] create_comment — success");
       set_new_comment("");
       set_comment_type("feedback");
-      utils.formulaComments.list.invalidate({ formulaId: formula_id });
-      utils.formulaComments.count.invalidate({ formulaId: formula_id });
+      utils.formulaComments.list.invalidate({ formulaId: formula_id, version });
+      utils.formulaComments.count.invalidate({ formulaId: formula_id, version });
     },
     onError: (error) => {
       console.error("[FormulaComments] create_comment — error", error.message);
@@ -118,8 +120,8 @@ export function FormulaComments({ formula_id, user_name }: FormulaCommentsProps)
   const delete_comment = trpc.formulaComments.delete.useMutation({
     onSuccess: () => {
       console.log("[FormulaComments] delete_comment — success");
-      utils.formulaComments.list.invalidate({ formulaId: formula_id });
-      utils.formulaComments.count.invalidate({ formulaId: formula_id });
+      utils.formulaComments.list.invalidate({ formulaId: formula_id, version });
+      utils.formulaComments.count.invalidate({ formulaId: formula_id, version });
     },
   });
 
@@ -134,6 +136,7 @@ export function FormulaComments({ formula_id, user_name }: FormulaCommentsProps)
     try {
       await create_comment.mutateAsync({
         formulaId: formula_id,
+        version,
         content: new_comment.trim(),
         commentType: comment_type as any,
       });
@@ -178,7 +181,7 @@ export function FormulaComments({ formula_id, user_name }: FormulaCommentsProps)
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-gray-500" />
           <p className="text-xs font-medium text-gray-700">
-            Comments ({comment_count?.total || 0})
+            Comments for v{String(version).padStart(2, "0")} ({comment_count?.total || 0})
           </p>
         </div>
         {comment_count && comment_count.total > 0 && (

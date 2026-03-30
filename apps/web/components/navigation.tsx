@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, LogOut, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Database, Sparkles, Calculator } from "lucide-react";
+import { Package, LogOut, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Database, Sparkles, MessageSquare } from "lucide-react";
 import { cn } from "@rnd-ai/shared-utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { trpc } from "@/lib/trpc-client";
 
 /**
  * Main sidebar navigation - light mode, clean Cloudflare-style
@@ -20,16 +21,55 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
 
+  // --- Fetch recent chat threads for sidebar history ---
+  const raw_materials_threads = trpc.chatThreads.list.useQuery(
+    { agentType: 'raw_materials_ai', limit: 5 },
+    { refetchOnWindowFocus: false, enabled: !!user },
+  );
+  const sales_rnd_threads = trpc.chatThreads.list.useQuery(
+    { agentType: 'sales_rnd_ai', limit: 5 },
+    { refetchOnWindowFocus: false, enabled: !!user },
+  );
+
+  /**
+   * Map agent type to its recent threads.
+   *
+   * @param href - The AI page href to match
+   * @returns Thread array or empty array
+   */
+  const get_threads_for_href = (href: string) => {
+    if (href === '/ai/raw-materials-ai') return raw_materials_threads.data || [];
+    if (href === '/ai/sales-rnd-ai') return sales_rnd_threads.data || [];
+    return [];
+  };
+
+  /**
+   * Format relative time — ultra-short for sidebar display.
+   *
+   * @param date - Date to format
+   * @returns Short time string (e.g. "now", "5m", "2h", "3d", "Mar 30")
+   */
+  const format_thread_time = (date: Date): string => {
+    const ms = Date.now() - new Date(date).getTime();
+    const min = Math.floor(ms / 60000);
+    const hr = Math.floor(ms / 3600000);
+    const day = Math.floor(ms / 86400000);
+    if (min < 1) return 'now';
+    if (min < 60) return `${min}m`;
+    if (hr < 24) return `${hr}h`;
+    if (day < 7) return `${day}d`;
+    return new Date(date).toLocaleDateString('en', { month: 'short', day: 'numeric' });
+  };
+
   const navigationItems = [
     { type: "section-title", label: "MANAGE", adminOnly: true },
     { type: "link", href: "/products", label: "Add Ingredient", icon: Plus, adminOnly: true },
-    { type: "link", href: "/stock", label: "Add Stock", icon: Package, adminOnly: true },
+    // { type: "link", href: "/stock", label: "Add Stock", icon: Package, adminOnly: true },
     { type: "link", href: "/formulas/create", label: "Add Formula", icon: Plus, adminOnly: true },
     { type: "separator" },
     { type: "section-title", label: "CONSOLE" },
     { type: "link", href: "/ingredients", label: "Ingredients", icon: BoxIcon },
     { type: "link", href: "/formulas", label: "Formulas", icon: Beaker },
-    { type: "link", href: "/calculation", label: "Price Calculator", icon: Calculator },
     { type: "separator" },
     { type: "section-title", label: "AI ASSISTANT" },
     { type: "link", href: "/ai/raw-materials-ai", label: "Stock Materials AI", icon: Database },
@@ -127,24 +167,61 @@ export function Navigation({ children }: { children: React.ReactNode }) {
 
               if (item.type === "link") {
                 const Icon = item.icon;
-                const isActive = pathname === item.href;
+                const isActive = pathname === item.href || pathname?.startsWith(item.href + '?');
+                const is_ai_link = item.href?.startsWith('/ai/');
+                const threads = is_ai_link ? get_threads_for_href(item.href) : [];
+                const is_thread_section_open = openDropdowns.includes(`threads-${item.href}`);
+
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={closeMobileMenu}
-                    title={isSidebarCollapsed ? item.label : undefined}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md text-xs font-medium transition-colors",
-                      isSidebarCollapsed ? "px-2 py-2 justify-center" : "px-2 py-1.5",
-                      isActive
-                        ? "bg-gray-100 text-gray-900"
-                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                  <div key={item.href}>
+                    <div className="flex items-center">
+                      <Link
+                        href={item.href}
+                        onClick={closeMobileMenu}
+                        title={isSidebarCollapsed ? item.label : undefined}
+                        className={cn(
+                          "flex-1 flex items-center gap-2 rounded-md text-xs font-medium transition-colors",
+                          isSidebarCollapsed ? "px-2 py-2 justify-center" : "px-2 py-1.5",
+                          isActive
+                            ? "bg-gray-100 text-gray-900"
+                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                        )}
+                      >
+                        <Icon size={15} className="flex-shrink-0" />
+                        {!isSidebarCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
+                      </Link>
+                      {/* Toggle thread history for AI links */}
+                      {is_ai_link && !isSidebarCollapsed && threads.length > 0 && (
+                        <button
+                          onClick={() => toggleDropdown(`threads-${item.href}`)}
+                          className="p-1 rounded hover:bg-gray-100 text-gray-300 hover:text-gray-500 transition-colors"
+                          aria-label="Toggle chat history"
+                        >
+                          <ChevronDown size={11} className={cn("transition-transform", is_thread_section_open && "rotate-180")} />
+                        </button>
+                      )}
+                    </div>
+                    {/* Thread history sub-items */}
+                    {is_ai_link && !isSidebarCollapsed && is_thread_section_open && threads.length > 0 && (
+                      <div className="mt-0.5 ml-3 space-y-px">
+                        {threads.map((thread: any) => (
+                          <Link
+                            key={thread.id}
+                            href={`${item.href}?thread=${thread.id}`}
+                            onClick={closeMobileMenu}
+                            title={thread.title}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors group"
+                          >
+                            <MessageSquare size={11} className="flex-shrink-0 opacity-40 group-hover:opacity-70" />
+                            <span className="flex-1 min-w-0 truncate">{thread.title}</span>
+                            <span className="text-[9px] text-gray-300 flex-shrink-0 tabular-nums">
+                              {format_thread_time(thread.lastMessageAt)}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
                     )}
-                  >
-                    <Icon size={15} className="flex-shrink-0" />
-                    {!isSidebarCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
-                  </Link>
+                  </div>
                 );
               }
 

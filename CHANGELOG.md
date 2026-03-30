@@ -1,5 +1,137 @@
 # Changelog
 
+## [2026-03-30] feat: Show chat history threads in main navigation sidebar
+
+### Summary
+Recent AI chat threads now appear in the main navigation sidebar under each AI assistant link. Users can expand/collapse the thread list and click a thread to deep-link directly into that conversation. Supports URL-based thread selection via `?thread=<id>` query param.
+
+### Approach
+- Navigation sidebar fetches the 5 most recent threads per agent type via tRPC (React Query cached, no extra overhead)
+- Each AI link gets a chevron toggle to expand/collapse thread history
+- Thread items show truncated title + relative timestamp, linking to `?thread=<id>`
+- `use_chat_threads` hook accepts optional `initial_thread_id` to auto-select a thread from URL params on mount
+- Both AI pages read `useSearchParams().get('thread')` and pass it to the hook
+
+### Changes
+- `apps/web/components/navigation.tsx` — Added tRPC thread queries (limit 5 per agent type), `format_thread_time` helper, `get_threads_for_href` mapper, expandable thread sub-items under AI links with `MessageSquare` icons
+- `apps/web/hooks/use_chat_threads.ts` — Added optional `initial_thread_id` parameter with `initial_thread_applied_ref` guard to auto-select on mount without overriding manual selections
+- `apps/web/app/ai/raw-materials-ai/page.tsx` — Added `useSearchParams` to read `?thread=` param and pass to `use_chat_threads`
+- `apps/web/app/ai/sales-rnd-ai/page.tsx` — Same `useSearchParams` wiring as raw-materials page
+
+### Files Changed
+- `apps/web/components/navigation.tsx`
+- `apps/web/hooks/use_chat_threads.ts`
+- `apps/web/app/ai/raw-materials-ai/page.tsx`
+- `apps/web/app/ai/sales-rnd-ai/page.tsx`
+
+---
+
+## [2026-03-30] feat: Slide-over panel, inline edit mode, AI Suggest
+
+### Summary
+- **Slide-over panel**: Replaced dialog-based formula detail view with a 70vw fixed right-side panel. Supports both **view** and **edit** modes with a header toggle. Row click opens view; Edit button opens edit mode.
+- **Inline edit mode**: All formula fields (name, client, batch size, status, benefits, ingredients, remarks) are editable within the panel. Ingredient amounts auto-recalculate percentages.
+- **AI Suggest button**: A toolbar button opens a modal where users describe what they want. AI (ReAct agent → generate_formula tool) creates a complete draft and the panel auto-opens it for review.
+- **Hidden /stock page**: Removed from sidebar navigation.
+
+### Changes
+- `apps/web/app/formulas/page.tsx` — Full rewrite: slide-over panel (70vw), view/edit modes, AI Suggest modal with auto-open, simplified table (Code/Name/Ver/Status/Actions), confirm button for drafts
+- `apps/web/components/navigation.tsx` — Commented out `/stock` navigation link
+- `apps/web/app/formulas/create/page.tsx` — Added `useSearchParams` to detect edit mode, dynamic title
+
+### Approach
+- Panel uses `fixed inset-y-0 right-0 w-[70vw]` with z-50 and backdrop overlay
+- AI Suggest calls `/api/ai/raw-materials-agent` which triggers ReAct agent; after response, `utils.formulas.list.fetch()` refetches and auto-opens the newest AI draft
+- Edit mode populates form state from the selected formula; save calls `trpc.formulas.update` mutation
+
+---
+
+## [2026-03-30] feat: Per-version comments + hide calculation page
+
+### Summary
+- **Comments are now per-version**: Each comment is scoped to the formula version it was written on. When you view comments for v01, you only see v01's feedback — v02 gets a fresh thread. The `revise_formula` AI tool now only reads comments for the current version, keeping revision context precise.
+- **Hidden calculation page**: Removed `/calculation` (Price Calculator) from sidebar navigation.
+
+### Changes
+- `prisma/schema.prisma` — Added `version Int @default(0)` field to `FormulaComment` model + compound index `[formulaId, version]`
+- `apps/ai/server/routers/formula-comments.ts` — `list` and `count` queries now accept optional `version` filter; `create` mutation auto-resolves formula version if not provided; added `version_update` to COMMENT_TYPES
+- `apps/web/components/formula-comments.tsx` — Added `version` prop; all queries/mutations scoped to version; header shows "Comments for v00"
+- `apps/web/app/formulas/page.tsx` — Passes `version` prop to `FormulaComments`
+- `apps/ai/agents/react/tool-handlers/revise-formula-handler.ts` — Loads only current-version comments; writes `version` on revision_note comments
+- `apps/ai/agents/react/tool-handlers/confirm-formula-handler.ts` — Writes `version` on version_update comments
+- `apps/ai/server/routers/formulas.ts` — Confirm mutation writes `version` on version_update comments
+- `apps/web/components/navigation.tsx` — Removed `/calculation` link and `Calculator` import
+
+---
+
+## [2026-03-30] feat: Formula draft/confirm workflow with version history log
+
+### Summary
+Added a full draft→confirm versioning workflow for AI-generated formulas. When the AI generates or revises a formula in chat, it is saved as a **draft** (v00). Users must explicitly **confirm** to bump the version (v01, v02, v03...). Every change is tracked in an immutable `FormulaVersionLog` collection that records whether each update was made by AI or a user. Users can confirm via chat ("looks good" → AI calls confirm_formula tool) or directly from the formula page UI.
+
+### Approach
+- Version numbers only increment on `draft → confirmed` transitions (not on every edit)
+- Each version log entry snapshots the full ingredients array for auditability
+- Revisions now update the existing formula in-place (keeping same ID/code) instead of creating new documents
+- The AI system prompt instructs Dr. Arun to always ask for confirmation before finalizing
+
+### Schema Changes
+- `prisma/schema.prisma` — Added `FormulaVersionLog` model with: formulaId, version, changeType, updatedBySource (ai/user), ingredientSnapshot, changelog, remarks
+- `prisma/schema.prisma` — Added `confirmed` to `FormulaStatus` enum
+- `prisma/schema.prisma` — Added `FormulaChangeType` enum (created, revised, edited, confirmed, status_changed)
+- `prisma/schema.prisma` — Added `FormulaUpdateSource` enum (ai, user)
+- `prisma/schema.prisma` — Added `version_update` to `CommentType` enum
+
+### Backend Changes — New Files
+- `apps/ai/agents/react/tool-handlers/confirm-formula-handler.ts` — NEW: `confirm_formula` tool handler — validates draft status, bumps version, creates version log entry, adds version_update comment
+- `apps/ai/server/routers/formula-version-logs.ts` — NEW: tRPC router for listing version logs per formula
+
+### Backend Changes — Modified Files
+- `apps/ai/agents/react/tool-definitions.ts` — Added `confirm_formula` to `ReactToolName` union + built Gemini function declaration
+- `apps/ai/agents/react/react-agent-service.ts` — Registered `confirm_formula` handler in `TOOL_HANDLER_MAP`
+- `apps/ai/agents/react/react-system-prompt.ts` — Added confirmation workflow instructions + FORMULA_CONFIRM classification category
+- `apps/ai/agents/react/tool-handlers/generate-formula-handler.ts` — Changed to save with `version: 0` (pre-confirm), creates initial version log, outputs `pending_confirmation: true` flag
+- `apps/ai/agents/react/tool-handlers/revise-formula-handler.ts` — Changed to update formula in-place (not create new doc), resets status to draft, creates "revised" version log entry
+- `apps/ai/server/routers/formulas.ts` — Added `confirm` mutation: validates draft status, bumps version, creates version log + version_update comment
+- `apps/ai/server/index.ts` — Registered `formulaVersionLogsRouter`
+
+### Frontend Changes
+- `apps/web/components/formula-version-history.tsx` — NEW: Timeline component showing version audit trail with AI/User badges, change types, timestamps
+- `apps/web/app/formulas/page.tsx` — Added confirm button (CheckCircle) for draft formulas in table + detail dialog, version history section in detail dialog, `confirmed` status badge (blue), version display as v00 format
+
+### Files Changed
+- `prisma/schema.prisma`
+- `apps/ai/agents/react/types.ts` (unchanged, referenced)
+- `apps/ai/agents/react/tool-definitions.ts`
+- `apps/ai/agents/react/react-agent-service.ts`
+- `apps/ai/agents/react/react-system-prompt.ts`
+- `apps/ai/agents/react/tool-handlers/generate-formula-handler.ts`
+- `apps/ai/agents/react/tool-handlers/revise-formula-handler.ts`
+- `apps/ai/agents/react/tool-handlers/confirm-formula-handler.ts` (NEW)
+- `apps/ai/server/routers/formulas.ts`
+- `apps/ai/server/routers/formula-version-logs.ts` (NEW)
+- `apps/ai/server/index.ts`
+- `apps/web/components/formula-version-history.tsx` (NEW)
+- `apps/web/app/formulas/page.tsx`
+
+---
+
+## [2026-03-30] config: Set production domain to rndai.erporganics.com
+
+### Summary
+Updated all production environment variables and Docker Compose build args to use `rndai.erporganics.com` as the frontend domain.
+
+### Changes
+- `.env.production` — `NEXT_PUBLIC_API_URL` → `https://rndai.erporganics.com/api`
+- `docker-compose.yml` — Default `NEXT_PUBLIC_API_URL` fallback → `https://rndai.erporganics.com/api`
+- `docker-compose.yml` — Added `build.args` for `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_GEMINI_API_KEY`, `NEXT_PUBLIC_OPENAI_API_KEY` so Next.js inlines them at build time
+
+### Files Changed
+- `.env.production`
+- `docker-compose.yml`
+
+---
+
 ## [2026-03-30] feat: Per-message feedback + auto-save AI-generated formulas to DB
 
 ### Summary
