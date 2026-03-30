@@ -92,21 +92,23 @@ export async function POST(request: NextRequest) {
         console.log(`[enhanced-chat] POST: ReAct success, iterations=${reactResult.iterations}`);
         return NextResponse.json({
           success: true,
-          response: reactResult.response,
-          model: reactResult.model,
-          id: `react-${Date.now()}`,
-          type: 'react-agent',
-          features: {
-            searchEnabled: reactResult.tool_calls.some((t: any) => t.name === 'qdrant_search'),
-            mlEnabled: false,
-            searchResultsCount: reactResult.tool_calls.filter((t: any) => t.name === 'qdrant_search').length,
-            optimizationsApplied: reactResult.tool_calls.map((t: any) => t.name),
+          data: {
+            response: reactResult.response,
+            confidence: 0.9,
+            sources: [],
+            metadata: {
+              model: reactResult.model,
+              iterations: reactResult.iterations,
+              processingTime: reactResult.processing_time,
+              agent: 'react',
+              toolCalls: reactResult.tool_calls.map((t: any) => t.name),
+            },
           },
-          toolCalls: reactResult.tool_calls,
-          metadata: {
-            iterations: reactResult.iterations,
-            processingTime: reactResult.processing_time,
-            agent: 'react',
+          performance: {
+            responseTime: reactResult.processing_time,
+            cacheHit: false,
+            searchPerformed: reactResult.tool_calls.some((t: any) => t.name === 'qdrant_search'),
+            searchResultCount: reactResult.tool_calls.filter((t: any) => t.name === 'qdrant_search').length,
           },
         });
       }
