@@ -17,6 +17,21 @@ const MONGODB_URI = process.env.MONGODB_URI;
 let toolService: GeminiToolService | null = null;
 let searchService: EnhancedHybridSearchService | null = null;
 let mlService: PreferenceLearningService | null = null;
+let reactAgentSingleton: ReactAgentService | null = null;
+
+/**
+ * Get or create the singleton ReactAgentService.
+ * Avoids re-initializing the Gemini client on every request.
+ *
+ * @returns ReactAgentService singleton instance
+ */
+function get_react_agent(): ReactAgentService {
+  if (!reactAgentSingleton) {
+    console.log('[RawMaterialsAgentAPI] Creating ReactAgentService singleton');
+    reactAgentSingleton = new ReactAgentService();
+  }
+  return reactAgentSingleton;
+}
 
 function initialize_services() {
   if (toolService) return { toolService, searchService, mlService };
@@ -297,7 +312,7 @@ export async function POST(request: NextRequest) {
     // Try ReAct agent first (new intelligent routing)
     try {
       console.log('[raw-materials-agent] POST: attempting ReAct agent path');
-      const reactAgent = new ReactAgentService();
+      const reactAgent = get_react_agent();
       const reactResult = await reactAgent.execute({
         prompt: body.prompt,
         user_id: body.userId,

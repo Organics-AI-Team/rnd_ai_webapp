@@ -1,13 +1,12 @@
 'use client';
 
 import React from 'react';
-import { Card, CardContent } from '@/components/ui/card';
 
 /**
- * AI Chat Messages Container - Card wrapper for chat messages area
+ * AI Chat Messages Container — Clean wrapper, no card nesting.
  *
- * @param header - Header component (AIChatHeader)
- * @param messagesArea - Messages area component (AIChatMessagesArea)
+ * @param header       - Header toolbar
+ * @param messagesArea - Scrollable messages area
  */
 
 interface AIChatMessagesContainerProps {
@@ -17,33 +16,31 @@ interface AIChatMessagesContainerProps {
 
 export function AIChatMessagesContainer({
   header,
-  messagesArea
+  messagesArea,
 }: AIChatMessagesContainerProps) {
   return (
-    <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {header}
-      <CardContent className="flex-1 flex flex-col p-0 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {messagesArea}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
 /**
- * AI Chat Input Container - Sticky bottom input wrapper
+ * AI Chat Input Container — Bottom input section with subtle top border.
  *
- * @param inputArea - Input area component (AIChatInputArea)
+ * @param inputArea - Input area component
  */
 
 interface AIChatInputContainerProps {
   inputArea: React.ReactNode;
 }
 
-export function AIChatInputContainer({
-  inputArea
-}: AIChatInputContainerProps) {
+export function AIChatInputContainer({ inputArea }: AIChatInputContainerProps) {
   return (
-    <div className="sticky bottom-0 bg-white/95 backdrop-blur-sm z-10 border-t border-gray-200">
+    <div className="bg-white">
       {inputArea}
     </div>
   );

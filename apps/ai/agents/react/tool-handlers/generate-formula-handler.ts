@@ -583,13 +583,19 @@ export async function handle_generate_formula(params: GenerateFormulaParams): Pr
     // --- Step 1: Build phase-targeted search queries ---
     const queries = build_phase_queries(params.product_type, params.target_benefits);
 
-    // --- Step 2: Search Qdrant for each query ---
+    // --- Step 2: Search Qdrant for each query (PARALLELIZED) ---
     const all_results: Array<{ payload: Record<string, any>; score: number; source_query: string }> = [];
 
-    for (const q of queries) {
-      const results = await search_ingredients(q.query, SEARCH_TOP_K, SCORE_THRESHOLD);
-      for (const r of results) {
-        all_results.push({ ...r, source_query: q.query.split(' ingredient')[0] || q.query });
+    const search_promises = queries.map((q) =>
+      search_ingredients(q.query, SEARCH_TOP_K, SCORE_THRESHOLD)
+        .then((results) => ({ results, query: q.query }))
+    );
+    const search_batches = await Promise.all(search_promises);
+
+    for (const batch of search_batches) {
+      const source_label = batch.query.split(' ingredient')[0] || batch.query;
+      for (const r of batch.results) {
+        all_results.push({ ...r, source_query: source_label });
       }
     }
 

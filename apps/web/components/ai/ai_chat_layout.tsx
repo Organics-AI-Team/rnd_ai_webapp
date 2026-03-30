@@ -1,28 +1,20 @@
-/**
- * AI Chat Layout
- *
- * Wraps the sidebar (history panel) + chat area with toggle logic.
- * Provides a responsive layout where the sidebar can be shown/hidden.
- *
- * Default behavior:
- *   - Desktop: sidebar open
- *   - Mobile: sidebar collapsed
- *
- * @param sidebar     - The AIChatSidebar component
- * @param children    - The chat area content
- * @param is_sidebar_open - Whether the sidebar is currently visible
- * @param on_toggle_sidebar - Callback to toggle sidebar visibility
- */
-
 'use client';
 
 import React from 'react';
-import { PanelLeftClose, PanelLeft } from 'lucide-react';
+import { PanelLeftClose, PanelLeft, X } from 'lucide-react';
 import { cn } from '@rnd-ai/shared-utils';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+/**
+ * AI Chat Layout — Responsive container with sidebar.
+ *
+ * Desktop (>=1024px): sidebar pushes chat area.
+ * Mobile (<1024px): sidebar overlays as a sheet with backdrop.
+ *
+ * @param sidebar           - AIChatSidebar component
+ * @param children          - Chat area content
+ * @param is_sidebar_open   - Sidebar visibility state
+ * @param on_toggle_sidebar - Toggle callback
+ */
 
 interface AIChatLayoutProps {
   sidebar: React.ReactNode;
@@ -31,37 +23,47 @@ interface AIChatLayoutProps {
   on_toggle_sidebar: () => void;
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-/**
- * Layout component that manages sidebar + chat area arrangement.
- *
- * @param sidebar           - Sidebar React node (AIChatSidebar)
- * @param children          - Chat area content
- * @param is_sidebar_open   - Sidebar visibility state
- * @param on_toggle_sidebar - Toggle callback
- */
 export function AIChatLayout({
   sidebar,
   children,
   is_sidebar_open,
   on_toggle_sidebar,
 }: AIChatLayoutProps) {
-  console.log('[AIChatLayout] render', { is_sidebar_open });
-
   return (
-    <div className="flex h-full overflow-hidden rounded-lg border border-gray-200 bg-white">
-      {/* Sidebar */}
+    <div className="relative flex h-full overflow-hidden rounded-xl border border-gray-200/60 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+      {/* Desktop sidebar — pushes content */}
       <div
         className={cn(
-          'transition-all duration-200 overflow-hidden flex-shrink-0',
-          is_sidebar_open ? 'w-60' : 'w-0',
+          'hidden lg:block transition-[width] duration-200 ease-out overflow-hidden flex-shrink-0',
+          is_sidebar_open ? 'w-60 border-r border-gray-100/80' : 'w-0',
         )}
       >
         {is_sidebar_open && sidebar}
       </div>
+
+      {/* Mobile sidebar — overlay sheet */}
+      {is_sidebar_open && (
+        <>
+          <div
+            className="lg:hidden fixed inset-0 bg-black/20 z-40"
+            onClick={on_toggle_sidebar}
+          />
+          <div className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-64 bg-white shadow-xl rounded-r-xl overflow-hidden">
+            <div className="h-11 flex items-center justify-end px-3 border-b border-gray-100/80">
+              <button
+                onClick={on_toggle_sidebar}
+                className="p-1 rounded-md hover:bg-gray-100 text-gray-400"
+                aria-label="Close sidebar"
+              >
+                <X size={16} strokeWidth={1.5} />
+              </button>
+            </div>
+            <div className="h-[calc(100%-2.75rem)] overflow-hidden">
+              {sidebar}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Chat Area */}
       <div className="flex-1 min-w-0 flex flex-col">
@@ -72,7 +74,7 @@ export function AIChatLayout({
 }
 
 // ---------------------------------------------------------------------------
-// Toggle Button (used inside chat header)
+// Toggle Button
 // ---------------------------------------------------------------------------
 
 interface SidebarToggleButtonProps {
@@ -81,21 +83,25 @@ interface SidebarToggleButtonProps {
 }
 
 /**
- * Small toggle button for showing/hiding the sidebar.
- * Placed inside the chat header area.
+ * Minimal sidebar toggle button.
  *
- * @param is_open   - Current sidebar state
+ * @param is_open   - Sidebar state
  * @param on_toggle - Toggle callback
  */
 export function SidebarToggleButton({ is_open, on_toggle }: SidebarToggleButtonProps) {
   return (
     <button
       onClick={on_toggle}
-      className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+      className="p-1 rounded-md hover:bg-gray-100/80 text-gray-300 hover:text-gray-500 transition-colors"
       title={is_open ? 'Hide history' : 'Show history'}
       aria-label={is_open ? 'Hide history' : 'Show history'}
     >
-      {is_open ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
+      {is_open ? (
+        <PanelLeftClose size={15} strokeWidth={1.5} className="hidden lg:block" />
+      ) : (
+        <PanelLeft size={15} strokeWidth={1.5} />
+      )}
+      {is_open && <PanelLeftClose size={15} strokeWidth={1.5} className="lg:hidden" />}
     </button>
   );
 }

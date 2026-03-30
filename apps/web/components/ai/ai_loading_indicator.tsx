@@ -29,7 +29,7 @@ export function AILoadingIndicator({
   const colors = themeColorMap[themeColor];
 
   return (
-    <div className="flex items-start gap-3 py-3">
+    <div className="flex items-start gap-3 py-3" aria-label={message} aria-live="polite" role="status">
       <div className={`w-6 h-6 rounded-md ${colors.bg} flex items-center justify-center flex-shrink-0`}>
         <Bot className={`w-3.5 h-3.5 ${colors.icon}`} />
       </div>

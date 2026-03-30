@@ -6,13 +6,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowUp } from 'lucide-react';
 
 /**
- * AI Chat Input - Clean input with send button
+ * AI Chat Input — ChatGPT-style centered pill input.
  *
- * @param value - Current input value
- * @param onChange - Input change callback
- * @param onSend - Send message callback
+ * @param value       - Current input value
+ * @param onChange    - Input change callback
+ * @param onSend     - Send message callback
  * @param placeholder - Placeholder text
- * @param disabled - Whether input is disabled during loading
+ * @param disabled   - Whether input is disabled during loading
  */
 
 interface AIChatInputProps {
@@ -27,11 +27,11 @@ export function AIChatInput({
   value,
   onChange,
   onSend,
-  placeholder = 'Type your message...',
+  placeholder = 'Message...',
   disabled = false
 }: AIChatInputProps) {
   /**
-   * Handles keyboard events - Enter sends, Shift+Enter newline
+   * Handles keyboard events — Enter sends, Shift+Enter newline.
    *
    * @param e - Keyboard event
    */
@@ -45,24 +45,26 @@ export function AIChatInput({
   };
 
   return (
-    <div className="px-4 py-3">
-      <div className="relative flex items-end gap-2 max-w-3xl mx-auto">
+    <div className="px-3 sm:px-4 py-3">
+      <div className="relative max-w-2xl mx-auto">
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="flex-1 min-h-[40px] max-h-[120px] resize-none rounded-lg border-gray-200 bg-white text-sm text-gray-900 py-2.5 px-3 pr-10"
+          className="min-h-[44px] max-h-[140px] resize-none rounded-xl border-gray-200/80 bg-gray-50/50 text-sm text-gray-900 py-3 px-4 pr-12 focus:bg-white focus:border-gray-300 transition-colors shadow-sm"
           onKeyDown={handle_key_down}
           disabled={disabled}
           rows={1}
+          aria-label="Chat message input"
         />
         <Button
           onClick={onSend}
           disabled={!value.trim() || disabled}
           size="icon"
-          className="absolute right-1.5 bottom-1.5 h-7 w-7 rounded-md"
+          className="absolute right-2 bottom-2 h-8 w-8 rounded-lg bg-gray-900 hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-colors shadow-sm"
+          aria-label="Send message"
         >
-          <ArrowUp className="w-3.5 h-3.5" />
+          <ArrowUp className="w-4 h-4" />
         </Button>
       </div>
     </div>

@@ -16,6 +16,20 @@ import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
 let geminiService: GeminiService | null = null;
 let searchService: EnhancedHybridSearchService | null = null;
 let learningService: PreferenceLearningService | null = null;
+let reactAgentSingleton: ReactAgentService | null = null;
+
+/**
+ * Get or create the singleton ReactAgentService.
+ *
+ * @returns ReactAgentService singleton instance
+ */
+function get_react_agent(): ReactAgentService {
+  if (!reactAgentSingleton) {
+    console.log('[EnhancedChatAPI] Creating ReactAgentService singleton');
+    reactAgentSingleton = new ReactAgentService();
+  }
+  return reactAgentSingleton;
+}
 
 // Initialize services on startup
 let servicesInitialized = false;
@@ -77,7 +91,7 @@ export async function POST(request: NextRequest) {
     // Try ReAct agent first (new intelligent routing)
     try {
       console.log('[enhanced-chat] POST: attempting ReAct agent path');
-      const reactAgent = new ReactAgentService();
+      const reactAgent = get_react_agent();
       const reactResult = await reactAgent.execute({
         prompt: body.prompt,
         user_id: body.userId,

@@ -1,5 +1,39 @@
 # Changelog
 
+## [2026-03-30] UI: Redesign chat layout — kill double header, flatten nesting
+
+### Summary
+Complete redesign of AI chat page layout. Removed redundant page header, eliminated Card nesting, merged sidebar toggle into toolbar, and refined all component typography/spacing.
+
+### Problem
+- **Double header**: `AIPageHeader` (page title) + `AIChatHeader` (card header) stacked = wasted space
+- **7 layers of nesting**: Page → container → PageHeader → Layout → Card → CardHeader → CardContent → ScrollArea
+- **Two borders**: Layout border + Card border = visual noise
+- **Sidebar toggle awkwardly nested** in a div alongside CardHeader, causing alignment issues
+- **Overly verbose text**: "Hello! I'm your Raw Materials AI assistant. Ask me about:" etc.
+
+### Changes
+- **Removed `AIPageHeader`** from both AI pages — the toolbar title provides enough context
+- **Flattened `AIChatMessagesContainer`** — removed Card/CardHeader/CardContent wrapper. Now a plain flex div.
+- **Redesigned `AIChatHeader`** — Flat toolbar with `leading` prop for sidebar toggle. No more CardHeader. Uses `bg-gray-50/40` for subtle toolbar feel.
+- **Redesigned `AIChatLayout`** — Single border container with `shadow-sm`. Sidebar uses `border-r border-gray-100`.
+- **Redesigned `AIChatSidebar`** — Dashed-border "New chat" button, lighter background (`bg-gray-50/60`), smaller type, subtle active state with shadow.
+- **Redesigned `AIEmptyState`** — Suggestion chips instead of bullet list. Centered with max-width.
+- **Redesigned `AIChatMessage`** — "AI" instead of "AI Assistant", smaller timestamps, muted badge colors with transparency, cleaner metadata line.
+- **Reduced page padding** — `p-2 lg:p-3` instead of `container mx-auto px-6 pt-2` for edge-to-edge feel.
+
+### Files Changed
+- `apps/web/components/ai/ai_chat_header.tsx` — Flat toolbar with `leading` prop
+- `apps/web/components/ai/ai_chat_container.tsx` — Removed Card wrapper
+- `apps/web/components/ai/ai_chat_layout.tsx` — Cleaner border, shadow-sm
+- `apps/web/components/ai/ai_chat_sidebar.tsx` — Lighter, dashed new-chat button
+- `apps/web/components/ai/ai_empty_state.tsx` — Chip-style suggestions
+- `apps/web/components/ai/ai_chat_message.tsx` — Shorter labels, muted colors
+- `apps/web/app/ai/raw-materials-ai/page.tsx` — Removed AIPageHeader, flattened
+- `apps/web/app/ai/sales-rnd-ai/page.tsx` — Same treatment
+
+---
+
 ## [2026-03-30] Fix: AI response creates new thread instead of staying in same conversation
 
 ### Root Cause

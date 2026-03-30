@@ -1,47 +1,39 @@
 'use client';
 
 import React from 'react';
-import { CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 
 /**
- * AI Chat Header - Compact header with icon, title, and optional badge
+ * AI Chat Header — Ultra-minimal toolbar. Cloudflare/ChatGPT-inspired.
+ * Just the sidebar toggle, a model/thread name, and optional subtle label.
  *
- * @param icon - Icon element
- * @param title - Chat title
- * @param iconColor - Tailwind color class for icon
- * @param badgeText - Optional badge text
- * @param badgeColor - Badge color classes
+ * @param title    - Thread title or agent name
+ * @param subtitle - Optional subtle secondary text (e.g. "RAG", "Market")
+ * @param leading  - Optional leading element (sidebar toggle)
  */
 
 interface AIChatHeaderProps {
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   title: string;
   iconColor?: string;
   badgeText?: string;
   badgeColor?: string;
+  leading?: React.ReactNode;
 }
 
 export function AIChatHeader({
-  icon,
   title,
-  iconColor = 'text-blue-600',
   badgeText,
-  badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  leading,
 }: AIChatHeaderProps) {
   return (
-    <CardHeader className="px-4 py-2.5 border-b border-gray-200">
-      <CardTitle className="flex items-center gap-2 text-sm">
-        <div className={`w-4 h-4 ${iconColor}`}>
-          {icon}
-        </div>
-        <span className="font-medium text-gray-900">{title}</span>
-        {badgeText && (
-          <Badge variant="outline" className={`text-2xs ${badgeColor}`}>
-            {badgeText}
-          </Badge>
-        )}
-      </CardTitle>
-    </CardHeader>
+    <div className="flex items-center gap-2 h-11 px-3 border-b border-gray-100/80">
+      {leading}
+      <span className="text-[13px] font-medium text-gray-800 truncate">{title}</span>
+      {badgeText && (
+        <span className="text-[10px] text-gray-400 font-normal">
+          {badgeText}
+        </span>
+      )}
+    </div>
   );
 }
