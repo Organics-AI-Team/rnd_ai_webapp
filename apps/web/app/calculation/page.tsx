@@ -15,21 +15,13 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc-client";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { ConsolePageShell } from "@/components/console_page_shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Calculator,
   Plus,
   Trash2,
@@ -60,7 +52,7 @@ interface SelectedMaterial {
 }
 
 export default function CalculationPage() {
-  console.log("📊 [CalculationPage] Component rendering");
+  console.log("[CalculationPage] Component rendering");
 
   const { user, isLoading } = useAuth();
   const router = useRouter();
@@ -100,11 +92,11 @@ export default function CalculationPage() {
   // Calculate price mutation
   const calculateMutation = trpc.calculations.calculateManual.useMutation({
     onSuccess: (data) => {
-      console.log("✅ [CalculationPage] Calculation completed", data);
+      console.log("[CalculationPage] Calculation completed", data);
       setCalculationResult(data);
     },
     onError: (error) => {
-      console.error("❌ [CalculationPage] Calculation error:", error);
+      console.error("[CalculationPage] Calculation error:", error);
       alert(error.message || "เกิดข้อผิดพลาดในการคำนวณ");
     },
   });
@@ -112,12 +104,12 @@ export default function CalculationPage() {
   // Save calculation mutation
   const saveCalculation = trpc.calculations.saveCalculation.useMutation({
     onSuccess: () => {
-      console.log("✅ [CalculationPage] Calculation saved");
+      console.log("[CalculationPage] Calculation saved");
       utils.calculations.listCalculations.invalidate();
       alert("บันทึกการคำนวณเรียบร้อยแล้ว!");
     },
     onError: (error) => {
-      console.error("❌ [CalculationPage] Save error:", error);
+      console.error("[CalculationPage] Save error:", error);
       alert(error.message || "ไม่สามารถบันทึกการคำนวณได้");
     },
   });
@@ -125,45 +117,44 @@ export default function CalculationPage() {
   // Delete calculation mutation
   const deleteCalculation = trpc.calculations.deleteCalculation.useMutation({
     onSuccess: () => {
-      console.log("✅ [CalculationPage] Calculation deleted");
+      console.log("[CalculationPage] Calculation deleted");
       utils.calculations.listCalculations.invalidate();
       alert("ลบการคำนวณเรียบร้อยแล้ว!");
     },
     onError: (error) => {
-      console.error("❌ [CalculationPage] Delete error:", error);
+      console.error("[CalculationPage] Delete error:", error);
       alert(error.message || "ไม่สามารถลบการคำนวณได้");
     },
   });
 
   if (isLoading) {
-    console.log("⏳ [CalculationPage] Loading...");
+    console.log("[CalculationPage] Loading...");
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">กำลังโหลด...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto"></div>
+          <p className="mt-3 text-[12px] text-gray-400">กำลังโหลด...</p>
         </div>
       </div>
     );
   }
 
   if (!user) {
-    console.log("⚠️ [CalculationPage] User not authenticated");
+    console.log("[CalculationPage] User not authenticated");
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <Card className="max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-red-600 font-semibold mb-4">กรุณาเข้าสู่ระบบ</p>
-              <p className="text-gray-600 mb-4">
-                คุณต้องเข้าสู่ระบบก่อนเข้าใช้งานหน้านี้
-              </p>
-              <Button onClick={() => router.push("/login")}>
-                ไปหน้าเข้าสู่ระบบ
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="border border-gray-200/60 rounded-xl p-8 max-w-sm text-center">
+          <p className="text-[13px] font-medium text-gray-800 mb-2">กรุณาเข้าสู่ระบบ</p>
+          <p className="text-[12px] text-gray-400 mb-4">
+            คุณต้องเข้าสู่ระบบก่อนเข้าใช้งานหน้านี้
+          </p>
+          <Button
+            onClick={() => router.push("/login")}
+            className="bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-[12px]"
+          >
+            ไปหน้าเข้าสู่ระบบ
+          </Button>
+        </div>
       </div>
     );
   }
@@ -172,7 +163,7 @@ export default function CalculationPage() {
    * Add a material from stock to the calculation
    */
   const handleAddMaterial = (stockEntry: any) => {
-    console.log("➕ [CalculationPage] Adding material:", stockEntry.materialCode);
+    console.log("[CalculationPage] Adding material:", stockEntry.materialCode);
 
     // Check if already added
     if (selectedMaterials.some((m) => m.stockEntryId === stockEntry._id)) {
@@ -201,7 +192,7 @@ export default function CalculationPage() {
    * Remove a material from the calculation
    */
   const handleRemoveMaterial = (stockEntryId: string) => {
-    console.log("🗑️ [CalculationPage] Removing material:", stockEntryId);
+    console.log("[CalculationPage] Removing material:", stockEntryId);
     setSelectedMaterials(
       selectedMaterials.filter((m) => m.stockEntryId !== stockEntryId)
     );
@@ -223,7 +214,7 @@ export default function CalculationPage() {
    * Calculate the price
    */
   const handleCalculate = () => {
-    console.log("🔢 [CalculationPage] Starting calculation");
+    console.log("[CalculationPage] Starting calculation");
 
     if (!calculationName.trim()) {
       alert("กรุณากรอกชื่อการคำนวณ");
@@ -266,7 +257,7 @@ export default function CalculationPage() {
    * Save the calculation
    */
   const handleSave = () => {
-    console.log("💾 [CalculationPage] Saving calculation");
+    console.log("[CalculationPage] Saving calculation");
 
     if (!calculationResult) {
       alert("ยังไม่มีผลการคำนวณ กรุณาคำนวณก่อน");
@@ -280,7 +271,7 @@ export default function CalculationPage() {
    * Load a saved calculation
    */
   const handleLoadCalculation = (calc: any) => {
-    console.log("📂 [CalculationPage] Loading calculation:", calc._id);
+    console.log("[CalculationPage] Loading calculation:", calc._id);
 
     setCalculationName(calc.name);
     setMarkupPercentage(
@@ -313,246 +304,217 @@ export default function CalculationPage() {
     );
   });
 
-  console.log("🎨 [CalculationPage] Rendering component");
+  console.log("[CalculationPage] Rendering component");
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <Button variant="ghost" onClick={() => router.back()} className="mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            ย้อนกลับ
-          </Button>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-600 rounded-lg">
-                <Calculator className="h-6 w-6 text-white" />
-              </div>
+    <ConsolePageShell title="Price Calculator" subtitle="Cost estimation">
+      <div className="p-4 md:p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Left Column - Input Form */}
+          <div className="lg:col-span-2 space-y-5">
+            {/* Calculation Info */}
+            <div className="border border-gray-200/60 rounded-xl p-4 space-y-3">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">
-                  คำนวนราคา
-                </h1>
-                <p className="text-gray-600">
-                  คำนวณต้นทุนการผลิตและราคาขาย
-                </p>
+                <h2 className="text-[12px] font-medium text-gray-600">ข้อมูลการคำนวณ</h2>
+                <p className="text-[11px] text-gray-400">ระบุชื่อและรายละเอียด</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="calcName" className="text-[12px] text-gray-500">ชื่อการคำนวณ *</Label>
+                <Input
+                  id="calcName"
+                  placeholder="เช่น: เซรั่มบำรุงผิวหน้า"
+                  value={calculationName}
+                  onChange={(e) => setCalculationName(e.target.value)}
+                  className="border-gray-200/60 bg-white rounded-lg text-[12px]"
+                />
               </div>
             </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Input Form */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Calculation Info */}
-            <Card>
-              <CardHeader>
-                <CardTitle>ข้อมูลการคำนวณ</CardTitle>
-                <CardDescription>ระบุชื่อและรายละเอียด</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="calcName">ชื่อการคำนวณ *</Label>
-                  <Input
-                    id="calcName"
-                    placeholder="เช่น: เซรั่มบำรุงผิวหน้า"
-                    value={calculationName}
-                    onChange={(e) => setCalculationName(e.target.value)}
-                  />
-                </div>
-              </CardContent>
-            </Card>
 
             {/* Material Selection */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Plus className="h-5 w-5 text-green-600" />
+            <div className="border border-gray-200/60 rounded-xl p-4 space-y-3">
+              <div>
+                <h2 className="text-[12px] font-medium text-gray-600">
                   เลือกวัตถุดิบจาก Stock (เพิ่มได้หลายรายการ)
-                </CardTitle>
-                <CardDescription>
+                </h2>
+                <p className="text-[11px] text-gray-400">
                   ค้นหาและเพิ่มวัตถุดิบหลายรายการ พร้อมระบุจำนวนที่ต้องใช้
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Material Search */}
-                <div className="space-y-2">
-                  <Label htmlFor="materialSearch">ค้นหาวัตถุดิบ</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="materialSearch"
-                      placeholder="ค้นหารหัสหรือชื่อวัตถุดิบ..."
-                      value={materialSearch}
-                      onChange={(e) => {
-                        setMaterialSearch(e.target.value);
-                        setShowMaterialDropdown(true);
-                      }}
-                      onFocus={() => setShowMaterialDropdown(true)}
-                      className="pl-9"
-                    />
-                    {showMaterialDropdown &&
-                      filteredStockEntries &&
-                      filteredStockEntries.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
-                          {filteredStockEntries.map((entry: any) => (
-                            <div
-                              key={entry._id}
-                              className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                              onClick={() => handleAddMaterial(entry)}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <div className="font-medium">
-                                    {entry.materialCode} - {entry.materialName}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    ราคา: ฿{entry.unitPrice}/kg | มีอยู่:{" "}
-                                    {entry.quantityKg} kg
-                                  </div>
-                                </div>
-                                <Plus className="h-4 w-4 text-green-600" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-                </div>
+                </p>
+              </div>
 
-                {/* Selected Materials Table */}
-                {selectedMaterials.length > 0 ? (
-                  <div className="mt-4">
-                    <Label className="mb-2 block">วัตถุดิบที่เลือก</Label>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>รหัส</TableHead>
-                          <TableHead>ชื่อ</TableHead>
-                          <TableHead>ราคา/kg</TableHead>
-                          <TableHead>จำนวน (kg)</TableHead>
-                          <TableHead>รวม (฿)</TableHead>
-                          <TableHead></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedMaterials.map((material) => {
-                          const total = material.amountKg * material.unitPrice;
-                          return (
-                            <TableRow key={material.stockEntryId}>
-                              <TableCell className="font-mono text-sm">
-                                {material.materialCode}
-                              </TableCell>
-                              <TableCell className="font-medium">
-                                {material.materialName}
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">
-                                ฿{material.unitPrice.toLocaleString()}
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  placeholder="0.00"
-                                  value={material.amountKg || ""}
-                                  onChange={(e) =>
-                                    handleUpdateAmount(
-                                      material.stockEntryId,
-                                      e.target.value
-                                    )
-                                  }
-                                  className="w-28"
-                                />
-                              </TableCell>
-                              <TableCell className="font-mono font-semibold">
-                                ฿{total.toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </TableCell>
-                              <TableCell>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() =>
-                                    handleRemoveMaterial(material.stockEntryId)
-                                  }
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500 border-2 border-dashed rounded-lg">
-                    <Package className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                    <p>ยังไม่มีวัตถุดิบ</p>
-                    <p className="text-sm">ค้นหาและเพิ่มวัตถุดิบจาก stock</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              {/* Material Search */}
+              <div className="space-y-1.5">
+                <Label htmlFor="materialSearch" className="text-[12px] text-gray-500">ค้นหาวัตถุดิบ</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                  <Input
+                    id="materialSearch"
+                    placeholder="ค้นหารหัสหรือชื่อวัตถุดิบ..."
+                    value={materialSearch}
+                    onChange={(e) => {
+                      setMaterialSearch(e.target.value);
+                      setShowMaterialDropdown(true);
+                    }}
+                    onFocus={() => setShowMaterialDropdown(true)}
+                    className="pl-8 h-8 text-[12px] border-gray-200/60 bg-white rounded-lg"
+                  />
+                  {showMaterialDropdown &&
+                    filteredStockEntries &&
+                    filteredStockEntries.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200/60 rounded-lg shadow-sm max-h-60 overflow-auto">
+                        {filteredStockEntries.map((entry: any) => (
+                          <div
+                            key={entry._id}
+                            className="px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            onClick={() => handleAddMaterial(entry)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-[12px] font-medium text-gray-700">
+                                  {entry.materialCode} - {entry.materialName}
+                                </div>
+                                <div className="text-[11px] text-gray-400">
+                                  ราคา: ฿{entry.unitPrice}/kg | มีอยู่:{" "}
+                                  {entry.quantityKg} kg
+                                </div>
+                              </div>
+                              <Plus className="h-3.5 w-3.5 text-gray-400" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
+              </div>
+
+              {/* Selected Materials Table */}
+              {selectedMaterials.length > 0 ? (
+                <div className="mt-3">
+                  <Label className="mb-2 block text-[12px] text-gray-500">วัตถุดิบที่เลือก</Label>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-gray-100">
+                        <TableHead className="text-[11px] text-gray-400">รหัส</TableHead>
+                        <TableHead className="text-[11px] text-gray-400">ชื่อ</TableHead>
+                        <TableHead className="text-[11px] text-gray-400">ราคา/kg</TableHead>
+                        <TableHead className="text-[11px] text-gray-400">จำนวน (kg)</TableHead>
+                        <TableHead className="text-[11px] text-gray-400">รวม (฿)</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedMaterials.map((material) => {
+                        const total = material.amountKg * material.unitPrice;
+                        return (
+                          <TableRow key={material.stockEntryId} className="border-gray-100">
+                            <TableCell className="font-mono text-[11px] text-gray-600">
+                              {material.materialCode}
+                            </TableCell>
+                            <TableCell className="text-[12px] text-gray-700">
+                              {material.materialName}
+                            </TableCell>
+                            <TableCell className="font-mono text-[11px] text-gray-600">
+                              ฿{material.unitPrice.toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={material.amountKg || ""}
+                                onChange={(e) =>
+                                  handleUpdateAmount(
+                                    material.stockEntryId,
+                                    e.target.value
+                                  )
+                                }
+                                className="w-28 h-7 text-[12px] border-gray-200/60 bg-white rounded-lg"
+                              />
+                            </TableCell>
+                            <TableCell className="font-mono text-[12px] font-medium text-gray-800">
+                              ฿{total.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  handleRemoveMaterial(material.stockEntryId)
+                                }
+                                className="h-7 w-7 p-0"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-gray-400 hover:text-red-500" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-16 border border-dashed border-gray-200/60 rounded-lg">
+                  <Package className="h-8 w-8 mx-auto mb-2 text-gray-200" />
+                  <p className="text-[12px] text-gray-400">ยังไม่มีวัตถุดิบ</p>
+                  <p className="text-[11px] text-gray-400">ค้นหาและเพิ่มวัตถุดิบจาก stock</p>
+                </div>
+              )}
+            </div>
 
             {/* Cost Parameters */}
-            <Card>
-              <CardHeader>
-                <CardTitle>กำไร (Markup)</CardTitle>
-                <CardDescription>
-                  ระบุอัตรากำไรที่ต้องการ
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="markup">
-                    Markup (%)
-                    <span className="text-xs text-gray-500 ml-2">
-                      อัตรากำไร
-                    </span>
-                  </Label>
-                  <div className="relative">
-                    <TrendingUp className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="markup"
-                      type="number"
-                      step="0.1"
-                      placeholder="30"
-                      value={markupPercentage}
-                      onChange={(e) => setMarkupPercentage(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    เช่น: ถ้าต้นทุน 100 บาท และ markup 30% จะได้ราคาขาย 130 บาท
-                  </p>
-                </div>
+            <div className="border border-gray-200/60 rounded-xl p-4 space-y-3">
+              <div>
+                <h2 className="text-[12px] font-medium text-gray-600">กำไร (Markup)</h2>
+                <p className="text-[11px] text-gray-400">ระบุอัตรากำไรที่ต้องการ</p>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="notes">หมายเหตุ</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="หมายเหตุเพิ่มเติม..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={2}
+              <div className="space-y-1.5">
+                <Label htmlFor="markup" className="text-[12px] text-gray-500">
+                  Markup (%)
+                  <span className="text-[11px] text-gray-400 ml-2">
+                    อัตรากำไร
+                  </span>
+                </Label>
+                <div className="relative">
+                  <TrendingUp className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                  <Input
+                    id="markup"
+                    type="number"
+                    step="0.1"
+                    placeholder="30"
+                    value={markupPercentage}
+                    onChange={(e) => setMarkupPercentage(e.target.value)}
+                    className="pl-8 h-8 text-[12px] border-gray-200/60 bg-white rounded-lg"
                   />
                 </div>
-              </CardContent>
-            </Card>
+                <p className="text-[11px] text-gray-400">
+                  เช่น: ถ้าต้นทุน 100 บาท และ markup 30% จะได้ราคาขาย 130 บาท
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="notes" className="text-[12px] text-gray-500">หมายเหตุ</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="หมายเหตุเพิ่มเติม..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="text-[12px] border-gray-200/60 bg-white rounded-lg"
+                />
+              </div>
+            </div>
 
             {/* Calculate Button */}
             <div className="flex gap-2">
               <Button
                 onClick={handleCalculate}
                 disabled={calculateMutation.isPending}
-                className="flex-1 bg-green-600 hover:bg-green-700"
-                size="lg"
+                className="flex-1 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-[12px] h-9"
               >
-                <Calculator className="h-5 w-5 mr-2" />
+                <Calculator className="h-3.5 w-3.5 mr-1.5" />
                 {calculateMutation.isPending ? "กำลังคำนวณ..." : "คำนวณ"}
               </Button>
 
@@ -561,9 +523,9 @@ export default function CalculationPage() {
                   onClick={handleSave}
                   disabled={saveCalculation.isPending}
                   variant="outline"
-                  size="lg"
+                  className="rounded-lg text-[12px] h-9 border-gray-200/60"
                 >
-                  <Save className="h-5 w-5 mr-2" />
+                  <Save className="h-3.5 w-3.5 mr-1.5" />
                   บันทึก
                 </Button>
               )}
@@ -571,76 +533,70 @@ export default function CalculationPage() {
           </div>
 
           {/* Right Column - Results */}
-          <div className="space-y-6">
+          <div className="space-y-5">
             {/* Calculation Result */}
             {calculationResult && (
-              <Card className="border-green-200 bg-green-50">
-                <CardHeader>
-                  <CardTitle className="text-green-900">ผลการคำนวณ</CardTitle>
-                  <CardDescription className="text-green-700">
-                    {calculationResult.name}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-900 font-semibold">ต้นทุนวัตถุดิบ</span>
-                      <span className="font-mono font-bold text-lg text-blue-700">
-                        ฿{calculationResult.rawMaterialCost.toLocaleString()}
+              <div className="border border-gray-200/60 rounded-xl p-4 space-y-3">
+                <div>
+                  <h2 className="text-[12px] font-medium text-gray-600">ผลการคำนวณ</h2>
+                  <p className="text-[11px] text-gray-400">{calculationResult.name}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[12px] text-gray-600">ต้นทุนวัตถุดิบ</span>
+                    <span className="font-mono text-[13px] font-medium text-gray-800">
+                      ฿{calculationResult.rawMaterialCost.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="border-t border-gray-100 pt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-gray-400">กำไร ({calculationResult.profitMargin.toFixed(1)}%)</span>
+                      <span className="font-mono text-[12px] text-gray-600">
+                        +฿{calculationResult.markupAmount.toLocaleString()}
                       </span>
                     </div>
-                    <div className="border-t pt-2 mt-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">กำไร ({calculationResult.profitMargin.toFixed(1)}%)</span>
-                        <span className="font-mono font-semibold text-green-600">
-                          +฿{calculationResult.markupAmount.toLocaleString()}
-                        </span>
-                      </div>
+                  </div>
+                  <div className="border-t border-gray-100 pt-3 mt-2 bg-gray-50 -mx-4 px-4 py-3 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[12px] font-medium text-gray-700">ราคาขายแนะนำ</span>
+                      <span className="font-mono text-[16px] font-semibold text-gray-900">
+                        ฿
+                        {calculationResult.suggestedSellingPrice.toLocaleString()}
+                      </span>
                     </div>
-                    <div className="border-t pt-2 mt-2 bg-green-100 -mx-4 px-4 py-3 rounded-lg">
-                      <div className="flex justify-between font-bold">
-                        <span className="text-gray-900">ราคาขายแนะนำ</span>
-                        <span className="font-mono text-2xl text-green-700">
-                          ฿
-                          {calculationResult.suggestedSellingPrice.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-600 mt-1 text-right">
-                        น้ำหนักรวม: {calculationResult.batchSize.toLocaleString()} kg |
-                        ต้นทุน/kg: ฿{calculationResult.costPerKg.toLocaleString()}
-                      </div>
+                    <div className="text-[11px] text-gray-400 mt-1 text-right">
+                      น้ำหนักรวม: {calculationResult.batchSize.toLocaleString()} kg |
+                      ต้นทุน/kg: ฿{calculationResult.costPerKg.toLocaleString()}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
 
             {/* Saved Calculations */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  การคำนวณที่บันทึกไว้
-                </CardTitle>
-                <CardDescription>
+            <div className="border border-gray-200/60 rounded-xl">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h2 className="text-[12px] font-medium text-gray-600">การคำนวณที่บันทึกไว้</h2>
+                <p className="text-[11px] text-gray-400">
                   {savedCalculations?.length || 0} รายการ
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </p>
+              </div>
+              <div className="p-3">
                 {savedCalculations && savedCalculations.length > 0 ? (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-96 overflow-y-auto">
                     {savedCalculations.map((calc: any) => (
                       <div
                         key={calc._id}
-                        className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                        className="px-3 py-2.5 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                         onClick={() => handleLoadCalculation(calc)}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="font-medium text-sm">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12px] font-medium text-gray-700 truncate">
                               {calc.name}
                             </div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-[11px] text-gray-400">
                               ฿
                               {calc.suggestedSellingPrice.toLocaleString()} |{" "}
                               {new Date(
@@ -651,6 +607,7 @@ export default function CalculationPage() {
                           <Button
                             size="sm"
                             variant="ghost"
+                            className="h-7 w-7 p-0 flex-shrink-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               if (
@@ -662,23 +619,23 @@ export default function CalculationPage() {
                               }
                             }}
                           >
-                            <Trash2 className="h-4 w-4 text-red-600" />
+                            <Trash2 className="h-3.5 w-3.5 text-gray-400 hover:text-red-500" />
                           </Button>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <FileText className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm">ยังไม่มีการคำนวณที่บันทึกไว้</p>
+                  <div className="text-center py-16">
+                    <FileText className="h-8 w-8 mx-auto mb-2 text-gray-200" />
+                    <p className="text-[12px] text-gray-400">ยังไม่มีการคำนวณที่บันทึกไว้</p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </ConsolePageShell>
   );
 }

@@ -1,5 +1,89 @@
 # Changelog
 
+## [2026-03-30] UI: Redesign stock page — Cloudflare-minimal design system
+
+### Summary
+Rewrote `apps/web/app/stock/page.tsx` to match the Cloudflare-minimal design system used across the rest of the app.
+
+### Changes
+- Replaced purple icon header + back button with `ConsolePageShell` wrapper
+- Replaced `Card`/`CardHeader`/`CardContent` wrappers with simple containers and `ConsoleSection`
+- Typography: `text-[13px]` titles, `text-[12px]` body, `text-[11px]` helper, `text-[10px]` uppercase labels
+- Table headers: `text-[10px] font-medium text-gray-400 uppercase tracking-wider`
+- Table rows: `border-b border-gray-50 hover:bg-gray-50/50`
+- Filter toolbar: `bg-[#fafafa]` with `border-gray-200/60 rounded-lg text-[11px]` selects
+- Buttons: `bg-gray-900 hover:bg-gray-800 text-white rounded-lg` (removed purple/green)
+- Empty state: `py-16` with `text-gray-200` icon and `text-[12px] text-gray-400` text
+- Form sections: `border border-gray-200/60 rounded-xl p-4` instead of Card
+- Summary stat cards: flat grid with `border-r border-gray-50` dividers
+- Extracted `resetForm()` helper to DRY up form-clearing logic
+- Loading spinner: smaller, consistent with other redesigned pages
+- Removed unused imports: `Card`, `CardContent`, `CardHeader`, `CardTitle`, `CardDescription`, `ArrowLeft`, `Plus`, `useEffect`
+
+### Files Changed
+- `apps/web/app/stock/page.tsx` — Full Cloudflare-minimal redesign
+
+---
+
+## [2026-03-30] UI: Redesign calculation page — Cloudflare-minimal design system
+
+### Summary
+Rewrote `apps/web/app/calculation/page.tsx` to match the Cloudflare-minimal design system. Visual-only change; all functionality preserved.
+
+### Changes
+- Replaced header (green icon box + back button) with `ConsolePageShell` wrapper
+- Replaced Card wrappers with `border border-gray-200/60 rounded-xl` containers
+- Typography: text-[13px] titles, text-[12px] labels/body, text-[11px] helpers
+- Buttons: `bg-gray-900 hover:bg-gray-800` (removed green accent)
+- Empty states: `py-16` with muted icon and text
+- Removed unused imports (Card, Badge, ArrowLeft, etc.)
+
+### Files Changed
+- `apps/web/app/calculation/page.tsx`
+
+---
+
+## [2026-03-30] UI: Products page — Cloudflare-minimal design system migration
+
+### Summary
+Rewrote products page visual layer to match the Cloudflare-minimal design system.
+
+### Changes
+- Replaced purple/green icon header + back button with `ConsolePageShell` wrapper
+- Replaced `Card`/`CardHeader`/`CardContent` with `ConsoleSection` and plain containers
+- Typography: `text-[13px]` titles, `text-[12px]` body, `text-[11px]` helper, `text-[10px]` table headers
+- Table headers: uppercase tracking-wider; rows: `border-gray-50 hover:bg-gray-50/50`
+- Search toolbar: `bg-[#fafafa]` background, compact inputs
+- Buttons: gray-900 primary, ghost secondary (removed green-600)
+- Badges: neutral `text-[10px]` with `border-gray-200/80 bg-gray-50/50`
+- Empty state: `py-16` with muted icon/text
+- Form inputs: `border-gray-200/60 bg-white rounded-lg text-[12px]`
+- All functionality preserved — zero logic changes
+
+### Files Changed
+- `apps/web/app/products/page.tsx` — Full visual rewrite
+
+---
+
+## [2026-03-30] UI: Redesign Create Formula page — Cloudflare-minimal design system
+
+### Summary
+Rewrote `apps/web/app/formulas/create/page.tsx` to match the Cloudflare-minimal design system used across other console pages.
+
+### Changes
+- Replaced purple icon box header + back button with `ConsolePageShell` wrapper
+- Replaced `Card`/`CardContent` wrappers with minimal `border border-gray-200/60 rounded-xl` containers
+- Applied consistent typography: `text-[13px]` titles, `text-[12px]` labels/body, `text-[11px]` helper text
+- Submit/action buttons now use `bg-gray-900 hover:bg-gray-800` instead of colored variants
+- Loading spinner uses gray-400 instead of blue-600
+- Removed `lucide-react` Beaker and ArrowLeft icon imports (no longer needed)
+- All existing functionality (auth checks, role gates, FormulaForm) preserved as-is
+
+### Files Changed
+- `apps/web/app/formulas/create/page.tsx` — Full rewrite to ConsolePageShell + minimal styling
+
+---
+
 ## [2026-03-30] UI: Redesign chat layout — kill double header, flatten nesting
 
 ### Summary

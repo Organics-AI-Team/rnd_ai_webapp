@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Stock Management Page
+ * Stock Management Page — Cloudflare-minimal design
+ *
  * Allows users to:
  * - Add stock entries for raw materials with quantity, price, expiration
  * - View all stock entries with filtering and pagination
@@ -11,14 +12,27 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc-client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { ConsolePageShell, ConsoleSection } from "@/components/console_page_shell";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, Package, Edit, Trash2, Search, ArrowUpDown, ChevronLeft, ChevronRight, Calendar, DollarSign, Weight } from "lucide-react";
-import { useState, useEffect, Suspense } from "react";
+import {
+  Package,
+  Edit,
+  Trash2,
+  Search,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  DollarSign,
+  Weight,
+  X,
+} from "lucide-react";
+import { useState, Suspense } from "react";
 import React from "react";
 import {
   Table,
@@ -28,10 +42,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 
+/**
+ * StockContent — Inner component containing all stock management logic.
+ * Wrapped in Suspense by the default export.
+ */
 function StockContent() {
-  console.log('📦 [StockContent] Component mounting');
+  console.log("[stock] StockContent mounting");
 
   const { user, isLoading } = useAuth();
   const router = useRouter();
@@ -60,11 +77,11 @@ function StockContent() {
     notes: "",
   });
 
-  console.log('🔍 [StockContent] Current state:', {
+  console.log("[stock] state:", {
     showAddForm,
     editingStock: editingStock?._id,
     statusFilter,
-    currentPage
+    currentPage,
   });
 
   // Fetch materials for dropdown
@@ -93,62 +110,61 @@ function StockContent() {
   const totalPages = stockData?.totalPages || 1;
   const hasMore = stockData?.hasMore || false;
 
-  console.log(`📊 [StockContent] Loaded ${stockEntries.length} stock entries (total: ${totalCount})`);
+  console.log(`[stock] loaded ${stockEntries.length} entries (total: ${totalCount})`);
 
-  // Mutations
+  // ---------- Mutations ----------
+
+  /**
+   * Resets all form fields and selection state to defaults.
+   */
+  const resetForm = () => {
+    setSelectedMaterial(null);
+    setMaterialSearch("");
+    setFormData({
+      quantityKg: "",
+      unitPrice: "",
+      expirationDate: "",
+      batchNumber: "",
+      supplier: "",
+      notes: "",
+    });
+  };
+
   const createStock = trpc.stock.create.useMutation({
     onSuccess: () => {
-      console.log('✅ [StockContent] Stock entry created successfully');
+      console.log("[stock] created successfully");
       utils.stock.list.invalidate();
       utils.stock.summary.invalidate();
       setShowAddForm(false);
-      setSelectedMaterial(null);
-      setMaterialSearch("");
-      setFormData({
-        quantityKg: "",
-        unitPrice: "",
-        expirationDate: "",
-        batchNumber: "",
-        supplier: "",
-        notes: "",
-      });
+      resetForm();
     },
     onError: (error) => {
-      console.error('❌ [StockContent] Create stock error:', error);
+      console.error("[stock] create error:", error);
     },
   });
 
   const updateStock = trpc.stock.update.useMutation({
     onSuccess: () => {
-      console.log('✅ [StockContent] Stock entry updated successfully');
+      console.log("[stock] updated successfully");
       utils.stock.list.invalidate();
       utils.stock.summary.invalidate();
       setShowAddForm(false);
       setEditingStock(null);
-      setSelectedMaterial(null);
-      setMaterialSearch("");
-      setFormData({
-        quantityKg: "",
-        unitPrice: "",
-        expirationDate: "",
-        batchNumber: "",
-        supplier: "",
-        notes: "",
-      });
+      resetForm();
     },
     onError: (error) => {
-      console.error('❌ [StockContent] Update stock error:', error);
+      console.error("[stock] update error:", error);
     },
   });
 
   const deleteStock = trpc.stock.delete.useMutation({
     onSuccess: () => {
-      console.log('✅ [StockContent] Stock entry deleted successfully');
+      console.log("[stock] deleted successfully");
       utils.stock.list.invalidate();
       utils.stock.summary.invalidate();
     },
     onError: (error) => {
-      console.error('❌ [StockContent] Delete stock error:', error);
+      console.error("[stock] delete error:", error);
     },
   });
 
@@ -157,66 +173,73 @@ function StockContent() {
     setCurrentPage(1);
   }, [statusFilter, materialFilter, sortField, sortDirection]);
 
+  // ---------- Loading / auth guards ----------
+
   if (isLoading || stockLoading) {
-    console.log('⏳ [StockContent] Loading...');
+    console.log("[stock] loading...");
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">กำลังโหลด...</p>
-        </div>
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-gray-600" />
       </div>
     );
   }
 
   if (!user) {
-    console.log('⚠️ [StockContent] User not authenticated');
+    console.log("[stock] user not authenticated");
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <Card className="max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-red-600 font-semibold mb-4">กรุณาเข้าสู่ระบบ</p>
-              <p className="text-gray-600 mb-4">
-                คุณต้องเข้าสู่ระบบก่อนเข้าใช้งานหน้านี้
-              </p>
-              <Button onClick={() => router.push("/login")}>
-                ไปหน้าเข้าสู่ระบบ
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-[12px] text-gray-500 mb-3">กรุณาเข้าสู่ระบบ</p>
+          <Button
+            size="sm"
+            onClick={() => router.push("/login")}
+            className="h-7 text-[11px] px-3 bg-gray-900 hover:bg-gray-800 text-white rounded-lg"
+          >
+            ไปหน้าเข้าสู่ระบบ
+          </Button>
+        </div>
       </div>
     );
   }
 
   if (user.role !== "admin") {
-    console.log('⚠️ [StockContent] Access denied - user role:', user.role);
+    console.log("[stock] access denied — role:", user.role);
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <Card className="max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-red-600 font-semibold mb-4">ไม่มีสิทธิ์เข้าถึง</p>
-              <p className="text-gray-600 mb-4">
-                เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถเข้าถึงหน้านี้ได้
-              </p>
-              <Button onClick={() => router.push("/ingredients")}>
-                ไปที่สารทั้งหมด
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-[12px] text-red-500 mb-1">ไม่มีสิทธิ์เข้าถึง</p>
+          <p className="text-[11px] text-gray-400 mb-3">เฉพาะผู้ดูแลระบบเท่านั้น</p>
+          <Button
+            size="sm"
+            onClick={() => router.push("/ingredients")}
+            className="h-7 text-[11px] px-3 bg-gray-900 hover:bg-gray-800 text-white rounded-lg"
+          >
+            ไปที่สารทั้งหมด
+          </Button>
+        </div>
       </div>
     );
   }
 
+  // ---------- Handlers ----------
+
+  /**
+   * Updates a single form field value.
+   *
+   * @param field - Form field key
+   * @param value - New value
+   */
   const handleFormChange = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value });
   };
 
+  /**
+   * Populates the edit form with an existing stock entry.
+   *
+   * @param stock - Stock entry to edit
+   */
   const handleEdit = (stock: any) => {
-    console.log('✏️ [StockContent] Editing stock entry:', stock._id);
+    console.log("[stock] editing:", stock._id);
     setEditingStock(stock);
     setSelectedMaterial({
       _id: stock.materialId,
@@ -226,7 +249,9 @@ function StockContent() {
     setFormData({
       quantityKg: stock.quantityKg.toString(),
       unitPrice: stock.unitPrice.toString(),
-      expirationDate: stock.expirationDate ? new Date(stock.expirationDate).toISOString().split('T')[0] : "",
+      expirationDate: stock.expirationDate
+        ? new Date(stock.expirationDate).toISOString().split("T")[0]
+        : "",
       batchNumber: stock.batchNumber || "",
       supplier: stock.supplier || "",
       notes: stock.notes || "",
@@ -234,9 +259,14 @@ function StockContent() {
     setShowAddForm(true);
   };
 
+  /**
+   * Submits the add/edit stock form.
+   *
+   * @param e - Form submission event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('💾 [StockContent] Submitting form', { editingStock: !!editingStock });
+    console.log("[stock] submitting form", { editing: !!editingStock });
 
     if (!selectedMaterial && !editingStock) {
       alert("กรุณาเลือกวัตถุดิบ");
@@ -270,38 +300,67 @@ function StockContent() {
         alert("เพิ่มสต็อกเรียบร้อยแล้ว!");
       }
     } catch (error: any) {
-      console.error('❌ [StockContent] Submit error:', error);
-      alert(error.message || (editingStock ? "ไม่สามารถอัปเดตสต็อกได้" : "ไม่สามารถเพิ่มสต็อกได้"));
+      console.error("[stock] submit error:", error);
+      alert(
+        error.message ||
+          (editingStock ? "ไม่สามารถอัปเดตสต็อกได้" : "ไม่สามารถเพิ่มสต็อกได้")
+      );
     }
   };
 
+  /**
+   * Deletes a stock entry after user confirmation.
+   *
+   * @param id           - Stock entry ID
+   * @param materialName - Material name (for confirmation message)
+   */
   const handleDelete = async (id: string, materialName: string) => {
-    console.log('🗑️ [StockContent] Deleting stock entry:', id);
+    console.log("[stock] deleting:", id);
     if (confirm(`คุณแน่ใจหรือไม่ที่จะลบสต็อก "${materialName}"?`)) {
       try {
         await deleteStock.mutateAsync({ id });
         alert("ลบสต็อกเรียบร้อยแล้ว!");
       } catch (error: any) {
-        console.error('❌ [StockContent] Delete error:', error);
+        console.error("[stock] delete error:", error);
         alert(error.message || "ไม่สามารถลบสต็อกได้");
       }
     }
   };
 
+  /**
+   * Formats a date string to Thai locale short format.
+   *
+   * @param dateString - ISO date string
+   * @returns Formatted date or "-"
+   */
   const formatDate = (dateString: string) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
-    return date.toLocaleDateString('th-TH');
+    return date.toLocaleDateString("th-TH");
   };
 
+  /**
+   * Checks if a date is within 30 days of today.
+   *
+   * @param dateString - ISO date string
+   * @returns true if expiring within 30 days
+   */
   const isExpiringSoon = (dateString: string) => {
     if (!dateString) return false;
     const expirationDate = new Date(dateString);
     const today = new Date();
-    const daysUntilExpiration = Math.floor((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const daysUntilExpiration = Math.floor(
+      (expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
     return daysUntilExpiration <= 30 && daysUntilExpiration >= 0;
   };
 
+  /**
+   * Checks if a date is in the past.
+   *
+   * @param dateString - ISO date string
+   * @returns true if expired
+   */
   const isExpired = (dateString: string) => {
     if (!dateString) return false;
     const expirationDate = new Date(dateString);
@@ -309,167 +368,129 @@ function StockContent() {
     return expirationDate < today;
   };
 
-  console.log('🎨 [StockContent] Rendering component');
+  /**
+   * Opens the add-stock form with a clean state.
+   */
+  const handleOpenAddForm = () => {
+    console.log("[stock] opening add form");
+    setEditingStock(null);
+    resetForm();
+    setShowAddForm(!showAddForm);
+  };
+
+  console.log("[stock] rendering");
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => router.back()}
-            className="mb-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            ย้อนกลับ
-          </Button>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-600 rounded-lg">
-                <Package className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">
-                  เพิ่มสต็อก
-                </h1>
-                <p className="text-gray-600">
-                  จัดการสต็อกวัตถุดิบ ติดตามปริมาณ ราคา และวันหมดอายุ
-                </p>
-              </div>
-            </div>
-
-            <Button
-              onClick={() => {
-                console.log('➕ [StockContent] Opening add form');
-                setEditingStock(null);
-                setSelectedMaterial(null);
-                setMaterialSearch("");
-                setFormData({
-                  quantityKg: "",
-                  unitPrice: "",
-                  expirationDate: "",
-                  batchNumber: "",
-                  supplier: "",
-                  notes: "",
-                });
-                setShowAddForm(!showAddForm);
-              }}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              เพิ่มสต็อก
-            </Button>
-          </div>
-        </div>
-
-        {/* Stock Summary Cards */}
-        {summaryData && summaryData.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">จำนวนวัตถุดิบที่มีสต็อก</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{summaryData.length}</div>
-                <p className="text-xs text-gray-500 mt-1">ประเภทวัตถุดิบ</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">ปริมาณทั้งหมด</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {summaryData.reduce((sum: number, item: any) => sum + item.totalQuantityKg, 0).toLocaleString()} kg
+    <ConsolePageShell
+      title="Stock Management"
+      subtitle={`${totalCount.toLocaleString()} entries`}
+      action_label="Add Stock"
+      on_action={handleOpenAddForm}
+    >
+      {/* ── Add / Edit Form ── */}
+      {showAddForm && (
+        <div className="border-b border-gray-100">
+          <div className="px-4 py-3">
+            <div className="border border-gray-200/60 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-[13px] font-medium text-gray-800">
+                    {editingStock ? "แก้ไขสต็อก" : "เพิ่มสต็อก"}
+                  </h3>
+                  <p className="text-[11px] text-gray-400">
+                    {editingStock
+                      ? "อัปเดตรายละเอียดสต็อก"
+                      : "เลือกวัตถุดิบและกรอกรายละเอียดสต็อก"}
+                  </p>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">น้ำหนักรวม</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">มูลค่าทั้งหมด</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ฿{summaryData.reduce((sum: number, item: any) => sum + item.totalValue, 0).toLocaleString()}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">มูลค่ารวม</p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                <button
+                  onClick={() => {
+                    console.log("[stock] closing form");
+                    setShowAddForm(false);
+                    setEditingStock(null);
+                    resetForm();
+                  }}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
 
-        {/* Add/Edit Stock Form */}
-        {showAddForm && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>{editingStock ? "แก้ไขสต็อก" : "เพิ่มสต็อก"}</CardTitle>
-              <CardDescription>
-                {editingStock ? "อัปเดตรายละเอียดสต็อก" : "เลือกวัตถุดิบและกรอกรายละเอียดสต็อก"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-3">
                 {/* Material Selection */}
                 {!editingStock && (
-                  <div className="space-y-2">
-                    <Label htmlFor="material">วัตถุดิบ *</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="material" className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                      วัตถุดิบ *
+                    </Label>
                     <div className="relative">
                       <Input
                         id="material"
                         placeholder="ค้นหาวัตถุดิบ..."
-                        value={selectedMaterial ? `${selectedMaterial.code} - ${selectedMaterial.name}` : materialSearch}
+                        value={
+                          selectedMaterial
+                            ? `${selectedMaterial.code} - ${selectedMaterial.name}`
+                            : materialSearch
+                        }
                         onChange={(e) => {
                           setMaterialSearch(e.target.value);
                           setShowMaterialDropdown(true);
                           if (selectedMaterial) setSelectedMaterial(null);
                         }}
                         onFocus={() => setShowMaterialDropdown(true)}
+                        className="h-8 text-[12px] border-gray-200/60 rounded-lg"
                         required
                       />
-                      {showMaterialDropdown && materialsData && materialsData.length > 0 && !selectedMaterial && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
-                          {materialsData.map((material: any) => (
-                            <div
-                              key={material._id}
-                              className="p-2 hover:bg-gray-100 cursor-pointer"
-                              onClick={() => {
-                                console.log('📦 [StockContent] Material selected:', material.code);
-                                setSelectedMaterial(material);
-                                setMaterialSearch("");
-                                setShowMaterialDropdown(false);
-                              }}
-                            >
-                              <div className="font-medium">{material.code} - {material.name}</div>
-                              {material.inci && (
-                                <div className="text-xs text-gray-500">{material.inci}</div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {showMaterialDropdown &&
+                        materialsData &&
+                        materialsData.length > 0 &&
+                        !selectedMaterial && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200/60 rounded-lg shadow-lg max-h-60 overflow-auto">
+                            {materialsData.map((material: any) => (
+                              <div
+                                key={material._id}
+                                className="px-3 py-2 hover:bg-gray-50/80 cursor-pointer border-b border-gray-50 last:border-0"
+                                onClick={() => {
+                                  console.log("[stock] material selected:", material.code);
+                                  setSelectedMaterial(material);
+                                  setMaterialSearch("");
+                                  setShowMaterialDropdown(false);
+                                }}
+                              >
+                                <div className="text-[12px] font-medium text-gray-700">
+                                  {material.code} - {material.name}
+                                </div>
+                                {material.inci && (
+                                  <div className="text-[11px] text-gray-400">{material.inci}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                     </div>
                   </div>
                 )}
 
                 {editingStock && (
-                  <div className="space-y-2">
-                    <Label>วัตถุดิบ</Label>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                      วัตถุดิบ
+                    </Label>
                     <Input
                       value={`${selectedMaterial?.code} - ${selectedMaterial?.name}`}
                       disabled
-                      className="bg-gray-100 cursor-not-allowed"
+                      className="h-8 text-[12px] bg-gray-50 cursor-not-allowed border-gray-200/60 rounded-lg"
                     />
                   </div>
                 )}
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="quantityKg">ปริมาณ (kg) *</Label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="quantityKg" className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                      ปริมาณ (kg) *
+                    </Label>
                     <div className="relative">
-                      <Weight className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Weight className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-300" />
                       <Input
                         id="quantityKg"
                         type="number"
@@ -477,16 +498,18 @@ function StockContent() {
                         placeholder="200.00"
                         value={formData.quantityKg}
                         onChange={(e) => handleFormChange("quantityKg", e.target.value)}
-                        className="pl-9"
+                        className="h-8 text-[12px] pl-8 border-gray-200/60 rounded-lg"
                         required
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="unitPrice">ราคาต่อ kg (฿) *</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="unitPrice" className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                      ราคาต่อ kg (฿) *
+                    </Label>
                     <div className="relative">
-                      <DollarSign className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-300" />
                       <Input
                         id="unitPrice"
                         type="number"
@@ -494,422 +517,469 @@ function StockContent() {
                         placeholder="150.00"
                         value={formData.unitPrice}
                         onChange={(e) => handleFormChange("unitPrice", e.target.value)}
-                        className="pl-9"
+                        className="h-8 text-[12px] pl-8 border-gray-200/60 rounded-lg"
                         required
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="expirationDate">วันหมดอายุ *</Label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="expirationDate" className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                      วันหมดอายุ *
+                    </Label>
                     <div className="relative">
-                      <Calendar className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-300" />
                       <Input
                         id="expirationDate"
                         type="date"
                         value={formData.expirationDate}
                         onChange={(e) => handleFormChange("expirationDate", e.target.value)}
-                        className="pl-9"
+                        className="h-8 text-[12px] pl-8 border-gray-200/60 rounded-lg"
                         required
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="batchNumber">Batch Number</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="batchNumber" className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                      Batch Number
+                    </Label>
                     <Input
                       id="batchNumber"
                       placeholder="B20250101"
                       value={formData.batchNumber}
                       onChange={(e) => handleFormChange("batchNumber", e.target.value)}
+                      className="h-8 text-[12px] border-gray-200/60 rounded-lg"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="supplier">ผู้จัดหา</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="supplier" className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                    ผู้จัดหา
+                  </Label>
                   <Input
                     id="supplier"
                     placeholder="ชื่อผู้จัดหา"
                     value={formData.supplier}
                     onChange={(e) => handleFormChange("supplier", e.target.value)}
+                    className="h-8 text-[12px] border-gray-200/60 rounded-lg"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="notes">หมายเหตุ</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="notes" className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+                    หมายเหตุ
+                  </Label>
                   <Textarea
                     id="notes"
                     placeholder="หมายเหตุเพิ่มเติม..."
                     value={formData.notes}
                     onChange={(e) => handleFormChange("notes", e.target.value)}
-                    rows={3}
+                    rows={2}
+                    className="text-[12px] border-gray-200/60 rounded-lg resize-none"
                   />
                 </div>
 
-                {/* Show calculated total */}
+                {/* Calculated total */}
                 {formData.quantityKg && formData.unitPrice && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <div className="text-sm text-blue-900">
-                      <strong>ราคารวม:</strong> ฿{(parseFloat(formData.quantityKg) * parseFloat(formData.unitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
+                  <div className="px-3 py-2 bg-gray-50 border border-gray-200/60 rounded-lg">
+                    <span className="text-[11px] text-gray-500">ราคารวม: </span>
+                    <span className="text-[12px] font-medium text-gray-800">
+                      ฿
+                      {(
+                        parseFloat(formData.quantityKg) * parseFloat(formData.unitPrice)
+                      ).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
                   </div>
                 )}
 
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={createStock.isPending || updateStock.isPending}>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={createStock.isPending || updateStock.isPending}
+                    className="h-7 text-[11px] px-3 bg-gray-900 hover:bg-gray-800 text-white rounded-lg"
+                  >
                     {editingStock
-                      ? (updateStock.isPending ? "กำลังอัปเดต..." : "อัปเดตสต็อก")
-                      : (createStock.isPending ? "กำลังเพิ่ม..." : "เพิ่มสต็อก")
-                    }
+                      ? updateStock.isPending
+                        ? "กำลังอัปเดต..."
+                        : "อัปเดตสต็อก"
+                      : createStock.isPending
+                        ? "กำลังเพิ่ม..."
+                        : "เพิ่มสต็อก"}
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     onClick={() => {
-                      console.log('❌ [StockContent] Cancelling form');
+                      console.log("[stock] cancelling form");
                       setShowAddForm(false);
                       setEditingStock(null);
-                      setSelectedMaterial(null);
-                      setMaterialSearch("");
-                      setFormData({
-                        quantityKg: "",
-                        unitPrice: "",
-                        expirationDate: "",
-                        batchNumber: "",
-                        supplier: "",
-                        notes: "",
-                      });
+                      resetForm();
                     }}
+                    className="h-7 text-[11px] px-3 rounded-lg border-gray-200/60"
                   >
                     ยกเลิก
                   </Button>
                 </div>
               </form>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </div>
+        </div>
+      )}
 
-        {/* Stock Summary Table - Aggregated by Material */}
-        {summaryData && summaryData.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    สรุปสต็อกแยกตามวัตถุดิบ
-                  </CardTitle>
-                  <CardDescription>
-                    ยอดรวมสต็อกของแต่ละวัตถุดิบ (รวมทุก Batch)
-                  </CardDescription>
+      {/* ── Summary stat cards ── */}
+      {summaryData && summaryData.length > 0 && (
+        <div className="grid grid-cols-3 border-b border-gray-50">
+          <div className="px-4 py-3 border-r border-gray-50">
+            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">วัตถุดิบที่มีสต็อก</p>
+            <p className="text-[16px] font-semibold text-gray-800 mt-0.5">{summaryData.length}</p>
+            <p className="text-[11px] text-gray-400">ประเภท</p>
+          </div>
+          <div className="px-4 py-3 border-r border-gray-50">
+            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">ปริมาณทั้งหมด</p>
+            <p className="text-[16px] font-semibold text-gray-800 mt-0.5">
+              {summaryData
+                .reduce((sum: number, item: any) => sum + item.totalQuantityKg, 0)
+                .toLocaleString()}{" "}
+              kg
+            </p>
+            <p className="text-[11px] text-gray-400">น้ำหนักรวม</p>
+          </div>
+          <div className="px-4 py-3">
+            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">มูลค่าทั้งหมด</p>
+            <p className="text-[16px] font-semibold text-gray-800 mt-0.5">
+              ฿
+              {summaryData
+                .reduce((sum: number, item: any) => sum + item.totalValue, 0)
+                .toLocaleString()}
+            </p>
+            <p className="text-[11px] text-gray-400">มูลค่ารวม</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Summary table — aggregated by material ── */}
+      {summaryData && summaryData.length > 0 && (
+        <ConsoleSection
+          title="สรุปสต็อกแยกตามวัตถุดิบ"
+          subtitle="ยอดรวมสต็อกของแต่ละวัตถุดิบ (รวมทุก Batch)"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b border-gray-50 hover:bg-transparent">
+                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">รหัส</TableHead>
+                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">ชื่อวัตถุดิบ</TableHead>
+                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider text-right">ปริมาณ (kg)</TableHead>
+                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider text-right">มูลค่า (฿)</TableHead>
+                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider text-right">เฉลี่ย/kg</TableHead>
+                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider text-center">Batch</TableHead>
+                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">หมดอายุใกล้สุด</TableHead>
+                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider text-center">ดู</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summaryData.map((summary: any) => {
+                const isExpiringSoonSummary =
+                  summary.nearestExpiration && isExpiringSoon(summary.nearestExpiration);
+                const isExpiredSummary =
+                  summary.nearestExpiration && isExpired(summary.nearestExpiration);
+
+                return (
+                  <TableRow
+                    key={summary.materialId}
+                    className="border-b border-gray-50 hover:bg-gray-50/50"
+                  >
+                    <TableCell className="text-[12px] font-mono text-gray-600">
+                      {summary.materialCode}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-medium text-gray-700">
+                      {summary.materialName}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-mono text-right text-gray-700">
+                      {summary.totalQuantityKg.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-mono text-right text-gray-700">
+                      {summary.totalValue.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-mono text-right text-gray-500">
+                      {summary.averagePrice.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="outline" className="text-[10px] bg-gray-50/80 border-gray-200/60 text-gray-500">
+                        {summary.batchCount}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[12px] text-gray-600">
+                          {summary.nearestExpiration
+                            ? formatDate(summary.nearestExpiration)
+                            : "-"}
+                        </span>
+                        {isExpiredSummary && (
+                          <Badge className="text-[9px] px-1.5 py-0 bg-red-50 text-red-600 border border-red-200/60 hover:bg-red-50">
+                            หมดอายุ
+                          </Badge>
+                        )}
+                        {!isExpiredSummary && isExpiringSoonSummary && (
+                          <Badge className="text-[9px] px-1.5 py-0 bg-amber-50 text-amber-600 border border-amber-200/60 hover:bg-amber-50">
+                            ใกล้หมดอายุ
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <button
+                        onClick={() => {
+                          console.log("[stock] filtering by material:", summary.materialId);
+                          setMaterialFilter(summary.materialId);
+                          document
+                            .getElementById("detailed-entries-section")
+                            ?.scrollIntoView({ behavior: "smooth" });
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-700 transition-colors"
+                      >
+                        <Search className="h-3 w-3" />
+                        ดู
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </ConsoleSection>
+      )}
+
+      {/* ── Detailed entries — per-batch ── */}
+      <div id="detailed-entries-section">
+        {/* Filter toolbar */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-50 bg-[#fafafa] flex-wrap">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[11px] text-gray-400 flex-shrink-0">รายการสต็อก</span>
+            {materialFilter ? (
+              <button
+                onClick={() => setMaterialFilter("")}
+                className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-700 transition-colors bg-white border border-gray-200/60 rounded-md px-1.5 py-0.5"
+              >
+                <X className="h-2.5 w-2.5" />
+                ล้างตัวกรอง
+              </button>
+            ) : (
+              <span className="text-[11px] text-gray-300">
+                {totalCount.toLocaleString()} รายการ
+              </span>
+            )}
+          </div>
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="h-7 px-2 border border-gray-200/60 rounded-lg text-[11px] bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-300"
+            >
+              <option value="all">ทั้งหมด</option>
+              <option value="active">ใช้งานได้</option>
+              <option value="expired">หมดอายุ</option>
+              <option value="depleted">หมดแล้ว</option>
+            </select>
+
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value)}
+              className="h-7 px-2 border border-gray-200/60 rounded-lg text-[11px] bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-300"
+            >
+              <option value="createdAt">วันที่เพิ่ม</option>
+              <option value="expirationDate">วันหมดอายุ</option>
+              <option value="materialName">ชื่อวัตถุดิบ</option>
+              <option value="quantityKg">ปริมาณ</option>
+            </select>
+
+            <button
+              onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+              className="h-7 px-2 border border-gray-200/60 rounded-lg text-[11px] bg-white text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-1"
+            >
+              <ArrowUpDown className="h-3 w-3" />
+              {sortDirection === "asc" ? "น้อย-มาก" : "มาก-น้อย"}
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        {stockEntries && stockEntries.length > 0 ? (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-gray-50 hover:bg-transparent">
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">รหัส</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">ชื่อวัตถุดิบ</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">ปริมาณ (kg)</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">ราคา/kg</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">ราคารวม</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">หมดอายุ</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Batch</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">ผู้จัดหา</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">สถานะ</TableHead>
+                  <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider w-16"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stockEntries.map((stock: any) => (
+                  <TableRow key={stock._id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <TableCell className="text-[12px] font-mono text-gray-600">
+                      {stock.materialCode}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-medium text-gray-700">
+                      {stock.materialName}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-mono text-gray-600">
+                      {stock.quantityKg.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-mono text-gray-600">
+                      {stock.unitPrice.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-mono font-medium text-gray-700">
+                      {stock.totalCost.toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[12px] text-gray-600">
+                          {formatDate(stock.expirationDate)}
+                        </span>
+                        {isExpired(stock.expirationDate) && (
+                          <Badge className="text-[9px] px-1.5 py-0 bg-red-50 text-red-600 border border-red-200/60 hover:bg-red-50">
+                            หมดอายุ
+                          </Badge>
+                        )}
+                        {!isExpired(stock.expirationDate) &&
+                          isExpiringSoon(stock.expirationDate) && (
+                            <Badge className="text-[9px] px-1.5 py-0 bg-amber-50 text-amber-600 border border-amber-200/60 hover:bg-amber-50">
+                              ใกล้หมดอายุ
+                            </Badge>
+                          )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-[12px] text-gray-500">
+                      {stock.batchNumber || "-"}
+                    </TableCell>
+                    <TableCell className="text-[12px] text-gray-500">
+                      {stock.supplier || "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={`text-[10px] px-1.5 py-0 border ${
+                          stock.status === "active"
+                            ? "bg-emerald-50 text-emerald-600 border-emerald-200/60 hover:bg-emerald-50"
+                            : stock.status === "expired"
+                              ? "bg-red-50 text-red-600 border-red-200/60 hover:bg-red-50"
+                              : "bg-gray-50 text-gray-500 border-gray-200/60 hover:bg-gray-50"
+                        }`}
+                      >
+                        {stock.status === "active"
+                          ? "ใช้งานได้"
+                          : stock.status === "expired"
+                            ? "หมดอายุ"
+                            : "หมดแล้ว"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => handleEdit(stock)}
+                          className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(stock._id, stock.materialName)}
+                          className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-2 border-t border-gray-50">
+                <span className="text-[11px] text-gray-400">
+                  {(currentPage - 1) * itemsPerPage + 1}-
+                  {Math.min(currentPage * itemsPerPage, totalCount)} of{" "}
+                  {totalCount.toLocaleString()}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="h-7 px-2 border border-gray-200/60 rounded-lg text-[11px] text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                    ก่อนหน้า
+                  </button>
+                  <span className="text-[11px] text-gray-400 px-1">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={!hasMore}
+                    className="h-7 px-2 border border-gray-200/60 rounded-lg text-[11px] text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                  >
+                    ถัดไป
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>รหัสวัตถุดิบ</TableHead>
-                    <TableHead>ชื่อวัตถุดิบ</TableHead>
-                    <TableHead className="text-right">ปริมาณรวม (kg)</TableHead>
-                    <TableHead className="text-right">มูลค่ารวม (฿)</TableHead>
-                    <TableHead className="text-right">ราคาเฉลี่ย/kg (฿)</TableHead>
-                    <TableHead className="text-center">จำนวน Batch</TableHead>
-                    <TableHead>วันหมดอายุใกล้สุด</TableHead>
-                    <TableHead className="text-center">ดูรายละเอียด</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {summaryData.map((summary: any) => {
-                    const isExpiringSoonSummary = summary.nearestExpiration && isExpiringSoon(summary.nearestExpiration);
-                    const isExpiredSummary = summary.nearestExpiration && isExpired(summary.nearestExpiration);
-
-                    return (
-                      <TableRow
-                        key={summary.materialId}
-                        className={
-                          isExpiredSummary
-                            ? "bg-red-50"
-                            : isExpiringSoonSummary
-                            ? "bg-yellow-50"
-                            : ""
-                        }
-                      >
-                        <TableCell className="font-mono text-sm">
-                          {summary.materialCode}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {summary.materialName}
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-semibold text-green-700">
-                          {summary.totalQuantityKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-semibold text-blue-700">
-                          {summary.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {summary.averagePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-gray-50">
-                            {summary.batchCount}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {summary.nearestExpiration ? formatDate(summary.nearestExpiration) : "-"}
-                            {isExpiredSummary && (
-                              <Badge variant="destructive" className="text-xs">หมดอายุ</Badge>
-                            )}
-                            {!isExpiredSummary && isExpiringSoonSummary && (
-                              <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300">ใกล้หมดอายุ</Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              console.log('🔍 [StockContent] Filtering by material:', summary.materialId);
-                              setMaterialFilter(summary.materialId);
-                              // Scroll to detailed table
-                              document.getElementById('detailed-entries-section')?.scrollIntoView({ behavior: 'smooth' });
-                            }}
-                            className="text-xs"
-                          >
-                            <Search className="h-3 w-3 mr-1" />
-                            ดู
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Stock Entries List */}
-        <Card id="detailed-entries-section">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Package className="h-5 w-5" />
-                  รายการสต็อกทั้งหมด (แยกตาม Batch)
-                </CardTitle>
-                <CardDescription>
-                  {materialFilter ? (
-                    <div className="flex items-center gap-2">
-                      <span>กำลังกรองตามวัตถุดิบที่เลือก</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setMaterialFilter("")}
-                        className="h-6 text-xs text-blue-600 hover:text-blue-700"
-                      >
-                        แสดงทั้งหมด
-                      </Button>
-                    </div>
-                  ) : (
-                    `แสดง ${stockEntries.length} รายการในหน้านี้ (ทั้งหมด ${totalCount.toLocaleString()} สต็อก)`
-                  )}
-                </CardDescription>
-              </div>
-            </div>
-
-            {/* Filters */}
-            <div className="flex gap-4 mt-4 flex-wrap">
-              <div className="flex gap-2">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as any)}
-                  className="px-3 py-2 border rounded-md text-sm bg-white"
-                >
-                  <option value="all">ทั้งหมด</option>
-                  <option value="active">ใช้งานได้</option>
-                  <option value="expired">หมดอายุ</option>
-                  <option value="depleted">หมดแล้ว</option>
-                </select>
-
-                <select
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value)}
-                  className="px-3 py-2 border rounded-md text-sm bg-white"
-                >
-                  <option value="createdAt">วันที่เพิ่ม</option>
-                  <option value="expirationDate">วันหมดอายุ</option>
-                  <option value="materialName">ชื่อวัตถุดิบ</option>
-                  <option value="quantityKg">ปริมาณ</option>
-                </select>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
-                >
-                  <ArrowUpDown className="h-4 w-4 mr-1" />
-                  {sortDirection === "asc" ? "น้อย-มาก" : "มาก-น้อย"}
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {stockEntries && stockEntries.length > 0 ? (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>รหัส</TableHead>
-                      <TableHead>ชื่อวัตถุดิบ</TableHead>
-                      <TableHead>ปริมาณ (kg)</TableHead>
-                      <TableHead>ราคา/kg (฿)</TableHead>
-                      <TableHead>ราคารวม (฿)</TableHead>
-                      <TableHead>วันหมดอายุ</TableHead>
-                      <TableHead>Batch</TableHead>
-                      <TableHead>ผู้จัดหา</TableHead>
-                      <TableHead>สถานะ</TableHead>
-                      <TableHead>จัดการ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stockEntries.map((stock: any) => (
-                      <TableRow key={stock._id}>
-                        <TableCell className="font-mono text-sm">
-                          {stock.materialCode}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {stock.materialName}
-                        </TableCell>
-                        <TableCell className="text-sm font-mono">
-                          {stock.quantityKg.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-sm font-mono">
-                          {stock.unitPrice.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-sm font-mono font-semibold">
-                          {stock.totalCost.toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {formatDate(stock.expirationDate)}
-                            {isExpired(stock.expirationDate) && (
-                              <Badge variant="destructive" className="text-xs">หมดอายุ</Badge>
-                            )}
-                            {!isExpired(stock.expirationDate) && isExpiringSoon(stock.expirationDate) && (
-                              <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300">ใกล้หมดอายุ</Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {stock.batchNumber || "-"}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {stock.supplier || "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={stock.status === "active" ? "default" : "secondary"}
-                            className={
-                              stock.status === "active"
-                                ? "bg-green-100 text-green-800 hover:bg-green-200"
-                                : stock.status === "expired"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-gray-100 text-gray-800"
-                            }
-                          >
-                            {stock.status === "active" ? "ใช้งานได้" : stock.status === "expired" ? "หมดอายุ" : "หมดแล้ว"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleEdit(stock)}
-                            >
-                              <Edit className="h-4 w-4 text-blue-600" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                handleDelete(stock._id, stock.materialName)
-                              }
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                    <div className="text-sm text-gray-600">
-                      แสดง {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, totalCount)} จากทั้งหมด {totalCount.toLocaleString()} สต็อก
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                        disabled={currentPage === 1}
-                      >
-                        <ChevronLeft className="h-4 w-4 mr-1" />
-                        ก่อนหน้า
-                      </Button>
-                      <div className="text-sm text-gray-600">
-                        หน้า {currentPage} / {totalPages}
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                        disabled={!hasMore}
-                      >
-                        ถัดไป
-                        <ChevronRight className="h-4 w-4 ml-1" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center py-12">
-                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">ยังไม่มีสต็อก</p>
-                <p className="text-sm text-gray-500">
-                  คลิก &quot;เพิ่มสต็อก&quot; เพื่อเพิ่มสต็อกวัตถุดิบใหม่
-                </p>
-              </div>
             )}
-          </CardContent>
-        </Card>
+          </>
+        ) : (
+          /* Empty state */
+          <div className="py-16 text-center">
+            <Package className="h-8 w-8 text-gray-200 mx-auto mb-3" />
+            <p className="text-[12px] text-gray-400">ยังไม่มีสต็อก</p>
+            <p className="text-[11px] text-gray-300 mt-0.5">
+              คลิก &quot;Add Stock&quot; เพื่อเพิ่มสต็อกวัตถุดิบใหม่
+            </p>
+          </div>
+        )}
       </div>
-    </div>
+    </ConsolePageShell>
   );
 }
 
+/**
+ * StockPage — Default export with Suspense boundary.
+ */
 export default function StockPage() {
-  console.log('🎬 [StockPage] Page component rendering');
+  console.log("[stock] page rendering");
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">กำลังโหลด...</p>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-gray-600" />
         </div>
-      </div>
-    }>
+      }
+    >
       <StockContent />
     </Suspense>
   );
