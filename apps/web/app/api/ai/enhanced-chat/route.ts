@@ -33,6 +33,17 @@ function get_react_agent(): ReactAgentService {
 
 // Initialize services on startup
 let servicesInitialized = false;
+const REACT_AGENT_TIMEOUT_MS = Number(process.env.REACT_AGENT_TIMEOUT_MS || 52000);
+
+function with_timeout<T>(promise: Promise<T>, timeout_ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeout_ms);
+    }),
+  ]);
+}
+
 async function initializeServices() {
   if (!servicesInitialized) {
     try {
@@ -92,15 +103,20 @@ export async function POST(request: NextRequest) {
     try {
       console.log('[enhanced-chat] POST: attempting ReAct agent path');
       const reactAgent = get_react_agent();
-      const reactResult = await reactAgent.execute({
-        prompt: body.prompt,
-        user_id: body.userId,
-        session_id: body.conversationHistory?.[0]?.sessionId,
-        conversation_history: body.conversationHistory?.map((m: any) => ({
-          role: m.role || 'user',
-          content: m.content || '',
-        })),
-      });
+      const reactResult = await with_timeout(
+        reactAgent.execute({
+          prompt: body.prompt,
+          user_id: body.userId,
+          organization_id: body.organizationId,
+          session_id: body.sessionId || body.conversationHistory?.[0]?.sessionId,
+          conversation_history: body.conversationHistory?.map((m: any) => ({
+            role: m.role || 'user',
+            content: m.content || '',
+          })),
+        }),
+        REACT_AGENT_TIMEOUT_MS,
+        'AI processing timed out. Please try a narrower request.',
+      );
 
       if (reactResult.success) {
         console.log(`[enhanced-chat] POST: ReAct success, iterations=${reactResult.iterations}`);
@@ -116,6 +132,7 @@ export async function POST(request: NextRequest) {
               processingTime: reactResult.processing_time,
               agent: 'react',
               toolCalls: reactResult.tool_calls.map((t: any) => t.name),
+              artifacts: reactResult.artifacts,
             },
           },
           performance: {
@@ -192,6 +209,7 @@ export async function POST(request: NextRequest) {
     // Generate response using Gemini
     const startTime = Date.now();
     const geminiResponse = await geminiService.generateResponse(aiRequest);
+    const geminiMetadata = geminiResponse.metadata as (typeof geminiResponse.metadata & { confidence?: number }) | undefined;
     const responseTime = Date.now() - startTime;
 
     // Record interaction for ML learning
@@ -222,7 +240,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         response: geminiResponse.response,
-        confidence: geminiResponse.metadata?.confidence || 0.5,
+        confidence: geminiMetadata?.confidence || 0.5,
         sources: [], // Sources not yet implemented in Gemini service
         metadata: geminiResponse.metadata || {},
         searchResults: searchResults.length > 0 ? searchResults : undefined,

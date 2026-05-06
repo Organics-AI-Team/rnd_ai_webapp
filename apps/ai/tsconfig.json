@@ -6,6 +6,7 @@
     "rootDir": ".",
     "noEmit": false,
     "module": "commonjs",
+    "moduleResolution": "node",
     "paths": {
       "@/*": ["./*"],
       "@rnd-ai/shared-types": ["../../packages/shared-types/src"]

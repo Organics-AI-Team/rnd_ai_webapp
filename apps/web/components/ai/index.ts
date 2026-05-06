@@ -8,6 +8,7 @@
 
 // Core atomic components
 export { AIChatMessage, type Message } from './ai_chat_message';
+export { AIFormulaResult } from './ai_formula_result';
 export { AIChatInput } from './ai_chat_input';
 export { AIFeaturesGrid, type Feature } from './ai_features_grid';
 export { AILoadingIndicator } from './ai_loading_indicator';

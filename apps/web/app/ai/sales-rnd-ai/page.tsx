@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { Suspense, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TrendingUp, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -18,6 +18,16 @@ import {
   type Message,
 } from '@/components/ai';
 
+const THAI_CHAR_REGEX = /[\u0E00-\u0E7F]/;
+
+function get_error_message(user_input: string): string {
+  if (!THAI_CHAR_REGEX.test(user_input)) {
+    return 'Sorry, I encountered an error while processing your request. Please try again later.';
+  }
+
+  return 'ขออภัย ระบบประมวลผลคำขอไม่สำเร็จในรอบนี้ กรุณาลองใหม่อีกครั้ง หรือระบุเงื่อนไขให้แคบลง';
+}
+
 /**
  * Sales R&D AI Page
  *
@@ -33,7 +43,7 @@ import {
  * - Thai language support
  */
 
-export default function SalesRndAIPage() {
+function SalesRndAIPageContent() {
   const { user } = useAuth();
   const search_params = useSearchParams();
   const thread_param = search_params.get('thread');
@@ -89,6 +99,12 @@ export default function SalesRndAIPage() {
         body: JSON.stringify({
           prompt: user_input,
           userId: user?.id,
+          organizationId: user?.organizationId,
+          sessionId: chat.active_thread?.id || undefined,
+          conversationHistory: chat.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
           context: {
             category: 'sales-rnd-ai',
             useSearch: true,
@@ -106,12 +122,23 @@ export default function SalesRndAIPage() {
       }
 
       const data = await response.json();
-      const ai_content = data.data?.response || 'Sorry, I could not process your request at the moment.';
+      const artifacts = data.data?.metadata?.artifacts;
+      const ai_content = data.data?.response || (
+        THAI_CHAR_REGEX.test(user_input)
+          ? 'ขออภัย ระบบยังประมวลผลคำขอนี้ไม่สำเร็จ'
+          : 'Sorry, I could not process your request at the moment.'
+      );
       const ai_metadata = {
-        sources: data.data?.sources || [],
+        sources: data.data?.sources || artifacts?.citations || [],
         confidence: data.data?.confidence || 0.5,
         ragUsed: data.performance?.searchPerformed || false,
         responseTime: data.performance?.responseTime || 0,
+        toolCalls: data.data?.metadata?.toolCalls || [],
+        processSteps: artifacts?.processSteps || [],
+        formula: artifacts?.formula,
+        citations: artifacts?.citations || [],
+        quickActions: artifacts?.quickActions || [],
+        language: artifacts?.language,
       };
 
       // Persist assistant message
@@ -122,7 +149,7 @@ export default function SalesRndAIPage() {
       console.error('[SalesRndAI] handle_send_message — error', error);
       await chat.add_message(
         'assistant',
-        'Sorry, I encountered an error while processing your request. Please try again later.',
+        get_error_message(user_input),
       );
     } finally {
       setIsLoading(false);
@@ -210,16 +237,17 @@ export default function SalesRndAIPage() {
                 isLoading={isLoading}
                 themeColor="purple"
                 emptyStateIcon={<TrendingUp className="w-10 h-10" />}
-                emptyStateGreeting="Ask about sales strategies, market trends, or formulations"
+                emptyStateGreeting="ถามเรื่องตลาด การขาย หรือสูตรที่ต้องใช้ฐานข้อมูลวัตถุดิบ"
                 emptyStateSuggestions={[
-                  'Analyze current market trends',
-                  'Generate a sales pitch for anti-aging',
-                  'Compare competitor pricing',
-                  'Revenue growth strategy for Q2',
-                  'Find new B2B opportunities',
+                  'วิเคราะห์เทรนด์ตลาดกันแดดตอนนี้',
+                  'ช่วยทำสูตร SPF 50 PA++++ เนื้อเบาไม่เหนียว',
+                  'เปรียบเทียบราคาคู่แข่งกลุ่ม anti-aging',
+                  'ทำแผนเพิ่มยอดขาย Q2',
+                  'หาโอกาส B2B ใหม่สำหรับวัตถุดิบ',
                 ]}
                 onSuggestionClick={(s) => setInput(s)}
-                loadingMessage="Analyzing..."
+                onQuickAction={(prompt) => setInput(prompt)}
+                loadingMessage="กำลังวิเคราะห์..."
                 metadataIcon={<BarChart3 className="w-3 h-3" />}
                 metadataLabel="Market"
                 inputAreaHeight={inputAreaHeight}
@@ -236,7 +264,7 @@ export default function SalesRndAIPage() {
                 input={input}
                 onInputChange={setInput}
                 onSend={handle_send_message}
-                placeholder="Ask about sales strategies, market trends, or formulations..."
+                placeholder="ถามเรื่องตลาด การขาย หรือสูตรที่ต้องใช้ฐานข้อมูลวัตถุดิบ..."
                 disabled={isLoading}
                 onHeightChange={setInputAreaHeight}
               />
@@ -245,5 +273,13 @@ export default function SalesRndAIPage() {
         </div>
       </AIChatLayout>
     </div>
+  );
+}
+
+export default function SalesRndAIPage() {
+  return (
+    <Suspense fallback={null}>
+      <SalesRndAIPageContent />
+    </Suspense>
   );
 }

@@ -71,6 +71,22 @@ export interface ReactAgentRequest {
   conversation_history?: Array<{ role: string; content: string }>;
 }
 
+export interface ReactAgentArtifact {
+  language: 'th' | 'en';
+  processSteps: Array<{ key: string; label: string }>;
+  formula?: Record<string, any>;
+  citations?: Array<{
+    source: string;
+    rm_code?: string;
+    inci_name?: string;
+    trade_name?: string;
+    score?: number;
+  }>;
+  warnings?: Array<{ severity?: string; message: string }>;
+  quickActions?: Array<{ label: string; prompt?: string; href?: string }>;
+  partial?: boolean;
+}
+
 /**
  * Structured response returned by the ReAct agent.
  *
@@ -85,6 +101,7 @@ export interface ReactAgentResponse {
   response: string;
   success: boolean;
   tool_calls: Array<{ name: string; args: Record<string, unknown>; result: string }>;
+  artifacts: ReactAgentArtifact;
   iterations: number;
   processing_time: number;
   model: string;
@@ -100,6 +117,12 @@ const DEFAULT_CONFIG: ReactAgentConfig = {
   max_tokens: 9000,
   max_iterations: 8,
 };
+
+const TERMINAL_TOOL_NAMES = new Set<ReactToolName>([
+  'generate_formula',
+  'revise_formula',
+  'confirm_formula',
+]);
 
 // ---------------------------------------------------------------------------
 // Tool Handler Router (maps tool name -> handler function)
@@ -204,6 +227,11 @@ export class ReactAgentService {
     const tool_calls: ReactAgentResponse['tool_calls'] = [];
     let iterations = 0;
     let final_response = '';
+    const response_language = this._detect_language(request.prompt);
+    let artifacts: ReactAgentArtifact = {
+      language: response_language,
+      processSteps: [],
+    };
 
     // Build handler context from request for DB persistence
     const handler_context: ToolHandlerContext = {
@@ -294,6 +322,15 @@ export class ReactAgentService {
             args: tool_args,
             result: tool_result,
           });
+          artifacts = this._build_artifacts(tool_calls, response_language);
+
+          if (TERMINAL_TOOL_NAMES.has(tool_name) && !this._tool_result_has_error(tool_result)) {
+            final_response = this._format_terminal_tool_response(tool_name, tool_result, response_language);
+            console.log(
+              `[ReactAgentService] execute() - terminal tool ${tool_name} completed, returning formatted response`
+            );
+            break;
+          }
 
           function_response_parts.push({
             functionResponse: {
@@ -301,6 +338,10 @@ export class ReactAgentService {
               response: { result: tool_result },
             },
           });
+        }
+
+        if (final_response) {
+          break;
         }
 
         // Add tool results back to contents for the next iteration
@@ -315,10 +356,12 @@ export class ReactAgentService {
         console.warn(
           `[ReactAgentService] execute() - max iterations (${this.config.max_iterations}) reached, synthesising partial answer`
         );
-        final_response = this._synthesise_partial_answer(tool_calls);
+        artifacts = { ...this._build_artifacts(tool_calls, response_language), partial: true };
+        final_response = this._synthesise_partial_answer(tool_calls, response_language);
       } else if (!final_response) {
-        final_response =
-          'I was unable to generate a response. Please try rephrasing your question.';
+        final_response = response_language === 'th'
+          ? 'ยังสร้างคำตอบไม่ได้ กรุณาลองปรับคำถามให้เฉพาะเจาะจงขึ้น'
+          : 'I was unable to generate a response. Please try rephrasing your question.';
       }
 
       const processing_time = Date.now() - start_time;
@@ -334,6 +377,7 @@ export class ReactAgentService {
         response: final_response,
         success: true,
         tool_calls,
+        artifacts,
         iterations,
         processing_time,
         model: this.config.model,
@@ -348,9 +392,12 @@ export class ReactAgentService {
       });
 
       return {
-        response: `An error occurred while processing your request: ${error.message}`,
+        response: response_language === 'th'
+          ? `เกิดข้อผิดพลาดระหว่างประมวลผล: ${error.message}`
+          : `An error occurred while processing your request: ${error.message}`,
         success: false,
         tool_calls,
+        artifacts: { ...artifacts, partial: true },
         iterations,
         processing_time,
         model: this.config.model,
@@ -450,47 +497,41 @@ export class ReactAgentService {
    * @returns A human-readable summary string.
    */
   private _synthesise_partial_answer(
-    tool_calls: ReactAgentResponse['tool_calls']
+    tool_calls: ReactAgentResponse['tool_calls'],
+    language: 'th' | 'en' = 'th',
   ): string {
     console.log(
       '[ReactAgentService] _synthesise_partial_answer() - start',
       { tool_call_count: tool_calls.length }
     );
 
-    const summary_lines: string[] = [
-      'I reached the maximum number of reasoning steps. Here is what I found so far:\n',
-    ];
-
-    for (const call of tool_calls) {
-      summary_lines.push(`**Tool: ${call.name}**`);
-
-      // Attempt to parse JSON results for cleaner display
-      try {
-        const parsed = JSON.parse(call.result);
-        if (parsed.error) {
-          summary_lines.push(`- Error: ${parsed.error}`);
-        } else {
-          summary_lines.push(
-            `- Result: ${JSON.stringify(parsed).slice(0, 500)}${
-              JSON.stringify(parsed).length > 500 ? '...' : ''
-            }`
-          );
-        }
-      } catch {
-        // Plain text result
-        summary_lines.push(
-          `- Result: ${call.result.slice(0, 500)}${
-            call.result.length > 500 ? '...' : ''
-          }`
-        );
-      }
-
-      summary_lines.push('');
+    const terminal_call = [...tool_calls]
+      .reverse()
+      .find((call) => TERMINAL_TOOL_NAMES.has(call.name as ReactToolName));
+    if (terminal_call && !this._tool_result_has_error(terminal_call.result)) {
+      return this._format_terminal_tool_response(
+        terminal_call.name as ReactToolName,
+        terminal_call.result,
+        language,
+      );
     }
 
-    summary_lines.push(
-      'Please refine your question if you need more specific information.'
-    );
+    const search_calls = tool_calls.filter((call) => call.name === 'qdrant_search');
+    if (search_calls.length > 0) {
+      return this._format_search_fallback(search_calls[search_calls.length - 1].result, language);
+    }
+
+    const summary_lines: string[] = language === 'th'
+      ? [
+          'ขออภัย ระบบใช้เวลาคิดครบขีดจำกัดก่อนสรุปคำตอบได้สมบูรณ์',
+          '',
+          'ข้อมูลบางส่วนถูกค้นคืนแล้ว แต่ยังไม่ได้สังเคราะห์เป็นคำตอบสุดท้าย กรุณาลองถามให้แคบลงหรือแบ่งคำถามเป็นส่วนย่อย เช่น สูตร, วัตถุดิบ, หรือราคา batch',
+        ]
+      : [
+          'The agent reached its reasoning limit before completing a final answer.',
+          '',
+          'Some data was retrieved, but it was not fully synthesized. Please narrow the question or split it into formula, ingredient, or cost steps.',
+        ];
 
     const partial_answer = summary_lines.join('\n');
     console.log(
@@ -499,5 +540,299 @@ export class ReactAgentService {
     );
 
     return partial_answer;
+  }
+
+  private _tool_result_has_error(result: string): boolean {
+    try {
+      const parsed = JSON.parse(result);
+      return Boolean(parsed?.error);
+    } catch {
+      return /^error:/i.test(result.trim()) || result.toLowerCase().includes(' failed ');
+    }
+  }
+
+  private _format_terminal_tool_response(
+    tool_name: ReactToolName,
+    result: string,
+    language: 'th' | 'en' = 'th',
+  ): string {
+    try {
+      const parsed = JSON.parse(result);
+      if (parsed?.error) {
+        return language === 'th'
+          ? `ขออภัย พบปัญหาในการประมวลผล: ${parsed.error}`
+          : `There was a processing issue: ${parsed.error}`;
+      }
+
+      if (tool_name === 'generate_formula') {
+        return this._format_generated_formula(parsed, language);
+      }
+
+      if (tool_name === 'confirm_formula') {
+        const title = language === 'th' ? 'ยืนยันสูตรเรียบร้อยแล้ว' : 'Formula confirmed';
+        return [
+          title,
+          '',
+          parsed.formula_code ? `- Formula code: ${parsed.formula_code}` : null,
+          parsed.version ? `- Version: v${String(parsed.version).padStart(2, '0')}` : null,
+          parsed.status ? `- Status: ${parsed.status}` : null,
+        ].filter(Boolean).join('\n');
+      }
+
+      if (tool_name === 'revise_formula') {
+        return this._format_generated_formula(parsed, language);
+      }
+    } catch {
+      // Fall through to plain text cleanup below.
+    }
+
+    return result
+      .replace(/^Result:\s*/i, '')
+      .slice(0, 4000);
+  }
+
+  private _format_generated_formula(
+    formula: Record<string, any>,
+    language: 'th' | 'en' = 'th',
+  ): string {
+    const lines: string[] = [];
+    const name = formula.formula_name || formula.formulaName || 'AI-generated formula';
+    const batch_size = formula.batch_size_grams || formula.totalAmount || 100;
+
+    lines.push(`## ${name}`);
+    lines.push('');
+    lines.push(language === 'th'
+      ? `สร้างสูตร draft สำหรับ **${formula.product_type || 'cosmetic product'}** ขนาด batch ${batch_size} g แล้ว`
+      : `Draft formula created for **${formula.product_type || 'cosmetic product'}**, batch size ${batch_size} g`);
+
+    if (Array.isArray(formula.target_benefits) && formula.target_benefits.length > 0) {
+      lines.push(language === 'th'
+        ? `เป้าหมาย: ${formula.target_benefits.join(', ')}`
+        : `Targets: ${formula.target_benefits.join(', ')}`);
+    }
+
+    if (formula.formula_code || formula.formula_id) {
+      lines.push('');
+      lines.push(language === 'th' ? '**บันทึกในระบบแล้ว**' : '**Saved to system**');
+      if (formula.formula_code) lines.push(`- Code: ${formula.formula_code}`);
+      if (formula.formula_id) lines.push(`- ID: ${formula.formula_id}`);
+      lines.push('- Status: draft v0');
+    }
+
+    lines.push('');
+    lines.push(language === 'th'
+      ? `รวม: **${formula.total_percentage ?? '100'}%**`
+      : `Total: **${formula.total_percentage ?? '100'}%**`);
+    if (formula.estimated_cost_thb != null) {
+      lines.push(language === 'th'
+        ? `ต้นทุนประมาณ: **${formula.estimated_cost_thb} THB / ${batch_size} g**`
+        : `Estimated cost: **${formula.estimated_cost_thb} THB / ${batch_size} g**`);
+    }
+
+    if (Array.isArray(formula.warnings) && formula.warnings.length > 0) {
+      lines.push('');
+      lines.push(language === 'th'
+        ? `มีจุดที่ต้องตรวจสอบ ${formula.warnings.length} รายการ ดูรายละเอียดในกล่องสูตรด้านล่าง`
+        : `${formula.warnings.length} review item(s) found. See the formula panel below.`);
+    }
+
+    lines.push('');
+    lines.push(language === 'th'
+      ? 'ควรให้ R&D ตรวจ stability, pH, preservative efficacy และผล SPF/PA ตาม lab protocol ก่อนผลิตจริง'
+      : 'R&D should validate stability, pH, preservative efficacy, and SPF/PA results before production.');
+
+    if (formula.formula_id) {
+      lines.push('');
+      lines.push(language === 'th'
+        ? 'ถ้าตรวจแล้วใช้ได้ สามารถกด action หรือพิมพ์ confirm สูตรนี้ เพื่อบันทึกเป็น v01'
+        : 'If this draft is acceptable, use the confirm action or type confirm to save it as v01.');
+    }
+
+    return lines.join('\n');
+  }
+
+  private _format_search_fallback(result: string, language: 'th' | 'en' = 'th'): string {
+    const cleaned = result
+      .replace(/^Qdrant search results\s+—/i, 'ผลค้นหา RAG:')
+      .replace(/─{3,}/g, '')
+      .trim();
+
+    if (language === 'en') {
+      return [
+        'RAG search completed, but the agent timed out before fully synthesizing the answer.',
+        '',
+        cleaned.slice(0, 2500),
+        '',
+        'Try narrowing the request, for example: choose the top 5, generate a formula, or calculate cost.',
+      ].join('\n');
+    }
+
+    return [
+      'ระบบค้นข้อมูลจาก RAG ได้แล้ว แต่ยังสรุปคำตอบไม่ทันภายในรอบการคิดที่กำหนด',
+      '',
+      cleaned.slice(0, 2500),
+      '',
+      'ลองถามแบบเจาะจงขึ้น เช่น ต้องการ “เลือก 5 ตัวที่เหมาะสุด”, “ทำสูตร”, หรือ “คำนวณต้นทุน”',
+    ].join('\n');
+  }
+
+  private _detect_language(prompt: string): 'th' | 'en' {
+    return /[\u0E00-\u0E7F]/.test(prompt) ? 'th' : 'en';
+  }
+
+  private _build_artifacts(
+    tool_calls: ReactAgentResponse['tool_calls'],
+    language: 'th' | 'en',
+  ): ReactAgentArtifact {
+    const latest_formula_call = [...tool_calls]
+      .reverse()
+      .find((call) => ['generate_formula', 'revise_formula'].includes(call.name));
+    const raw_formula = latest_formula_call ? this._parse_json(latest_formula_call.result) : undefined;
+    const formula = raw_formula && !raw_formula.error
+      ? this._normalize_formula_artifact(raw_formula)
+      : raw_formula;
+    const citations = this._build_citations(tool_calls, formula);
+    const warnings = Array.isArray(formula?.warnings)
+      ? formula.warnings.map((warning: any) => ({
+          severity: warning.severity,
+          message: String(warning.message || warning),
+        }))
+      : [];
+
+    return {
+      language,
+      processSteps: this._build_process_steps(tool_calls, language),
+      formula: formula && !formula.error ? formula : undefined,
+      citations,
+      warnings,
+      quickActions: this._build_quick_actions(formula, language),
+    };
+  }
+
+  private _parse_json(value: string): Record<string, any> | undefined {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private _normalize_formula_artifact(formula: Record<string, any>): Record<string, any> {
+    if (Array.isArray(formula.ingredients)) {
+      return formula;
+    }
+
+    const phases = formula.phases;
+    if (!phases || typeof phases !== 'object') {
+      return formula;
+    }
+
+    const ingredients: Record<string, any>[] = [];
+    for (const [phase_label, phase_ingredients] of Object.entries(phases)) {
+      if (!Array.isArray(phase_ingredients)) continue;
+
+      for (const ingredient of phase_ingredients) {
+        if (!ingredient || typeof ingredient !== 'object') continue;
+        ingredients.push({
+          phase: (ingredient as Record<string, any>).phase || phase_label,
+          phase_label,
+          ...(ingredient as Record<string, any>),
+        });
+      }
+    }
+
+    const total_percentage = ingredients.reduce((sum, ingredient) => {
+      const percentage = Number(ingredient.percentage);
+      return Number.isFinite(percentage) ? sum + percentage : sum;
+    }, 0);
+
+    return {
+      ...formula,
+      ingredients,
+      total_percentage: formula.total_percentage ?? Number(total_percentage.toFixed(4)),
+    };
+  }
+
+  private _build_process_steps(
+    tool_calls: ReactAgentResponse['tool_calls'],
+    language: 'th' | 'en',
+  ): Array<{ key: string; label: string }> {
+    const labels: Record<string, { th: string; en: string }> = {
+      qdrant_search: { th: 'ค้นวัตถุดิบจากฐานข้อมูล RAG', en: 'Searched ingredient RAG database' },
+      mongo_query: { th: 'ค้นข้อมูลแบบ exact match ใน MongoDB', en: 'Looked up exact records in MongoDB' },
+      formula_calculate: { th: 'คำนวณสูตรหรือต้นทุน', en: 'Calculated formula or cost' },
+      web_search: { th: 'ค้นข้อมูลภายนอก', en: 'Searched external sources' },
+      context_memory: { th: 'อ่านบริบทจากแชทก่อนหน้า', en: 'Loaded prior chat context' },
+      generate_formula: { th: 'สร้างสูตร draft', en: 'Generated draft formula' },
+      search_reference_formulas: { th: 'ค้นสูตรอ้างอิง', en: 'Searched reference formulas' },
+      revise_formula: { th: 'ปรับสูตรตาม feedback', en: 'Revised formula from feedback' },
+      get_formula_with_comments: { th: 'อ่านสูตรและคอมเมนต์', en: 'Loaded formula comments' },
+      confirm_formula: { th: 'ยืนยันสูตรเป็น version ทางการ', en: 'Confirmed formula version' },
+    };
+
+    return [...new Set(tool_calls.map((call) => call.name))].map((key) => ({
+      key,
+      label: labels[key]?.[language] || key.replace(/_/g, ' '),
+    }));
+  }
+
+  private _build_citations(
+    tool_calls: ReactAgentResponse['tool_calls'],
+    formula?: Record<string, any>,
+  ): ReactAgentArtifact['citations'] {
+    const citations: ReactAgentArtifact['citations'] = [];
+
+    if (Array.isArray(formula?.ingredients)) {
+      for (const ing of formula.ingredients.slice(0, 12)) {
+        if (ing.rm_code && ing.rm_code !== 'WATER' && ing.rm_code !== 'AUTO') {
+          citations.push({
+            source: 'raw_materials_myskin',
+            rm_code: ing.rm_code,
+            inci_name: ing.inci_name,
+            trade_name: ing.trade_name,
+            score: ing.score,
+          });
+        }
+      }
+    }
+
+    for (const call of tool_calls.filter((item) => item.name === 'qdrant_search')) {
+      citations.push({
+        source: String(call.args.collection || 'raw_materials_myskin'),
+      });
+    }
+
+    const seen = new Set<string>();
+    return citations.filter((item) => {
+      const key = `${item.source}:${item.rm_code || item.inci_name || item.trade_name || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 12);
+  }
+
+  private _build_quick_actions(
+    formula: Record<string, any> | undefined,
+    language: 'th' | 'en',
+  ): ReactAgentArtifact['quickActions'] {
+    if (!formula || formula.error) return [];
+
+    const formula_id = formula.formula_id;
+    if (language === 'en') {
+      return [
+        formula_id ? { label: 'Confirm v01', prompt: `confirm formula ${formula_id}` } : null,
+        { label: 'Lighter texture', prompt: 'Revise this formula to make the texture lighter and less sticky.' },
+        { label: 'Reduce cost', prompt: 'Revise this formula to reduce cost while keeping the main benefits.' },
+        formula_id ? { label: 'Open formula', href: `/formulas?formula=${formula_id}` } : null,
+      ].filter(Boolean) as ReactAgentArtifact['quickActions'];
+    }
+
+    return [
+      formula_id ? { label: 'Confirm เป็น v01', prompt: `confirm สูตรนี้ ${formula_id}` } : null,
+      { label: 'ปรับ texture ให้เบา', prompt: 'ช่วยปรับสูตรนี้ให้ texture เบาขึ้น ซึมง่าย และเหนียวน้อยลง' },
+      { label: 'ลดต้นทุน', prompt: 'ช่วยปรับสูตรนี้ให้ต้นทุนต่ำลง แต่ยังคง benefit หลักไว้' },
+      formula_id ? { label: 'เปิดสูตร', href: `/formulas?formula=${formula_id}` } : null,
+    ].filter(Boolean) as ReactAgentArtifact['quickActions'];
   }
 }

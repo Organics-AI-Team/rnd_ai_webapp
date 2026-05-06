@@ -18,6 +18,16 @@ let toolService: GeminiToolService | null = null;
 let searchService: EnhancedHybridSearchService | null = null;
 let mlService: PreferenceLearningService | null = null;
 let reactAgentSingleton: ReactAgentService | null = null;
+const REACT_AGENT_TIMEOUT_MS = Number(process.env.REACT_AGENT_TIMEOUT_MS || 52000);
+
+function with_timeout<T>(promise: Promise<T>, timeout_ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeout_ms);
+    }),
+  ]);
+}
 
 /**
  * Get or create the singleton ReactAgentService.
@@ -313,16 +323,20 @@ export async function POST(request: NextRequest) {
     try {
       console.log('[raw-materials-agent] POST: attempting ReAct agent path');
       const reactAgent = get_react_agent();
-      const reactResult = await reactAgent.execute({
-        prompt: body.prompt,
-        user_id: body.userId,
-        organization_id: body.organizationId,
-        session_id: body.conversationHistory?.[0]?.sessionId,
-        conversation_history: body.conversationHistory?.map((m: any) => ({
-          role: m.role || 'user',
-          content: m.content || '',
-        })),
-      });
+      const reactResult = await with_timeout(
+        reactAgent.execute({
+          prompt: body.prompt,
+          user_id: body.userId,
+          organization_id: body.organizationId,
+          session_id: body.sessionId || body.conversationHistory?.[0]?.sessionId,
+          conversation_history: body.conversationHistory?.map((m: any) => ({
+            role: m.role || 'user',
+            content: m.content || '',
+          })),
+        }),
+        REACT_AGENT_TIMEOUT_MS,
+        'AI processing timed out. Please try a narrower request.',
+      );
 
       if (reactResult.success) {
         console.log(`[raw-materials-agent] POST: ReAct success, iterations=${reactResult.iterations}`);
@@ -343,6 +357,7 @@ export async function POST(request: NextRequest) {
             iterations: reactResult.iterations,
             processingTime: reactResult.processing_time,
             agent: 'react',
+            artifacts: reactResult.artifacts,
           },
         });
       }

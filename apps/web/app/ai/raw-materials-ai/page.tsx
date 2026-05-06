@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { Suspense, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Package, Search } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -18,6 +18,16 @@ import {
   type Message,
 } from '@/components/ai';
 
+const THAI_CHAR_REGEX = /[\u0E00-\u0E7F]/;
+
+function get_error_message(user_input: string): string {
+  if (!THAI_CHAR_REGEX.test(user_input)) {
+    return 'Sorry, I encountered an error while searching the database. Please try again later.';
+  }
+
+  return 'ขออภัย ระบบค้นฐานข้อมูลไม่สำเร็จในรอบนี้ กรุณาลองใหม่อีกครั้ง หรือระบุวัตถุดิบ/ประเภทสูตรให้แคบลง';
+}
+
 /**
  * Raw Materials AI Page
  *
@@ -33,7 +43,7 @@ import {
  * - Real-time confidence scoring
  */
 
-export default function RawMaterialsAIPage() {
+function RawMaterialsAIPageContent() {
   const { user } = useAuth();
   const search_params = useSearchParams();
   const thread_param = search_params.get('thread');
@@ -90,6 +100,7 @@ export default function RawMaterialsAIPage() {
           prompt: user_input,
           userId: user?.id || 'anonymous',
           organizationId: user?.organizationId,
+          sessionId: chat.active_thread?.id || undefined,
           conversationHistory: chat.messages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -107,12 +118,23 @@ export default function RawMaterialsAIPage() {
       }
 
       const data = await response.json();
-      const ai_content = data.response || 'Sorry, I could not process your request at the moment.';
+      const artifacts = data.metadata?.artifacts;
+      const ai_content = data.response || (
+        THAI_CHAR_REGEX.test(user_input)
+          ? 'ขออภัย ระบบยังประมวลผลคำขอนี้ไม่สำเร็จ'
+          : 'Sorry, I could not process your request at the moment.'
+      );
       const ai_metadata = {
-        sources: data.searchResults || [],
+        sources: data.searchResults || artifacts?.citations || [],
         confidence: data.metadata?.confidence || 0.5,
         ragUsed: data.features?.searchEnabled || false,
-        responseTime: data.metadata?.latency || 0,
+        responseTime: data.metadata?.processingTime || data.metadata?.latency || 0,
+        toolCalls: data.features?.optimizationsApplied || [],
+        processSteps: artifacts?.processSteps || [],
+        formula: artifacts?.formula,
+        citations: artifacts?.citations || [],
+        quickActions: artifacts?.quickActions || [],
+        language: artifacts?.language,
       };
 
       // Persist assistant message
@@ -123,7 +145,7 @@ export default function RawMaterialsAIPage() {
       console.error('[RawMaterialsAI] handle_send_message — error', error);
       await chat.add_message(
         'assistant',
-        'Sorry, I encountered an error while searching the database. Please try again later.',
+        get_error_message(user_input),
       );
     } finally {
       setIsLoading(false);
@@ -211,16 +233,17 @@ export default function RawMaterialsAIPage() {
                 isLoading={isLoading}
                 themeColor="blue"
                 emptyStateIcon={<Package className="w-10 h-10" />}
-                emptyStateGreeting="Ask about raw materials, ingredients, or formulations"
+                emptyStateGreeting="ถามเรื่องวัตถุดิบ ส่วนผสม หรือสูตรเครื่องสำอาง"
                 emptyStateSuggestions={[
-                  'Search for moisturizing ingredients',
-                  'Generate an anti-aging serum formula',
-                  'Find preservative systems',
-                  'Compare Niacinamide suppliers',
-                  'Check FDA limits for Retinol',
+                  'ค้นวัตถุดิบเพิ่มความชุ่มชื้น',
+                  'ทำสูตร anti-aging serum',
+                  'หา preservative system ที่เหมาะสม',
+                  'เปรียบเทียบ supplier ของ Niacinamide',
+                  'เช็กข้อจำกัดการใช้ Retinol',
                 ]}
                 onSuggestionClick={(s) => setInput(s)}
-                loadingMessage="Searching..."
+                onQuickAction={(prompt) => setInput(prompt)}
+                loadingMessage="กำลังค้นฐานข้อมูล..."
                 metadataIcon={<Search className="w-3 h-3" />}
                 metadataLabel="Database"
                 inputAreaHeight={inputAreaHeight}
@@ -237,7 +260,7 @@ export default function RawMaterialsAIPage() {
                 input={input}
                 onInputChange={setInput}
                 onSend={handle_send_message}
-                placeholder="Ask about raw materials, ingredients, or formulations..."
+                placeholder="ถามเรื่องวัตถุดิบ ส่วนผสม หรือสูตรเครื่องสำอาง..."
                 disabled={isLoading}
                 onHeightChange={setInputAreaHeight}
               />
@@ -246,5 +269,13 @@ export default function RawMaterialsAIPage() {
         </div>
       </AIChatLayout>
     </div>
+  );
+}
+
+export default function RawMaterialsAIPage() {
+  return (
+    <Suspense fallback={null}>
+      <RawMaterialsAIPageContent />
+    </Suspense>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { FormulaForm } from "@/components/formula-form";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { ConsolePageShell } from "@/components/console_page_shell";
  *
  * @returns JSX.Element - The create formula page
  */
-export default function CreateFormulaPage() {
+function CreateFormulaPageContent() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -78,5 +79,13 @@ export default function CreateFormulaPage() {
         <FormulaForm />
       </div>
     </ConsolePageShell>
+  );
+}
+
+export default function CreateFormulaPage() {
+  return (
+    <Suspense fallback={null}>
+      <CreateFormulaPageContent />
+    </Suspense>
   );
 }

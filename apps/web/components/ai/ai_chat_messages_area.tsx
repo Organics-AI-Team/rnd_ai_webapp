@@ -42,6 +42,7 @@ interface AIChatMessagesAreaProps {
   inputAreaHeight?: number;
   bottomPadding?: number;
   onSuggestionClick?: (suggestion: string) => void;
+  onQuickAction?: (prompt: string) => void;
   /** Callback when user submits feedback on a message */
   onFeedback?: (messageId: string, isPositive: boolean) => void;
   /** Set of message IDs that already have feedback submitted */
@@ -60,6 +61,7 @@ export function AIChatMessagesArea({
   metadataLabel = 'Enhanced',
   bottomPadding = 16,
   onSuggestionClick,
+  onQuickAction,
   onFeedback,
   feedbackSubmitted = new Set(),
 }: AIChatMessagesAreaProps) {
@@ -133,6 +135,7 @@ export function AIChatMessagesArea({
                 themeColor={themeColor}
                 metadataIcon={metadataIcon}
                 metadataLabel={metadataLabel}
+                onQuickAction={onQuickAction}
                 onFeedback={onFeedback}
                 feedbackSubmitted={feedbackSubmitted.has(message.id)}
               />
