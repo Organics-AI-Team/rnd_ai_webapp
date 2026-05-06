@@ -1,0 +1,559 @@
+// R&D AI Management — Prisma Schema (MongoDB)
+// Generated from existing Zod schemas in apps/ai/lib/types.ts
+// 20 collections mapped to Prisma models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTH & USER MODELS
+// ============================================
+
+model Account {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  email        String   @unique
+  passwordHash String
+  isVerified   Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions Session[]
+  user     User?
+
+  @@map("accounts")
+}
+
+model Session {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  accountId String   @db.ObjectId
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model User {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  accountId      String   @unique @db.ObjectId
+  organizationId String   @db.ObjectId
+  email          String
+  name           String
+  role           UserRole @default(admin)
+  status         UserStatus @default(active)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  account      Account      @relation(fields: [accountId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("users")
+}
+
+model Organization {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                String
+  credits             Float    @default(0)
+  ownerId             String
+  favoriteIngredients String[] @default([])
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  users              User[]
+  orders             Order[]
+  formulas           Formula[]
+  stockEntries       StockEntry[]
+  products           Product[]
+  creditTransactions CreditTransaction[]
+  userLogs           UserLog[]
+  chatThreads        ChatThread[]
+
+  @@map("organizations")
+}
+
+enum UserRole {
+  admin
+  shipper
+  shopper
+}
+
+enum UserStatus {
+  active
+  suspend
+}
+
+// ============================================
+// PRODUCT/INVENTORY MODELS
+// ============================================
+
+model RawMaterial {
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  rm_code     String  @unique
+  trade_name  String
+  inci_name   String?
+  supplier    String?
+  rm_cost     Float?
+  company_name String?
+  companies_id Int?
+  benefits    String?
+  details     String?
+  usecase     String?
+
+  @@map("raw_materials_console")
+}
+
+model Product {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId    String   @db.ObjectId
+  productCode       String
+  productName       String
+  description       String?
+  price             Float
+  stockQuantity     Int      @default(0)
+  lowStockThreshold Int      @default(10)
+  isActive          Boolean  @default(true)
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([productCode])
+  @@map("products")
+}
+
+model StockEntry {
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String      @db.ObjectId
+  materialId     String
+  materialCode   String
+  materialName   String
+  quantityKg     Float
+  unitPrice      Float
+  totalCost      Float
+  expirationDate DateTime
+  batchNumber    String?
+  supplier       String?
+  notes          String?
+  status         StockStatus @default(active)
+  createdBy      String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([materialId])
+  @@index([status])
+  @@index([expirationDate])
+  @@map("stock_entries")
+}
+
+enum StockStatus {
+  active
+  expired
+  depleted
+}
+
+// ============================================
+// FORMULA MODELS
+// ============================================
+
+model Formula {
+  id                  String            @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId      String            @db.ObjectId
+  formulaCode         String?
+  formulaName         String
+  version             Int               @default(1)
+  client              String?
+  targetBenefits      String[]          @default([])
+  ingredients         FormulaIngredient[]
+  totalAmount         Float?
+  remarks             String?
+  status              FormulaStatus     @default(draft)
+  // AI generation metadata
+  parentFormulaId     String?           @db.ObjectId
+  referenceFormulaIds String[]          @default([])
+  aiGenerated         Boolean           @default(false)
+  generationPrompt    String?
+  createdBy           String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  comments     FormulaComment[]
+
+  @@index([organizationId])
+  @@index([formulaCode])
+  @@index([parentFormulaId])
+  @@map("formulas")
+}
+
+type FormulaIngredient {
+  materialId  String
+  rm_code     String
+  productName String
+  inci_name   String?
+  amount      Float
+  percentage  Float?
+  notes       String?
+}
+
+enum FormulaStatus {
+  draft
+  confirmed
+  testing
+  approved
+  rejected
+}
+
+// ============================================
+// FORMULA VERSION LOG — Immutable audit trail
+// ============================================
+
+model FormulaVersionLog {
+  id                String              @id @default(auto()) @map("_id") @db.ObjectId
+  formulaId         String              @db.ObjectId
+  version           Int                 // 0 = pre-confirm draft, 1+ = confirmed versions
+  previousVersion   Int?                // version before this change (null for initial creation)
+  changeType        FormulaChangeType   // what happened
+  updatedBySource   FormulaUpdateSource // ai or user
+  updatedByUserId   String              // user ID or "ai-system"
+  updatedByName     String              // display name
+  status            String              // formula status at this point in time
+  ingredientSnapshot Json?              // full ingredients array snapshot
+  changelog         Json?               // array of change entries
+  remarks           String?             // human-readable summary of this version
+  createdAt         DateTime            @default(now())
+
+  @@index([formulaId])
+  @@index([formulaId, version])
+  @@map("formula_version_logs")
+}
+
+enum FormulaChangeType {
+  created           // initial AI generation
+  revised           // AI revised based on feedback
+  edited            // user manually edited
+  confirmed         // user confirmed draft → version bumped
+  status_changed    // status transition (e.g. confirmed → testing)
+}
+
+enum FormulaUpdateSource {
+  ai
+  user
+}
+
+model FormulaComment {
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  formulaId       String      @db.ObjectId
+  version         Int         @default(0)  // formula version this comment belongs to
+  userId          String
+  userName        String
+  content         String
+  commentType     CommentType @default(feedback)
+  parentCommentId String?     @db.ObjectId
+  metadata        Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  formula Formula @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+
+  @@index([formulaId])
+  @@index([formulaId, version])
+  @@index([userId])
+  @@index([parentCommentId])
+  @@map("formula_comments")
+}
+
+enum CommentType {
+  feedback
+  suggestion
+  approval
+  rejection
+  revision_note
+  version_update
+}
+
+// ============================================
+// ORDER MODELS
+// ============================================
+
+model Order {
+  id               String      @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String      @db.ObjectId
+  productId        String?
+  productCode      String?
+  productName      String
+  price            Float
+  quantity         Int
+  channel          Channel
+  customerName     String
+  customerContact  String
+  shippingAddress  String
+  status           OrderStatus @default(pending)
+  createdBy        String
+  orderSource      OrderSource @default(admin)
+  orderDate        String?
+  // Shipping costs
+  pickPackCost     Float       @default(0)
+  bubbleCost       Float       @default(0)
+  paperInsideCost  Float       @default(0)
+  cancelOrderCost  Float       @default(0)
+  codCost          Float       @default(0)
+  boxCost          Float       @default(0)
+  deliveryFeeCost  Float       @default(0)
+  totalShippingCost Float      @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([channel])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  pending
+  processing
+  sent_to_logistic
+  delivered
+  cancelled
+}
+
+enum Channel {
+  line
+  shopee
+  lazada
+  other
+}
+
+enum OrderSource {
+  admin
+  client
+}
+
+// ============================================
+// CREDIT TRANSACTION MODEL
+// ============================================
+
+model CreditTransaction {
+  id               String                @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String                @db.ObjectId
+  organizationName String
+  type             CreditTransactionType
+  amount           Float
+  balanceBefore    Float
+  balanceAfter     Float
+  description      String
+  orderId          String?
+  performedBy      String?
+  performedByName  String?
+  createdAt        DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([type])
+  @@map("credit_transactions")
+}
+
+enum CreditTransactionType {
+  add
+  deduct
+  adjust
+  refund
+}
+
+// ============================================
+// LOG MODELS
+// ============================================
+
+model ProductLog {
+  id             String          @id @default(auto()) @map("_id") @db.ObjectId
+  date           String
+  time           String
+  productId      String
+  productCode    String
+  productName    String
+  action         ProductAction
+  quantityChange Float?
+  previousStock  Float?
+  newStock       Float?
+  userId         String
+  userName       String?
+  organizationId String
+  refId          String?
+  notes          String?
+  createdAt      DateTime        @default(now())
+
+  @@index([organizationId])
+  @@index([productId])
+  @@map("product_logs")
+}
+
+enum ProductAction {
+  create
+  update
+  add_stock
+  reduce_stock
+  delete
+}
+
+model UserLog {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  date           String
+  time           String
+  userId         String
+  userName       String?
+  activity       String
+  refId          String?
+  organizationId String?  @db.ObjectId
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("user_logs")
+}
+
+// ============================================
+// AI CONVERSATION MODELS
+// ============================================
+
+model Conversation {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String
+  sessionId String?
+  messages  ConversationMessage[]
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("conversations")
+}
+
+type ConversationMessage {
+  role      String
+  content   String
+  timestamp DateTime @default(now())
+}
+
+model Feedback {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  responseId String?
+  userId     String?
+  rating     Int?
+  comment    String?
+  category   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([responseId])
+  @@map("feedback")
+}
+
+model AiResponse {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId   String?
+  query            String
+  response         String
+  model            String?
+  toolsUsed        String[] @default([])
+  processingTimeMs Int?
+  feedbackScore    Float?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  @@index([conversationId])
+  @@map("ai_responses")
+}
+
+// ============================================
+// CHAT THREAD MODELS (Persistent Conversations)
+// ============================================
+
+model ChatThread {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId  String    @db.ObjectId
+  userId          String    @db.ObjectId
+  agentType       AgentType
+  title           String
+  messageCount    Int       @default(0)
+  lastMessageAt   DateTime  @default(now())
+  isArchived      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  messages     ChatMessage[]
+
+  @@index([organizationId, agentType])
+  @@index([userId, agentType])
+  @@index([lastMessageAt])
+  @@map("chat_threads")
+}
+
+enum AgentType {
+  raw_materials_ai
+  sales_rnd_ai
+}
+
+model ChatMessage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  threadId  String   @db.ObjectId
+  role      String
+  content   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@map("chat_messages")
+}
+
+// ============================================
+// PRICE CALCULATION MODEL
+// ============================================
+
+model PriceCalculation {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String
+  formulaId      String?
+  calculationType String
+  ingredients    Json
+  totalCost      Float
+  markup         Float?
+  sellingPrice   Float?
+  notes          String?
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([formulaId])
+  @@map("price_calculations")
+}

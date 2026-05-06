@@ -1,0 +1,24 @@
+{
+  "name": "@rnd-ai/shared-database",
+  "version": "1.0.0",
+  "description": "Shared database utilities and connections for RND AI Management",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "mongodb": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "mongodb",
+    "database",
+    "shared",
+    "utilities"
+  ],
+  "author": "RND AI Team",
+  "license": "MIT"
+}

@@ -1,0 +1,128 @@
+version: '3.8'
+
+# R&D AI Management - Docker Compose Configuration
+# This file allows you to run both web and AI services together locally
+
+services:
+  # Web Frontend Application
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
+        - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
+        - NEXT_PUBLIC_OPENAI_API_KEY=${NEXT_PUBLIC_OPENAI_API_KEY}
+    container_name: rnd-ai-web
+    mem_limit: 1536m
+    ports:
+      - "3000:3000"
+    environment:
+      # Database
+      - DATABASE_URL=${DATABASE_URL}
+      - MONGODB_URI=${MONGODB_URI}
+      - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI}
+
+      # AI API Keys
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-pro-preview}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Vector Database (Qdrant)
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+
+      # Web Search (optional — enables ReAct web_search tool)
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
+      - GOOGLE_SEARCH_CSE_ID=${GOOGLE_SEARCH_CSE_ID:-}
+
+      # Public Variables (inlined at build time)
+      - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
+      - NEXT_PUBLIC_OPENAI_API_KEY=${NEXT_PUBLIC_OPENAI_API_KEY}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
+
+      # Admin
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+
+      # Node Environment
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - HOSTNAME=0.0.0.0
+
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+    networks:
+      - rnd-ai-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://0.0.0.0:3000/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rnd-ai-qdrant
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    environment:
+      - QDRANT__STORAGE__ON_DISK_PAYLOAD=true
+      - QDRANT__STORAGE__OPTIMIZERS__MEMMAP_THRESHOLD_KB=20000
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - rnd-ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo -e \"GET /healthz HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n\" > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+networks:
+  rnd-ai-network:
+    driver: bridge
+    name: rnd-ai-network
+
+volumes:
+  qdrant-data:
+    driver: local
+    name: rnd-ai-qdrant-data
+
+# Usage:
+# ------
+# 1. Copy .env.example to .env and fill in your values
+# 2. Build and start all services:
+#    docker-compose up -d
+#
+# 3. View logs:
+#    docker-compose logs -f web
+#    docker-compose logs -f ai
+#    docker-compose logs -f qdrant
+#
+# 4. Stop all services:
+#    docker-compose down
+#
+# 5. Stop and remove volumes:
+#    docker-compose down -v
+#
+# 6. Rebuild after code changes:
+#    docker-compose up -d --build
+#
+# Access:
+# -------
+# Web App: http://localhost:3000
+# AI Service: http://localhost:3001
+# Qdrant: http://localhost:6333
+# Qdrant gRPC: http://localhost:6334

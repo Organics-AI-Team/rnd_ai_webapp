@@ -1,0 +1,17 @@
+{
+  "extends": "../../packages/shared-config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2017"],
+    "outDir": "./dist",
+    "rootDir": ".",
+    "noEmit": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "paths": {
+      "@/*": ["./*"],
+      "@rnd-ai/shared-types": ["../../packages/shared-types/src"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.js"],
+  "exclude": ["node_modules", "dist"]
+}

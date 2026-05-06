@@ -43,6 +43,8 @@ __tests__
 # Documentation
 README.md
 docs/
+CHANGELOG.md
+*.md
 
 # OS files
 .DS_Store
@@ -57,8 +59,19 @@ tmp
 temp
 .tmp
 
-# Scripts (not needed in production)
-scripts/
+# Archive and backup files
+_archive/
+*.backup
+
+# ChromaDB data (will be in volume)
+.chromadb/
+apps/ai/.chromadb/
+
+# Monorepo build artifacts
+apps/web/.next/
+apps/web/out/
+apps/ai/dist/
+*.tsbuildinfo
 
 # Docker files
 Dockerfile

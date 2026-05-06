@@ -24,9 +24,14 @@ __pycache__/
 # next.js
 /.next/
 /out/
+apps/web/.next/
+apps/web/out/
 
 # production
 /build
+/dist
+apps/*/dist
+apps/*/.next
 
 # misc
 .DS_Store
@@ -38,6 +43,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env*.local
 
 # vercel
@@ -49,3 +55,14 @@ next-env.d.ts
 
 # ChromaDB local database
 .chromadb/
+
+# Archive and backup files
+_archive/
+*.backup
+
+/generated/prisma
+
+# Local tool directories
+.claude/
+.planning/
+.playwright-mcp/
