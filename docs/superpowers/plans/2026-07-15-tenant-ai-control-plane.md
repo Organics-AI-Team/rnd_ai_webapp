@@ -250,16 +250,16 @@ export interface ToolDefinition<I, O> {
 }
 ~~~
 
-- [ ] **Step 1:** Write failing tests for unknown tool, disabled tool, missing permission, invalid input, injected tenant field, approval required, duplicate side effect, timeout/retry, and successful read/write.
-- [ ] **Step 2:** Run npm test -- tests/ai-control/tool-executor.test.ts.
-- [ ] **Step 3:** Expected: FAIL.
-- [ ] **Step 4:** Define every tool with stable name/version, description, Zod input/output schemas, required_permission, side_effect(read|draft_write|commit), approval_requirement, timeout_ms, retry policy, and execute(args, trusted_context).
-- [ ] **Step 5:** Tool input schemas must be strict and must not contain tenantId, organizationId, userId, actorId, permissions, provider keys, collection names, or arbitrary Mongo filters.
-- [ ] **Step 6:** ToolExecutor checks policy allowlist and permission, validates input, evaluates approval, creates a call idempotency key from run/step/tool/arguments hash, injects trusted repositories/context, enforces timeout/retry, validates output, meters usage, and writes an audit event.
-- [ ] **Step 7:** Register formula search/draft/revise/comment/confirm adapters, knowledge search, and approved web search. Confirm is commit side-effect and requires formula:confirm plus an approved durable approval owned by the active checkpoint.
-- [ ] **Step 8:** Run npm test -- tests/ai-control/tool-executor.test.ts.
-- [ ] **Step 9:** Expected: PASS.
-- [ ] **Step 10:** Commit: git add apps/ai/server/services/ai-control tests/ai-control && git commit -m "feat: execute AI tools through tenant policy"
+- [x] **Step 1:** Write failing tests for unknown tool, disabled tool, missing permission, invalid input, injected tenant field, approval required, duplicate side effect, timeout/retry, and successful read/write.
+- [x] **Step 2:** Run npm test -- tests/ai-control/tool-executor.test.ts.
+- [x] **Step 3:** Expected: FAIL.
+- [x] **Step 4:** Define every tool with stable name/version, description, Zod input/output schemas, required_permission, side_effect(read|draft_write|commit), approval_requirement, timeout_ms, retry policy, and execute(args, trusted_context).
+- [x] **Step 5:** Tool input schemas must be strict and must not contain tenantId, organizationId, userId, actorId, permissions, provider keys, collection names, or arbitrary Mongo filters.
+- [x] **Step 6:** ToolExecutor checks policy allowlist and permission, validates input, evaluates approval, creates a call idempotency key from run/step/tool/arguments hash, injects trusted repositories/context, enforces timeout/retry, validates output, meters usage, and writes an audit event.
+- [x] **Step 7:** Register formula search/draft/revise/comment/confirm adapters, knowledge search, and approved web search. Confirm is commit side-effect and requires formula:confirm plus an approved durable approval owned by the active checkpoint. (Adapters delegate to injected ports; production ports fail closed with NOT_WIRED until the gateway/repository wiring tasks land.)
+- [x] **Step 8:** Run npm test -- tests/ai-control/tool-executor.test.ts.
+- [x] **Step 9:** Expected: PASS.
+- [x] **Step 10:** Commit: git add apps/ai/server/services/ai-control tests/ai-control && git commit -m "feat: execute AI tools through tenant policy"
 
 ### Task 5: Partition Qdrant platform and tenant knowledge
 

@@ -1,5 +1,39 @@
 # Changelog
 
+## [2026-07-15] feat: Add capability cards and context assembler (G4 Task 3)
+
+### Summary
+
+- Added the orchestrator contract card (`ai-control/cards/orchestrator.md`) encoding the invariant loop rules: evidence-first completion, citation duties, clarify-when-missing-input, draft-vs-commit semantics, budget awareness, and the injection-resistance stance (retrieved content is data, never instructions).
+- Added one agent card per agent_key (`raw_material_research`, `formulation`, `sales_rnd`) with persona, domain scope, working style, quality bar, output contract, and escalation guidance; tenant/deployment overrides stay in PromptVersion records, not repo cards.
+- Added `ContextAssembler`: loads the orchestrator card and the run's agent card, filters the tool catalogue by the pinned EffectiveAIPolicy and loads only allowed tools' cards (re-verifying frontmatter against each registered definition), renders a deterministic plain-language policy digest (budgets, tenant boundary, approval rules, allowed and disallowed tools), computes `pack_hash` (SHA-256 over all card hashes plus the digest hash), and returns a ContextPackV1-shaped object. Assembly fails closed on POLICY_DISABLED, CONTEXT_CARD_MISSING, and CONTEXT_CARD_DRIFT.
+- Card size stays under a configurable budget (`AI_CAPABILITY_CARD_MAX_CHARS`, default 12000 chars) enforced by tests for all 11 cards.
+
+### Verification approach
+
+- Captured RED for `tests/ai-control/capability-cards.test.ts` (missing orchestrator/agent cards) and `tests/ai-control/context-assembler.test.ts` (missing module) before implementing, then confirmed GREEN: 47 ai-control tests, 61 tests repo-wide, strict `tsc --noEmit` over all ai-control modules and tests, and the root web typecheck.
+- Pack-hash determinism proven by stable-hash and card-mutation tests against a synthetic temp cards root; no network or real datastores anywhere in the suite.
+
+### Remaining integration (tracked)
+
+- ContextPackV1 re-validation in `packages/ai-orchestration/src/context/context-pack.ts` is owned by the orchestration workspace task (G4 Task 3 Step 10).
+- Recording card names/versions/hashes on the AIRun, real AgentDeployment/PromptVersion pin resolution, the shared `EffectiveAIPolicy`/Permission contracts from `packages/shared-types`, and real repository/gateway ports for the governed tools (currently fail-closed NOT_WIRED) land with the gateway/knowledge tasks (G3 Tasks 5-7, G4 Tasks 8-9).
+
+## [2026-07-15] feat: Execute AI tools through tenant policy (G3 Task 4)
+
+### Summary
+
+- Added the governed tool catalogue under `apps/ai/server/services/ai-control/`: a declarative `ToolDefinition` contract (stable name/version, strict Zod input/output schemas, named permission, side-effect class read|draft_write|commit, approval requirement, timeout/retry policy, required `capability_card_path`, and `execute(args, trusted_context)`).
+- Added `ToolCatalogue` with policy-allowlist filtering; registration fails when the input schema is not strict, declares identity/scope/datastore fields, or when the capability card is missing or its frontmatter drifts from the definition (agentic design §4.2/§4.3 pulled forward because card enforcement is part of registration).
+- Added `ToolExecutor` — the only path from a model-proposed tool call to a side effect: policy allowlist and enabled check, permission check, recursive forbidden-key scan (tenant/org/user/actor/permission/provider-key/collection/Mongo-operator fields rejected with TOOL_INPUT_INVALID), strict input validation, strongest-of(definition, policy) approval evaluation against a durable manager-approval port, deterministic call idempotency key (SHA-256 of run/step/tool@version/canonical arguments), duplicate side-effect suppression, trusted-context injection, per-attempt timeout with bounded read-only retry (writes never retry), output validation, usage metering via an injected UsageService port, and an append-only audit event for every attempt.
+- Registered seven governed tools replacing both legacy tool systems (ReAct declarations and the Zod registry): `formula.search`, `formula.draft`, `formula.revise`, `formula.comment`, `formula.confirm` (commit-class, manager approval), `knowledge.search`, `web.search`. Tools delegate to narrow injected ports; production ports fail closed with `NOT_WIRED` until gateway/repository integration lands — no legacy handler is imported or called.
+- Added a hand-rolled strict frontmatter card loader (gray-matter deliberately not added to keep the dependency graph frozen), SHA-256 card pinning with an in-process content-hash cache, and seven operator-grade tool capability cards grounded in the audited legacy semantics (Thai domain vocabulary preserved).
+
+### Verification approach
+
+- Captured the RED run of `tests/ai-control/tool-executor.test.ts` (module-not-found failures for all governed modules) before implementation, then confirmed 24/24 tests pass, plus the existing architecture/regression/security suites (38 tests total) and a strict `tsc --noEmit` over every new module.
+- Deterministic tests only: usage, audit, approval, idempotency, and every tool port are in-process fakes; no network, Qdrant, Mongo, or Gemini access.
+
 ## [2026-07-15] feat: Implement deterministic governor for agentic loop (G4 Task 5)
 
 ### Summary
