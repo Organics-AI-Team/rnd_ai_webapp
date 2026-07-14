@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-07-15] feat: Define agentic loop contracts and state (G4 Task 2)
+
+### Summary
+
+- Added versioned public AI contracts in packages/shared-types/src/ai/contracts.ts: strict AgentRunInputV1 (no tenant/user/role/policy/model/tool/provider fields), the 12-type AgentRunEventV1 discriminated union (stage.changed is derived UI bookkeeping, not graph phase state), AgentRunOutputV1 with named quality dimensions (strict — a lone scalar confidence cannot be attached), DecisionRecordV1 as a derived audit record of the model's native tool call (max 600-char safe rationale), and RunErrorV1 with stable codes (LIMIT_*, LOOP_DETECTED, MODEL_OUTPUT_INVALID, POLICY_*, CONTEXT_PACK_INVALID...).
+- Added loop-internal contracts (ProposedActionV1 tool/clarification/finalize union, ActionResultV1, RunBudgetV1, RunPinsV1, LoopUsageV1) and the trust-labeled ObservationV1 schema.
+- Added ContextPackV1 with fail-closed validation in packages/ai-orchestration/src/context/context-pack.ts: structural schema, per-card SHA-256 integrity, and a binding pack hash (covers the orchestration-package half of plan Task 3 Step 10).
+- Added AgentLoopState (Annotation.Root) with reducer channels for observations/action_results/decision_log/events/warnings and replace channels for pending_action/output/error; deliberately no phase channel.
+- Added the StateGraph shell with exactly ingress, agent, gate, act, request_clarification, request_approval, finalize, fail and only the governed edges; gate additionally routes to fail so LOOP_DETECTED terminates without another model hop.
+
+### Verification approach
+
+- RED first (2 files failed: modules missing), then GREEN: 37 tests across contracts and graph shape, including a static scan asserting agent is the only model-facing node, plus a clean package typecheck.
+
+---
+
 ## [2026-07-15] feat: Scaffold isolated agentic orchestration package (G4 Task 1)
 
 ### Summary
