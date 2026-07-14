@@ -18,6 +18,11 @@
     "start:web": "npm run start --workspace=apps/web",
     "start:ai": "npm run start --workspace=apps/ai",
     "lint": "npm run lint --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p apps/web/tsconfig.json",
+    "security:scan": "tsx scripts/security/scan-private-boundaries.ts",
+    "verify:commercial": "npm run typecheck && npm test && npm run security:scan && npm run build:web",
     "clean": "npm run clean --workspaces --if-present && rm -rf node_modules",
     "clean-all": "rm -rf apps/*/node_modules apps/*/.next apps/*/dist packages/*/node_modules packages/*/dist node_modules .next dist .cache .turbo .vite coverage .nyc_output .pytest_cache __pycache__ *.log .DS_Store npm-debug.log* yarn-debug.log* yarn-error.log* pnpm-debug.log* lerna-debug.log* .pnpm-debug.log* .vercel .netlify .wrangler .sst .output .tmp .temp .swc .parcel-cache .eslintcache && npm cache clean --force && find . -name '*.tsbuildinfo' -delete && find . -name '.DS_Store' -delete && find . -name 'Thumbs.db' -delete && echo '✅ All cache, build artifacts, and temporary files have been removed aggressively! Environment files preserved.'",
     "reset": "npm run clean-all && npm install --legacy-peer-deps",
@@ -41,8 +46,11 @@
     "url": "git+https://github.com/your-org/rnd-ai-management.git"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "4.1.10",
     "@types/node": "^24.6.2",
-    "typescript": "^5.9.3"
+    "tsx": "4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.10"
   },
   "dependencies": {
     "@google/genai": "^1.46.0",

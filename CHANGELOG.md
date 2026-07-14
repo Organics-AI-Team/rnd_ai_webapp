@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-07-15] test: Add commercial verification baseline
+
+### Summary
+
+- Added a root Vitest harness with reproducible test and watch commands.
+- Added root typecheck, private-boundary security scan, and combined commercial verification commands for later commercialization gates.
+- Added an architecture baseline that pins the intended patched Next.js and React versions and prohibits bypassing TypeScript build validation.
+- Deliberately retained the current framework versions and `ignoreBuildErrors` setting so the architecture baseline remains RED until the framework upgrade task completes.
+
+### Verification approach
+
+- Captured the initial missing-test-script failure before installing the harness.
+- Re-ran the focused architecture test after installation to confirm it now reaches the deliberate framework baseline failures.
+
+---
+
 ## [2026-07-15] chore: Prepare isolated commercialization worktree
 
 ### Summary
