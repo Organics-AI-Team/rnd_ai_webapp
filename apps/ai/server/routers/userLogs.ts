@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 
 export const userLogsRouter = router({
   // Get all logs for organization
-  list: protectedProcedure
+  list: tenantProcedure("tenant:read")
     .input(
       z.object({
         limit: z.number().int().positive().optional().default(100),
@@ -63,7 +63,7 @@ export const userLogsRouter = router({
     }),
 
   // Get logs for current user
-  myLogs: protectedProcedure
+  myLogs: tenantProcedure("tenant:read")
     .input(
       z.object({
         limit: z.number().int().positive().optional().default(50),
@@ -87,7 +87,7 @@ export const userLogsRouter = router({
     }),
 
   // Get activity summary
-  summary: protectedProcedure
+  summary: tenantProcedure("tenant:read")
     .input(
       z.object({
         startDate: z.string().optional(), // DD/MM/YYYY
@@ -138,7 +138,7 @@ export const userLogsRouter = router({
     }),
 
   // Clear old logs (admin only)
-  clearOldLogs: protectedProcedure
+  clearOldLogs: tenantProcedure("tenant:read")
     .input(
       z.object({
         daysOld: z.number().int().positive().default(90),

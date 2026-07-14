@@ -130,22 +130,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     organizationName: string
   ) => {
     try {
-      const result = await signupMutation.mutateAsync({
+      // Public self-signup is closed (G0.5); the server always rejects this
+      // with an explicit provisioning message, which we surface verbatim.
+      await signupMutation.mutateAsync({
         email,
         password,
         name,
         organizationName,
       });
-      setToken(result.token);
-      setUser({
-        ...result.user,
-        id: result.user._id
-      });
-      localStorage.setItem("auth_token", result.token);
-      // Set cookie for middleware
-      document.cookie = `auth_token=${result.token}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
-      await refetchMe();
-      router.push("/dashboard");
+      throw new Error("University sign-up is closed.");
     } catch (error: any) {
       throw new Error(error.message || "Signup failed");
     }

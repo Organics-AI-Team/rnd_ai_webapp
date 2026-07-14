@@ -1,5 +1,25 @@
 # Changelog
 
+## [2026-07-15] fix: Verified principals required for all tRPC operations (G0.5)
+
+### Summary
+
+- `createTRPCContext` now resolves the `auth_token` cookie once per request through `resolve_legacy_principal` (Mongo-backed `LegacyIdentityStore`) and exposes only `{ principal, auth_error, legacy_user }`. Request bodies are never an identity source; resolution failures fail closed.
+- New procedure stack in `apps/ai/server/trpc.ts`: `authenticatedProcedure` (anonymous → `UNAUTHORIZED`; suspended membership → `FORBIDDEN`), `tenantProcedure(permission)` (active tenant + named permission), and `managerProcedure`. `protectedProcedure` is deleted.
+- All 16 business routers converted; `publicProcedure` survives only in `auth.ts`. Permission mapping: reads → `tenant:read`; AI surfaces → `ai:run`; formula create/update/delete/comments → `formula:draft`; `formulas.confirm` and any status transition to confirmed/approved → `formula:confirm`; credits/user administration and shipping-cost billing → manager only.
+- `auth.signup` is closed: it now always returns `PRECONDITION_FAILED` ("universities are provisioned by platform administration"). `auth.logout` derives the logged identity from the session record, not the request body.
+- Organizations/users/orders are tenant-scoped: cross-tenant `getById`/credit/order access is rejected; the anonymous list-all-organizations and all-tenants transaction views are removed; targets and acting identity (`performedBy`, `createdBy`, `organizationId`) derive from the verified principal, and those fields were removed from input schemas and web call sites.
+- Deliberate exception: `orders.submitClientOrder` remains anonymous on a dedicated `publicClientOrderProcedure` because the public client order form is a preserved G0.2 route contract; the architecture test pins it to exactly one usage.
+- Known behavior change: `ctx.user.id` previously evaluated to `undefined` at runtime (untyped raw document); conversation/feedback records now carry the real internal user ID. Legacy records with undefined IDs are handled by the G2 backfill.
+- Test infra: root `vitest.config.ts` now mirrors the web webpack aliases (`@/ai`, `@/server`, `@/` → apps/web) so router-level caller tests run against the real `appRouter`.
+
+### Verification approach
+
+- TDD RED first: 8 of 9 new architecture/caller tests failing against the public routers; GREEN after conversion (28 auth tests, 42 total across 6 files).
+- `npm run typecheck` exits 0 (after removing client-supplied identity fields from 4 web call sites) and `npm run build:web` completes.
+
+---
+
 ## [2026-07-15] feat: Provider-neutral request principal (G0.4)
 
 ### Summary

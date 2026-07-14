@@ -57,6 +57,8 @@ const valid_user: LegacyUserRecord = {
   id: "user-1",
   accountId: "account-1",
   organizationId: "org-1",
+  name: "Manager One",
+  email: "manager@example.com",
   role: "admin",
   status: "active",
   isActive: true,

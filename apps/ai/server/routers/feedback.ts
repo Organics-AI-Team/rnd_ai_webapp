@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { router, protectedProcedure, publicProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { FeedbackSchema, StoredAIResponseSchema } from "@/ai/types/feedback-types";
 import { ObjectId } from "mongodb";
 
 export const feedbackRouter = router({
   // Submit feedback for an AI response
-  submit: protectedProcedure
+  submit: tenantProcedure("ai:run")
     .input(
       z.object({
         responseId: z.string(),
@@ -83,7 +83,7 @@ export const feedbackRouter = router({
     }),
 
   // Get feedback analytics
-  getAnalytics: protectedProcedure
+  getAnalytics: tenantProcedure("ai:run")
     .input(
       z.object({
         timeRange: z.enum(['24h', '7d', '30d', '90d', 'all']).default('30d'),
@@ -304,7 +304,7 @@ export const feedbackRouter = router({
     }),
 
   // Get feedback for a specific response
-  getForResponse: protectedProcedure
+  getForResponse: tenantProcedure("ai:run")
     .input(z.object({ responseId: z.string() }))
     .query(async ({ ctx, input }) => {
       const client = await client_promise;
@@ -322,7 +322,7 @@ export const feedbackRouter = router({
     }),
 
   // Get user's feedback history (optionally filtered by serviceName for isolated learning)
-  getUserHistory: protectedProcedure
+  getUserHistory: tenantProcedure("ai:run")
     .input(
       z.object({
         userId: z.string().optional(),

@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 
@@ -25,7 +25,7 @@ export const formulaCommentsRouter = router({
    * @param version   - Optional version number to filter by
    * @returns Array of FormulaComment documents sorted newest-first
    */
-  list: protectedProcedure
+  list: tenantProcedure("formula:draft")
     .input(z.object({
       formulaId: z.string(),
       version: z.number().int().optional(),
@@ -61,7 +61,7 @@ export const formulaCommentsRouter = router({
    * @param parentCommentId - Optional parent for threaded replies
    * @param metadata        - Optional JSON metadata (e.g. AI revision references)
    */
-  create: protectedProcedure
+  create: tenantProcedure("formula:draft")
     .input(
       z.object({
         formulaId: z.string(),
@@ -119,7 +119,7 @@ export const formulaCommentsRouter = router({
    * @param commentId - The comment to update
    * @param content   - New comment text
    */
-  update: protectedProcedure
+  update: tenantProcedure("formula:draft")
     .input(
       z.object({
         commentId: z.string(),
@@ -151,7 +151,7 @@ export const formulaCommentsRouter = router({
    *
    * @param commentId - The comment to delete
    */
-  delete: protectedProcedure
+  delete: tenantProcedure("formula:draft")
     .input(z.object({ commentId: z.string() }))
     .mutation(async ({ input, ctx }) => {
       console.log(`[formulaComments.delete] start — commentId=${input.commentId}`);
@@ -175,7 +175,7 @@ export const formulaCommentsRouter = router({
    * @param version   - Optional version to scope count to
    * @returns Object with total count and breakdown by type
    */
-  count: protectedProcedure
+  count: tenantProcedure("formula:draft")
     .input(z.object({
       formulaId: z.string(),
       version: z.number().int().optional(),

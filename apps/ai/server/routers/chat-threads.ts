@@ -18,7 +18,7 @@
  */
 
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 
@@ -75,7 +75,7 @@ export const chatThreadsRouter = router({
    * @param includeArchived - Whether to include archived threads
    * @returns Array of thread summaries
    */
-  list: protectedProcedure
+  list: tenantProcedure("ai:run")
     .input(list_input)
     .query(async ({ ctx, input }) => {
       console.log('[chatThreads] list — start', {
@@ -131,7 +131,7 @@ export const chatThreadsRouter = router({
    * @param title     - Thread title (usually from first user message)
    * @returns Created thread with id
    */
-  create: protectedProcedure
+  create: tenantProcedure("ai:run")
     .input(create_input)
     .mutation(async ({ ctx, input }) => {
       console.log('[chatThreads] create — start', {
@@ -181,7 +181,7 @@ export const chatThreadsRouter = router({
    * @param before   - Cursor: fetch messages before this message ID
    * @returns Array of messages in chronological order
    */
-  getMessages: protectedProcedure
+  getMessages: tenantProcedure("ai:run")
     .input(get_messages_input)
     .query(async ({ ctx, input }) => {
       console.log('[chatThreads] getMessages — start', {
@@ -238,7 +238,7 @@ export const chatThreadsRouter = router({
    * @param metadata - Optional metadata (confidence, tools used, etc.)
    * @returns The created message
    */
-  addMessage: protectedProcedure
+  addMessage: tenantProcedure("ai:run")
     .input(add_message_input)
     .mutation(async ({ ctx, input }) => {
       console.log('[chatThreads] addMessage — start', {
@@ -299,7 +299,7 @@ export const chatThreadsRouter = router({
    * @param threadId - Thread to archive
    * @returns Success status
    */
-  archive: protectedProcedure
+  archive: tenantProcedure("ai:run")
     .input(archive_input)
     .mutation(async ({ ctx, input }) => {
       console.log('[chatThreads] archive — start', { threadId: input.threadId });
@@ -332,7 +332,7 @@ export const chatThreadsRouter = router({
    * @param title    - New title
    * @returns Updated thread summary
    */
-  updateTitle: protectedProcedure
+  updateTitle: tenantProcedure("ai:run")
     .input(update_title_input)
     .mutation(async ({ ctx, input }) => {
       console.log('[chatThreads] updateTitle — start', {

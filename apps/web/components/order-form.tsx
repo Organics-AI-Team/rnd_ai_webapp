@@ -166,9 +166,8 @@ export function OrderForm() {
     setIsSubmitting(true);
     try {
       for (const order of ordersList) {
+        // Tenant and creator identity derive from the server-verified principal.
         await createOrder.mutateAsync({
-          organizationId: organization._id,
-          createdBy: user._id,
           productId: order.productId,
           productCode: order.productCode,
           productName: order.productName,

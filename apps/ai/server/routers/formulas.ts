@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { TRPCError } from "@trpc/server";
+import { router, tenantProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import type { Formula } from "@/lib/types";
 import { ObjectId } from "mongodb";
@@ -9,7 +10,7 @@ type FormulaDocument = Omit<Formula, "_id">;
 
 export const formulasRouter = router({
   // Get next auto-generated formula code
-  getNextCode: protectedProcedure
+  getNextCode: tenantProcedure("tenant:read")
     .query(async ({ ctx }) => {
       const client = await client_promise;
       const db = client.db();
@@ -40,7 +41,7 @@ export const formulasRouter = router({
     }),
 
   // Get all formulas
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: tenantProcedure("tenant:read").query(async ({ ctx }) => {
     const client = await client_promise;
     const db = client.db();
 
@@ -57,7 +58,7 @@ export const formulasRouter = router({
   }),
 
   // Get single formula by ID
-  getById: protectedProcedure
+  getById: tenantProcedure("tenant:read")
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
       const client = await client_promise;
@@ -79,7 +80,7 @@ export const formulasRouter = router({
     }),
 
   // Create new formula
-  create: protectedProcedure
+  create: tenantProcedure("formula:draft")
     .input(
       z.object({
         formulaName: z.string().min(1, "Formula name is required"),
@@ -101,6 +102,16 @@ export const formulasRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      // Status transitions into confirmed/approved are manager territory.
+      if (
+        (input.status === "confirmed" || input.status === "approved") &&
+        !ctx.principal.permissions.includes("formula:confirm")
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "formula:confirm is required to create a confirmed or approved formula.",
+        });
+      }
       const client = await client_promise;
       const db = client.db();
 
@@ -160,7 +171,7 @@ export const formulasRouter = router({
     }),
 
   // Update formula
-  update: protectedProcedure
+  update: tenantProcedure("formula:draft")
     .input(
       z.object({
         id: z.string(),
@@ -183,6 +194,16 @@ export const formulasRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      // Status transitions into confirmed/approved are manager territory.
+      if (
+        (input.status === "confirmed" || input.status === "approved") &&
+        !ctx.principal.permissions.includes("formula:confirm")
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "formula:confirm is required to confirm or approve a formula.",
+        });
+      }
       const client = await client_promise;
       const db = client.db();
 
@@ -219,7 +240,7 @@ export const formulasRouter = router({
     }),
 
   // Delete formula
-  delete: protectedProcedure
+  delete: tenantProcedure("formula:draft")
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
@@ -256,7 +277,7 @@ export const formulasRouter = router({
    * @param remarks - Optional confirmation remarks
    * @returns Object with new version number and success flag
    */
-  confirm: protectedProcedure
+  confirm: tenantProcedure("formula:confirm")
     .input(z.object({
       id: z.string(),
       remarks: z.string().optional(),

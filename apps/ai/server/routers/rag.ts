@@ -10,7 +10,7 @@
  */
 
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import { raw_materials_client_promise } from "@rnd-ai/shared-database";
 import { QdrantRAGService, RawMaterialDocument } from "../../services/rag/qdrant-rag-service";
 import { ObjectId } from "mongodb";
@@ -18,7 +18,7 @@ import { getRAGConfig, RAGServicesConfig } from "@/ai/config/rag-config";
 
 export const ragRouter = router({
   // Search raw materials using vector similarity
-  searchRawMaterials: protectedProcedure
+  searchRawMaterials: tenantProcedure("ai:run")
     .input(
       z.object({
         query: z.string().min(1),
@@ -60,7 +60,7 @@ export const ragRouter = router({
     }),
 
   // Index raw materials data into Qdrant
-  indexRawMaterials: protectedProcedure
+  indexRawMaterials: tenantProcedure("ai:run")
     .input(
       z.object({
         batchSize: z.number().min(1).max(100).default(50),
@@ -120,7 +120,7 @@ export const ragRouter = router({
     }),
 
   // Get indexing statistics
-  getIndexStats: protectedProcedure
+  getIndexStats: tenantProcedure("ai:run")
     .query(async ({ ctx }) => {
       console.log('[ragRouter] getIndexStats — start');
 
@@ -152,7 +152,7 @@ export const ragRouter = router({
     }),
 
   // Get indexed documents count
-  getIndexedCount: protectedProcedure
+  getIndexedCount: tenantProcedure("ai:run")
     .query(async ({ ctx }) => {
       console.log('[ragRouter] getIndexedCount — start');
 
@@ -176,7 +176,7 @@ export const ragRouter = router({
     }),
 
   // Search with both vector and keyword fallback
-  hybridSearch: protectedProcedure
+  hybridSearch: tenantProcedure("ai:run")
     .input(
       z.object({
         query: z.string().min(1),

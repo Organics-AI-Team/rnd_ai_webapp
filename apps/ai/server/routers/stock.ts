@@ -4,7 +4,7 @@
  */
 
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { StockEntrySchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
@@ -14,7 +14,7 @@ export const stockRouter = router({
   /**
    * List all stock entries with filtering and pagination
    */
-  list: protectedProcedure
+  list: tenantProcedure("tenant:read")
     .input(
       z.object({
         limit: z.number().min(1).max(1000).default(50),
@@ -88,7 +88,7 @@ export const stockRouter = router({
   /**
    * Get stock summary for all materials or specific material
    */
-  summary: protectedProcedure
+  summary: tenantProcedure("tenant:read")
     .input(
       z.object({
         materialId: z.string().optional(),
@@ -149,7 +149,7 @@ export const stockRouter = router({
   /**
    * Create new stock entry
    */
-  create: protectedProcedure
+  create: tenantProcedure("tenant:read")
     .input(
       z.object({
         materialId: z.string(),
@@ -213,7 +213,7 @@ export const stockRouter = router({
   /**
    * Update stock entry
    */
-  update: protectedProcedure
+  update: tenantProcedure("tenant:read")
     .input(
       z.object({
         id: z.string(),
@@ -295,7 +295,7 @@ export const stockRouter = router({
   /**
    * Delete stock entry
    */
-  delete: protectedProcedure
+  delete: tenantProcedure("tenant:read")
     .input(
       z.object({
         id: z.string(),
@@ -345,7 +345,7 @@ export const stockRouter = router({
   /**
    * Get materials for dropdown selection
    */
-  getMaterials: protectedProcedure
+  getMaterials: tenantProcedure("tenant:read")
     .input(
       z.object({
         searchTerm: z.string().optional(),

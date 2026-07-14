@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { router, protectedProcedure, publicProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import { raw_materials_client_promise } from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 
 export const rawMaterialsConversationRouter = router({
   // Save a message to raw materials conversation
-  saveMessage: protectedProcedure
+  saveMessage: tenantProcedure("ai:run")
     .input(
       z.object({
         id: z.string(),
@@ -43,7 +43,7 @@ export const rawMaterialsConversationRouter = router({
     }),
 
   // Get raw materials conversation history for a user
-  getHistory: protectedProcedure
+  getHistory: tenantProcedure("ai:run")
     .input(
       z.object({
         limit: z.number().min(1).max(100).default(40),
@@ -74,7 +74,7 @@ export const rawMaterialsConversationRouter = router({
     }),
 
   // Get recent messages for AI context
-  getRecentMessages: protectedProcedure
+  getRecentMessages: tenantProcedure("ai:run")
     .input(
       z.object({
         limit: z.number().min(1).max(50).default(20)
@@ -98,7 +98,7 @@ export const rawMaterialsConversationRouter = router({
     }),
 
   // Clear raw materials conversation history for a user
-  clearHistory: protectedProcedure
+  clearHistory: tenantProcedure("ai:run")
     .mutation(async ({ ctx }) => {
       const client = await raw_materials_client_promise;
       const db = client.db();
@@ -119,7 +119,7 @@ export const rawMaterialsConversationRouter = router({
     }),
 
   // Get raw materials conversation statistics
-  getStats: protectedProcedure
+  getStats: tenantProcedure("ai:run")
     .query(async ({ ctx }) => {
       const client = await raw_materials_client_promise;
       const db = client.db();
@@ -156,7 +156,7 @@ export const rawMaterialsConversationRouter = router({
     }),
 
   // Get conversations with feedback for analytics
-  getConversationWithFeedback: protectedProcedure
+  getConversationWithFeedback: tenantProcedure("ai:run")
     .input(
       z.object({
         limit: z.number().min(1).max(50).default(20)

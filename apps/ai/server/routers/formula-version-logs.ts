@@ -9,7 +9,7 @@
  */
 
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { logActivity } from "@/lib/userLog";
 
@@ -20,7 +20,7 @@ export const formulaVersionLogsRouter = router({
    * @param formulaId - The formula to fetch logs for
    * @returns Array of version log entries with _id as string
    */
-  list: protectedProcedure
+  list: tenantProcedure("tenant:read")
     .input(z.object({ formulaId: z.string() }))
     .query(async ({ input }) => {
       console.log("[formula-version-logs] list — start", { formulaId: input.formulaId });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import { raw_materials_client_promise } from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 
@@ -15,7 +15,7 @@ const FeedbackSchema = z.object({
 
 export const rawMaterialsFeedbackRouter = router({
   // Submit feedback for a raw materials AI response
-  submit: protectedProcedure
+  submit: tenantProcedure("ai:run")
     .input(FeedbackSchema)
     .mutation(async ({ ctx, input }) => {
       const client = await raw_materials_client_promise;
@@ -35,7 +35,7 @@ export const rawMaterialsFeedbackRouter = router({
     }),
 
   // Get feedback statistics for a user
-  getStats: protectedProcedure
+  getStats: tenantProcedure("ai:run")
     .query(async ({ ctx }) => {
       const client = await raw_materials_client_promise;
       const db = client.db();
@@ -66,7 +66,7 @@ export const rawMaterialsFeedbackRouter = router({
     }),
 
   // Get recent feedback
-  getRecent: protectedProcedure
+  getRecent: tenantProcedure("ai:run")
     .input(
       z.object({
         limit: z.number().min(1).max(50).default(10),

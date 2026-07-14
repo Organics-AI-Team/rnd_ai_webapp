@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { SignupInputSchema, LoginInputSchema } from "@/lib/types";
@@ -8,92 +9,21 @@ import crypto from "crypto";
 import { logActivity } from "@/lib/userLog";
 
 export const authRouter = router({
-  // Signup - Creates account, organization, and user
+  /**
+   * Public self-signup is permanently closed (G0.5). Universities and their
+   * managers are provisioned only by platform administration (G1.4).
+   *
+   * @throws TRPCError PRECONDITION_FAILED on every call (HTTP 412; the
+   *         endpoint is gone as a business operation).
+   */
   signup: publicProcedure
     .input(SignupInputSchema)
-    .mutation(async ({ input }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      // Check if account already exists
-      const existingAccount = await db.collection("accounts").findOne({ email: input.email });
-      if (existingAccount) {
-        throw new Error("An account with this email already exists");
-      }
-
-      // Hash password
-      const passwordHash = await bcrypt.hash(input.password, 10);
-
-      // Create account
-      const accountResult = await db.collection("accounts").insertOne({
-        email: input.email,
-        passwordHash,
-        isVerified: false,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+    .mutation(async () => {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message:
+          "University sign-up is closed. Universities are provisioned by platform administration.",
       });
-
-      const accountId = accountResult.insertedId.toString();
-
-      // Create organization
-      const organizationResult = await db.collection("organizations").insertOne({
-        name: input.organizationName,
-        credits: 0,
-        ownerId: accountId,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      const organizationId = organizationResult.insertedId.toString();
-
-      // Create user profile
-      const userResult = await db.collection("users").insertOne({
-        accountId,
-        organizationId,
-        email: input.email,
-        name: input.name,
-        role: "admin",
-        status: "active",
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      // Create session
-      const token = crypto.randomBytes(32).toString("hex");
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-
-      await db.collection("sessions").insertOne({
-        accountId,
-        token,
-        expiresAt,
-        createdAt: new Date(),
-      });
-
-      // Log signup activity
-      await logActivity({
-        db,
-        userId: userResult.insertedId.toString(),
-        userName: input.name,
-        activity: "sign-up",
-        organizationId,
-      });
-
-      return {
-        success: true,
-        token,
-        user: {
-          _id: userResult.insertedId.toString(),
-          accountId,
-          organizationId,
-          email: input.email,
-          name: input.name,
-          role: "admin",
-          status: "active",
-        },
-      };
     }),
 
   // Login
@@ -160,26 +90,36 @@ export const authRouter = router({
       };
     }),
 
-  // Logout
+  /**
+   * Logout. Identity for the activity log is derived from the session record
+   * itself — never from client-supplied identity fields.
+   *
+   * @param token - Session token to revoke.
+   * @returns Success marker after the session is deleted.
+   */
   logout: publicProcedure
-    .input(z.object({ token: z.string(), userId: z.string().optional(), userName: z.string().optional(), organizationId: z.string().optional() }))
+    .input(z.object({ token: z.string() }))
     .mutation(async ({ input }) => {
       const client = await client_promise;
       const db = client.db();
 
-      // Log logout activity before deleting session
-      if (input.userId) {
-        await logActivity({
-          db,
-          userId: input.userId,
-          userName: input.userName,
-          activity: "log-out",
-          organizationId: input.organizationId,
-        });
+      // Derive the acting identity from the session, not the request body.
+      const session = await db.collection("sessions").findOne({ token: input.token });
+      if (session) {
+        const user = await db
+          .collection("users")
+          .findOne({ accountId: String(session.accountId) });
+        if (user) {
+          await logActivity({
+            db,
+            userId: user._id.toString(),
+            userName: user.name,
+            activity: "log-out",
+            organizationId: user.organizationId?.toString(),
+          });
+        }
+        await db.collection("sessions").deleteOne({ token: input.token });
       }
-
-      // Delete session
-      await db.collection("sessions").deleteOne({ token: input.token });
 
       return { success: true };
     }),

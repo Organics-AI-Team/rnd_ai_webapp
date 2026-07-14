@@ -1,34 +1,49 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { TRPCError } from "@trpc/server";
+import { router, tenantProcedure, managerProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
-import { CreditTransactionType } from "@/lib/types";
 import { ObjectId } from "mongodb";
 
+/**
+ * Organization (university) router. Every procedure is scoped to the
+ * caller's own tenant; cross-tenant reads and credit mutations are rejected.
+ * Platform-wide administration arrives with platform roles in G1.
+ */
 export const organizationsRouter = router({
-  // List all organizations (admin only in production)
-  list: publicProcedure.query(async () => {
+  /**
+   * List the caller's organization. The legacy anonymous "list all
+   * organizations" behavior is removed; the response stays an array for
+   * client compatibility but contains only the caller's tenant.
+   */
+  list: tenantProcedure("tenant:read").query(async ({ ctx }) => {
     const client = await client_promise;
     const db = client.db();
-    const organizations = await db
+    const org = await db
       .collection("organizations")
-      .find({})
-      .sort({ createdAt: -1 })
-      .toArray();
-    return organizations.map((org) => ({
-      ...org,
-      _id: org._id.toString(),
-    }));
+      .findOne({ _id: new ObjectId(ctx.organizationId) });
+    if (!org) return [];
+    return [{ ...org, _id: org._id.toString() }];
   }),
 
-  // Get organization by ID
-  getById: publicProcedure
+  /**
+   * Get an organization by ID — permitted only for the caller's own tenant.
+   */
+  getById: tenantProcedure("tenant:read")
     .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      if (input.id !== ctx.organizationId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Cross-tenant access is not permitted.",
+        });
+      }
       const client = await client_promise;
       const db = client.db();
-      const org = await db.collection("organizations").findOne({ _id: new ObjectId(input.id) });
+      const org = await db
+        .collection("organizations")
+        .findOne({ _id: new ObjectId(ctx.organizationId) });
       if (!org) {
-        throw new Error("Organization not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
       }
       return {
         ...org,
@@ -36,32 +51,33 @@ export const organizationsRouter = router({
       };
     }),
 
-  // Add credits to organization
-  addCredits: publicProcedure
+  /**
+   * Add credits to the caller's own organization. Manager only; the target
+   * organization and the acting identity derive from the principal.
+   */
+  addCredits: managerProcedure
     .input(
       z.object({
-        organizationId: z.string(),
         amount: z.number().positive(),
         description: z.string(),
-        performedBy: z.string().optional(),
-        performedByName: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
       const db = client.db();
 
-      const org = await db.collection("organizations").findOne({ _id: new ObjectId(input.organizationId) });
+      const org = await db
+        .collection("organizations")
+        .findOne({ _id: new ObjectId(ctx.organizationId) });
       if (!org) {
-        throw new Error("Organization not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
       }
 
       const balanceBefore = org.credits || 0;
       const balanceAfter = balanceBefore + input.amount;
 
-      // Update organization credits
       await db.collection("organizations").updateOne(
-        { _id: new ObjectId(input.organizationId) },
+        { _id: new ObjectId(ctx.organizationId) },
         {
           $set: {
             credits: balanceAfter,
@@ -70,17 +86,16 @@ export const organizationsRouter = router({
         }
       );
 
-      // Log transaction
       await db.collection("credit_transactions").insertOne({
-        organizationId: input.organizationId,
+        organizationId: ctx.organizationId,
         organizationName: org.name,
         type: "add",
         amount: input.amount,
         balanceBefore,
         balanceAfter,
         description: input.description,
-        performedBy: input.performedBy,
-        performedByName: input.performedByName,
+        performedBy: ctx.userId,
+        performedByName: ctx.user.name,
         createdAt: new Date(),
       });
 
@@ -90,33 +105,34 @@ export const organizationsRouter = router({
       };
     }),
 
-  // Adjust credits (set to specific amount)
-  adjustCredits: publicProcedure
+  /**
+   * Set the caller's own organization credits to a specific amount.
+   * Manager only; identity fields derive from the principal.
+   */
+  adjustCredits: managerProcedure
     .input(
       z.object({
-        organizationId: z.string(),
         newAmount: z.number().nonnegative(),
         description: z.string(),
-        performedBy: z.string().optional(),
-        performedByName: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
       const db = client.db();
 
-      const org = await db.collection("organizations").findOne({ _id: new ObjectId(input.organizationId) });
+      const org = await db
+        .collection("organizations")
+        .findOne({ _id: new ObjectId(ctx.organizationId) });
       if (!org) {
-        throw new Error("Organization not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
       }
 
       const balanceBefore = org.credits || 0;
       const balanceAfter = input.newAmount;
       const amount = balanceAfter - balanceBefore;
 
-      // Update organization credits
       await db.collection("organizations").updateOne(
-        { _id: new ObjectId(input.organizationId) },
+        { _id: new ObjectId(ctx.organizationId) },
         {
           $set: {
             credits: balanceAfter,
@@ -125,17 +141,16 @@ export const organizationsRouter = router({
         }
       );
 
-      // Log transaction
       await db.collection("credit_transactions").insertOne({
-        organizationId: input.organizationId,
+        organizationId: ctx.organizationId,
         organizationName: org.name,
         type: "adjust",
         amount,
         balanceBefore,
         balanceAfter,
         description: input.description,
-        performedBy: input.performedBy,
-        performedByName: input.performedByName,
+        performedBy: ctx.userId,
+        performedByName: ctx.user.name,
         createdAt: new Date(),
       });
 
@@ -145,30 +160,33 @@ export const organizationsRouter = router({
       };
     }),
 
-  // Get credit transactions for an organization
-  getTransactions: publicProcedure
-    .input(z.object({ organizationId: z.string() }))
-    .query(async ({ input }) => {
-      const client = await client_promise;
-      const db = client.db();
-      const transactions = await db
-        .collection("credit_transactions")
-        .find({ organizationId: input.organizationId })
-        .sort({ createdAt: -1 })
-        .toArray();
-      return transactions.map((transaction) => ({
-        ...transaction,
-        _id: transaction._id.toString(),
-      }));
-    }),
-
-  // Get all credit transactions (for admin)
-  getAllTransactions: publicProcedure.query(async () => {
+  /**
+   * Credit transactions for the caller's own organization only.
+   */
+  getTransactions: tenantProcedure("tenant:read").query(async ({ ctx }) => {
     const client = await client_promise;
     const db = client.db();
     const transactions = await db
       .collection("credit_transactions")
-      .find({})
+      .find({ organizationId: ctx.organizationId })
+      .sort({ createdAt: -1 })
+      .toArray();
+    return transactions.map((transaction) => ({
+      ...transaction,
+      _id: transaction._id.toString(),
+    }));
+  }),
+
+  /**
+   * Recent credit transactions, scoped to the caller's organization.
+   * The legacy anonymous all-tenants view is removed.
+   */
+  getAllTransactions: managerProcedure.query(async ({ ctx }) => {
+    const client = await client_promise;
+    const db = client.db();
+    const transactions = await db
+      .collection("credit_transactions")
+      .find({ organizationId: ctx.organizationId })
       .sort({ createdAt: -1 })
       .limit(100)
       .toArray();

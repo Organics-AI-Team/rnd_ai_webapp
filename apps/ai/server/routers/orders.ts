@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, publicClientOrderProcedure, tenantProcedure, managerProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { OrderSchema, OrderStatus } from "@/lib/types";
 import { ObjectId } from "mongodb";
@@ -8,9 +8,23 @@ import { logProductActivity } from "@/lib/productLog";
 
 export const ordersRouter = router({
   // รับออเดอร์ (Receive Order) - Admin creates order manually
-  create: publicProcedure
-    .input(OrderSchema.omit({ _id: true, createdAt: true, updatedAt: true }))
-    .mutation(async ({ input }) => {
+  create: tenantProcedure("tenant:read")
+    .input(
+      OrderSchema.omit({
+        _id: true,
+        organizationId: true,
+        createdBy: true,
+        createdAt: true,
+        updatedAt: true,
+      })
+    )
+    .mutation(async ({ input: raw_input, ctx }) => {
+      // Identity and tenant always derive from the verified principal.
+      const input = {
+        ...raw_input,
+        organizationId: ctx.organizationId,
+        createdBy: ctx.userId,
+      };
       const client = await client_promise;
       const db = client.db();
 
@@ -99,7 +113,7 @@ export const ordersRouter = router({
     }),
 
   // Client order submission - Public endpoint for clients to submit orders
-  submitClientOrder: publicProcedure
+  submitClientOrder: publicClientOrderProcedure
     .input(
       z.object({
         organizationId: z.string(),
@@ -176,22 +190,16 @@ export const ordersRouter = router({
       };
     }),
 
-  list: publicProcedure
-    .input(z.object({ organizationId: z.string().optional() }).optional())
-    .query(async ({ input, ctx }) => {
+  list: tenantProcedure("tenant:read")
+    .query(async ({ ctx }) => {
       const client = await client_promise;
       const db = client.db();
 
-      const filter: any = {};
-
-      // Filter by logged-in user's ID
-      if (ctx.userId) {
-        filter.createdBy = ctx.userId;
-      }
-
-      if (input?.organizationId) {
-        filter.organizationId = input.organizationId;
-      }
+      // Scope to the caller's organization and own-created orders.
+      const filter: any = {
+        organizationId: ctx.organizationId,
+        createdBy: ctx.userId,
+      };
 
       const orders = await db
         .collection("orders")
@@ -222,14 +230,14 @@ export const ordersRouter = router({
       return enrichedOrders;
     }),
 
-  updateStatus: publicProcedure
+  updateStatus: tenantProcedure("tenant:read")
     .input(
       z.object({
         id: z.string(),
         status: OrderStatus,
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
       const db = client.db();
 
@@ -237,6 +245,9 @@ export const ordersRouter = router({
       const order = await db.collection("orders").findOne({ _id: new ObjectId(input.id) });
       if (!order) {
         throw new Error("Order not found");
+      }
+      if (String(order.organizationId) !== ctx.organizationId) {
+        throw new Error("Cross-tenant access is not permitted.");
       }
 
       // If changing to cancelled and order has a productId, restore stock and deduct credits
@@ -321,15 +332,15 @@ export const ordersRouter = router({
       return { success: true };
     }),
 
-  getStats: publicProcedure.query(async ({ ctx }) => {
+  getStats: tenantProcedure("tenant:read").query(async ({ ctx }) => {
     const client = await client_promise;
     const db = client.db();
 
-    const filter: any = {};
-    // Filter by logged-in user's ID
-    if (ctx.userId) {
-      filter.createdBy = ctx.userId;
-    }
+    // Scope to the caller's organization and own-created orders.
+    const filter: any = {
+      organizationId: ctx.organizationId,
+      createdBy: ctx.userId,
+    };
 
     const orders = await db.collection("orders").find(filter).toArray();
 
@@ -346,11 +357,10 @@ export const ordersRouter = router({
     return stats;
   }),
 
-  updateShippingCost: publicProcedure
+  updateShippingCost: managerProcedure
     .input(
       z.object({
         id: z.string(),
-        organizationId: z.string(),
         pickPackCost: z.number().optional(),
         bubbleCost: z.number().optional(),
         paperInsideCost: z.number().optional(),
@@ -360,7 +370,9 @@ export const ordersRouter = router({
         deliveryFeeCost: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input: raw_input, ctx }) => {
+      // The billed organization always derives from the verified principal.
+      const input = { ...raw_input, organizationId: ctx.organizationId };
       const client = await client_promise;
       const db = client.db();
 
@@ -368,6 +380,9 @@ export const ordersRouter = router({
       const order = await db.collection("orders").findOne({ _id: new ObjectId(input.id) });
       if (!order) {
         throw new Error("Order not found");
+      }
+      if (String(order.organizationId) !== ctx.organizationId) {
+        throw new Error("Cross-tenant access is not permitted.");
       }
 
       // Get the organization

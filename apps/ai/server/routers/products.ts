@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import client_promise, { parseArrayField } from "@rnd-ai/shared-database";
 import { ProductSchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
@@ -67,7 +67,7 @@ async function build_cas_no_map(
 
 export const productsRouter = router({
   // Get all products for organization (from raw_materials_console collection)
-  list: protectedProcedure
+  list: tenantProcedure("tenant:read")
     .input(
       z.object({
         limit: z.number().min(1).max(1000).default(50),
@@ -190,7 +190,7 @@ export const productsRouter = router({
   }),
 
   // Get single product (from raw_materials_console collection)
-  getById: protectedProcedure
+  getById: tenantProcedure("tenant:read")
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
       const client = await client_promise;
@@ -234,7 +234,7 @@ export const productsRouter = router({
     }),
 
   // Get next auto-generated product code
-  getNextCode: protectedProcedure
+  getNextCode: tenantProcedure("tenant:read")
     .query(async ({ ctx }) => {
       const client = await client_promise;
       const db = client.db();
@@ -265,7 +265,7 @@ export const productsRouter = router({
     }),
 
   // Create new material (เพิ่มสาร - Add Material)
-  create: protectedProcedure
+  create: tenantProcedure("tenant:read")
     .input(
       z.object({
         productName: z.string().min(1, "Trade name is required"),
@@ -354,7 +354,7 @@ export const productsRouter = router({
     }),
 
   // Update material
-  update: protectedProcedure
+  update: tenantProcedure("tenant:read")
     .input(
       z.object({
         id: z.string(),
@@ -457,7 +457,7 @@ export const productsRouter = router({
     }),
 
   // Add stock (เพิ่มสต๊อก)
-  addStock: protectedProcedure
+  addStock: tenantProcedure("tenant:read")
     .input(
       z.object({
         id: z.string(),
@@ -497,7 +497,7 @@ export const productsRouter = router({
     }),
 
   // Delete material
-  delete: protectedProcedure
+  delete: tenantProcedure("tenant:read")
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
@@ -549,7 +549,7 @@ export const productsRouter = router({
     }),
 
   // Get low stock products
-  lowStock: protectedProcedure.query(async ({ ctx }) => {
+  lowStock: tenantProcedure("tenant:read").query(async ({ ctx }) => {
     const client = await client_promise;
     const db = client.db();
 
@@ -570,7 +570,7 @@ export const productsRouter = router({
   }),
 
   // Toggle favorite ingredient
-  toggleFavorite: protectedProcedure
+  toggleFavorite: tenantProcedure("tenant:read")
     .input(z.object({ ingredientId: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
@@ -617,7 +617,7 @@ export const productsRouter = router({
     }),
 
   // Duplicate ingredient (creates copy with new auto-generated code)
-  duplicate: protectedProcedure
+  duplicate: tenantProcedure("tenant:read")
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
       const client = await client_promise;

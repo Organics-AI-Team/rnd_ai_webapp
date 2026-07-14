@@ -136,9 +136,9 @@ export default function ShippingPage() {
       return;
     }
 
+    // The billed organization derives from the server-verified principal.
     updateShippingCost.mutate({
       id: confirmingOrderId,
-      organizationId: organization._id,
       pickPackCost: costs.pickPackCost,
       bubbleCost: costs.bubbleCost,
       paperInsideCost: costs.paperInsideCost,

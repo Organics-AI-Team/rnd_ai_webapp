@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
+import { router, tenantProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
@@ -109,7 +109,7 @@ export const calculationsRouter = router({
    * @param {number} laborCostPerBatch - Fixed labor cost per batch
    * @returns {CalculationResult} Complete calculation breakdown
    */
-  calculateManual: protectedProcedure
+  calculateManual: tenantProcedure("tenant:read")
     .input(ManualCalculationParamsSchema)
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
@@ -221,7 +221,7 @@ export const calculationsRouter = router({
    * @param {CalculationResult} calculation - The calculation to save
    * @returns {object} Saved calculation with ID
    */
-  saveCalculation: protectedProcedure
+  saveCalculation: tenantProcedure("tenant:read")
     .input(CalculationResultSchema.omit({ calculatedAt: true }))
     .mutation(async ({ ctx, input }) => {
       logger.info("Saving calculation", {
@@ -267,7 +267,7 @@ export const calculationsRouter = router({
    *
    * @returns {array} List of saved calculations
    */
-  listCalculations: protectedProcedure
+  listCalculations: tenantProcedure("tenant:read")
     .query(async ({ ctx }) => {
       logger.info("Listing calculations", {
         userId: ctx.user._id,
@@ -315,7 +315,7 @@ export const calculationsRouter = router({
    * @param {string} id - Calculation ID
    * @returns {object} The calculation details
    */
-  getById: protectedProcedure
+  getById: tenantProcedure("tenant:read")
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       logger.info("Getting calculation by ID", {
@@ -358,7 +358,7 @@ export const calculationsRouter = router({
    * @param {string} id - Calculation ID to delete
    * @returns {object} Success confirmation
    */
-  deleteCalculation: protectedProcedure
+  deleteCalculation: tenantProcedure("tenant:read")
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       logger.info("Deleting calculation", {

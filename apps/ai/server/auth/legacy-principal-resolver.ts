@@ -36,6 +36,8 @@ export interface LegacyUserRecord {
   id: string;
   accountId: string;
   organizationId: string;
+  name: string;
+  email: string;
   role: LegacyUserRole;
   status: "active" | "suspend";
   isActive: boolean;

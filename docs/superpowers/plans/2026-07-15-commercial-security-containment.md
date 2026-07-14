@@ -307,12 +307,12 @@ it("rejects anonymous business router calls", async () => {
 });
 ~~~
 
-- [ ] **Step 1:** Write an architecture test that parses every router except auth.ts and fails if publicProcedure appears.
-- [ ] **Step 2:** Write caller tests proving anonymous list/create/update/delete calls fail with UNAUTHORIZED and suspended membership fails with FORBIDDEN.
-- [ ] **Step 3:** Run npm test -- tests/auth/trpc-procedures.test.ts.
-- [ ] **Step 4:** Expected: FAIL and report organizations, users, orders, and other unprotected procedures.
-- [ ] **Step 5:** Change createTRPCContext to resolve the legacy token once and expose principal: RequestPrincipal | null. Do not expose request body organizationId or userId as context.
-- [ ] **Step 6:** Implement this procedure stack:
+- [x] **Step 1:** Write an architecture test that parses every router except auth.ts and fails if publicProcedure appears.
+- [x] **Step 2:** Write caller tests proving anonymous list/create/update/delete calls fail with UNAUTHORIZED and suspended membership fails with FORBIDDEN.
+- [x] **Step 3:** Run npm test -- tests/auth/trpc-procedures.test.ts.
+- [x] **Step 4:** Expected: FAIL and report organizations, users, orders, and other unprotected procedures.
+- [x] **Step 5:** Change createTRPCContext to resolve the legacy token once and expose principal: RequestPrincipal | null. Do not expose request body organizationId or userId as context.
+- [x] **Step 6:** Implement this procedure stack:
 
 **Implementation anchor:**
 
@@ -330,12 +330,12 @@ export const tenantProcedure = (permission: Permission) =>
   });
 ~~~
 
-- [ ] **Step 7:** Delete auth.signup. Replace it with an explicit GONE error saying universities are provisioned by platform administration. Keep login/logout/me only until G1, and derive logout identity from the session rather than input.
-- [ ] **Step 8:** Convert every business procedure to authenticatedProcedure or tenantProcedure. Require formula:confirm for both the formula router confirm mutation and any status transition to confirmed/approved.
-- [ ] **Step 9:** Remove organizationId and createdBy/userId identity fields from input schemas where they are derivable; use ctx.principal values.
-- [ ] **Step 10:** Run npm test -- tests/auth/trpc-procedures.test.ts.
-- [ ] **Step 11:** Expected: PASS with zero public business procedures.
-- [ ] **Step 12:** Commit: git add apps/ai/server tests/auth && git commit -m "fix: require verified principals for tRPC operations"
+- [x] **Step 7:** Delete auth.signup. Replace it with an explicit GONE error saying universities are provisioned by platform administration. Keep login/logout/me only until G1, and derive logout identity from the session rather than input.
+- [x] **Step 8:** Convert every business procedure to authenticatedProcedure or tenantProcedure. Require formula:confirm for both the formula router confirm mutation and any status transition to confirmed/approved.
+- [x] **Step 9:** Remove organizationId and createdBy/userId identity fields from input schemas where they are derivable; use ctx.principal values.
+- [x] **Step 10:** Run npm test -- tests/auth/trpc-procedures.test.ts.
+- [x] **Step 11:** Expected: PASS with zero public business procedures.
+- [x] **Step 12:** Commit: git add apps/ai/server tests/auth && git commit -m "fix: require verified principals for tRPC operations"
 
 ### Task 6: Guard every direct route handler and remove body identity
 
