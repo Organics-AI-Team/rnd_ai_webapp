@@ -4,7 +4,7 @@
 
 **Goal:** Sequence the Clerk, tenant-isolation, AI-control, OODA, and rollout work so each increment is deployable, reversible, and measurably safer than the current system.
 
-**Architecture:** The program establishes one verified request principal and one tenant authorization boundary before replacing custom identity with Clerk. It then converts application data and AI data to mandatory tenant scope, introduces a tenant AI control plane, cuts traffic to one typed LangGraph OODA gateway, and removes legacy paths only after evaluation and canary gates pass.
+**Architecture:** The program establishes one verified request principal and one tenant authorization boundary before replacing custom identity with Clerk. It then converts application data and AI data to mandatory tenant scope, introduces a tenant AI control plane, cuts traffic to one governed agentic-loop gateway (a single model-driven orchestrator node with capability-card context injection, wrapped by a deterministic governor — see docs/superpowers/specs/2026-07-15-agentic-orchestrator-design.md), and removes legacy paths only after evaluation and canary gates pass.
 
 **Tech Stack:** Next.js 16.2.10, React 19.2.7, Clerk Next.js 7.5.18, TypeScript 5.9, tRPC 11, MongoDB/Prisma 6.19, Qdrant, LangGraph 1.4.7, Zod 3.25, Vitest 4.1.10, Playwright 1.61.1.
 
@@ -28,7 +28,7 @@ Execute these implementation plans in dependency order:
 | G1 | 2026-07-15-clerk-identity-tenant-provisioning.md | G0 | Clerk sessions, platform-created universities, invitations, migrated users |
 | G2 | 2026-07-15-tenant-data-authorization.md | G1 | Every private record and operation is tenant scoped and migration is verified |
 | G3 | 2026-07-15-tenant-ai-control-plane.md | G2 | Tenant policy, knowledge isolation, quotas, usage ledger, governed tools |
-| G4 | 2026-07-15-ooda-agent-orchestration.md | G3 | One typed OODA gateway produces validated, attributable artifacts |
+| G4 | 2026-07-15-ooda-agent-orchestration.md | G3 | One governed agentic-loop gateway produces validated, attributable artifacts |
 | G5 | 2026-07-15-commercial-evaluation-rollout.md | G4 | Evaluation, canary, rollback, operations, legacy retirement |
 
 G0 and the framework portion of G1 may be developed on separate branches, but G1 must rebase on the patched G0 baseline before merge. G2 through G5 are sequential because each consumes contracts created by the previous gate.
@@ -154,9 +154,9 @@ npm run test:rollback -- --from=commercial-g5 --to=commercial-g4
 - [ ] **Step 30:** Every tool declares permissions, side-effect class, approval rule, and input/output schemas.
 - [ ] **Step 31:** Qdrant tests prove platform and tenant knowledge cannot cross-contaminate.
 
-### G4 — OODA orchestration
+### G4 — Agentic orchestration
 
-- [ ] **Step 32:** The typed graph exposes Observe, Orient, Decide, Act, Evaluate, Clarify, Approve, Finalize, and Fail states.
+- [ ] **Step 32:** The governed loop exposes exactly one model-driven reasoning node plus deterministic ingress, gate, act, clarify, approve, finalize, and fail nodes; every registered tool ships a capability card whose frontmatter matches its definition, and the run pins the context-pack hashes.
 - [ ] **Step 33:** Checkpoint resume is idempotent and preserves tenant, policy, prompt, deployment, and tool versions.
 - [ ] **Step 34:** Formula output totals 100 percent within 0.01 and contains evidence/validation metadata.
 - [ ] **Step 35:** The web client consumes versioned events from one authenticated AI run API.

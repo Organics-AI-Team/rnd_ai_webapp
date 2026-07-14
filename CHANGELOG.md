@@ -1,5 +1,26 @@
 # Changelog
 
+## [2026-07-15] docs: Dynamic agentic orchestrator design supersedes fixed OODA pipeline
+
+### Summary
+
+Replaced the planned twelve-fixed-node OODA StateGraph with a governed agentic loop per product-owner direction ("dynamic pure agentic with orchestrator and .md inject"). One model-driven reasoning node owns flow (which tool, when to clarify, when to finalize); a deterministic governor (ingress, gate, act, validators, finalize, fail) owns authorization, budgets, checkpoints, loop detection, and side effects. The orchestrator understands its capabilities through injected markdown capability cards — one .md per tool and per agent — assembled at ingress, filtered by tenant policy, and pinned by content hash on the run. Specialists become delegation tools running the same loop recursively with narrowed allowlists and reserved budgets.
+
+### Rationale (OODA on the AI architecture)
+
+- Observe: the audited system has ~9 executor paths with only 2 user-reachable, both funneling into one hardcoded ReAct agent with silent fallbacks; two disjoint tool systems with inline mixed-language description strings; prompts split across hardcoded TS and orphaned .md files.
+- Orient: OODA as emergent loop behavior (tool result = observe, reasoning turn = orient+decide, gated execution = act, deterministic validators = evaluate) preserves every governance guarantee of the fixed graph while cutting 3-4 structured-output model calls per cycle to 1 native tool-calling turn and removing the OrientationV1/DecisionV1 structured-output failure mode.
+- Decide: keep LangGraph for durability only (checkpoints, interrupts, streaming); keep all public contracts, formula validation, run API/worker, typed UI events, and boundary scanning from the prior plan.
+- Act: rewrote the G4 plan in place; program gate references remain valid.
+
+### Documentation
+
+- Added docs/superpowers/specs/2026-07-15-agentic-orchestrator-design.md (supersedes section 11 of the tenancy design; includes current-state audit appendix).
+- Rewrote docs/superpowers/plans/2026-07-15-ooda-agent-orchestration.md as the Agentic Orchestration Implementation Plan (11 tasks: workspace, contracts, capability cards + context assembler, agent node, deterministic governor, delegation tools, checkpoints/interrupts, formula artifacts, run API, typed UI events, boundary enforcement).
+- Updated docs/superpowers/plans/2026-07-15-commercialization-program.md G4 exit criteria and architecture summary.
+
+---
+
 ## [2026-07-15] chore: Prepare isolated commercialization worktree
 
 ### Summary
