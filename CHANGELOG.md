@@ -1,5 +1,20 @@
 # Changelog
 
+## [2026-07-15] feat: Tenant provenance on every private schema (G2.2)
+
+### Summary
+
+- Expanded 15 Prisma models (Product, StockEntry, Formula, FormulaVersionLog, FormulaComment, Order, CreditTransaction, ProductLog, Conversation, Feedback, AiResponse, ChatThread, ChatMessage, PriceCalculation, UserLog) with nullable `tenantId String? @db.ObjectId`; `organizationId` stays for dual-read comparison and tenantId becomes required only after the G2.3/G2.4 backfill verifies.
+- Added `actorProfileId` wherever free-form createdBy/userId/performedBy attribution exists and `ownerProfileId` to Conversation, ChatThread, Formula, Feedback, and AiResponse (owner-level rules); UserLog gains an explicit platform/tenant `scope`.
+- Added compound tenant indexes per lookup key ([tenantId,formulaId], [tenantId,threadId], [tenantId,ownerProfileId], [tenantId,status], [tenantId,createdAt], [tenantId,materialId], [tenantId,productId], [tenantId,isActive]).
+- RawMaterial stays platform-global (pinned by test); legacy Account/Session/User/Organization documented as frozen. Full per-collection scope/source/conflict/owner/enforcement table in docs/commercial/data/tenant-ownership-map.md — every row resolved.
+
+### Verification approach
+
+- TDD RED (29 schema assertions failing) → GREEN 30/30 after expansion; prisma format+validate+generate clean; suite 191/191; verify:commercial exit 0.
+
+---
+
 ## [2026-07-15] feat: Tenant execution and ownership contracts (G2.1)
 
 ### Summary

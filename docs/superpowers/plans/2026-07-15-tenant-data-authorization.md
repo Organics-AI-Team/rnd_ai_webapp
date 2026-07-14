@@ -119,18 +119,18 @@ model FormulaComment {
 
 Apply the same tenantId and actor/owner pattern to every model listed in this task before making any field required.
 
-- [ ] **Step 1:** Write a schema test that parses schema.prisma and asserts tenantId on Product, StockEntry, Formula, FormulaVersionLog, FormulaComment, Order, CreditTransaction, ProductLog, Conversation, Feedback, AiResponse, ChatThread, ChatMessage, and PriceCalculation.
-- [ ] **Step 2:** Assert compound tenant indexes for every resource key used by a lookup, including [tenantId,id] conceptually through Mongo _id filtering, [tenantId,formulaId], [tenantId,userProfileId], [tenantId,threadId], [tenantId,createdAt], and [tenantId,status].
-- [ ] **Step 3:** Run npm test -- tests/architecture/tenant-schema.test.ts.
-- [ ] **Step 4:** Expected: FAIL and list models without tenantId.
-- [ ] **Step 5:** Add nullable tenantId String? @db.ObjectId to each listed model during expansion. Keep organizationId temporarily for dual-read comparison; never make tenantId required before Task 4 verifies the backfill.
-- [ ] **Step 6:** Add actorProfileId to records currently carrying free-form createdBy/userId where attribution is required. Add ownerProfileId to Conversation, ChatThread, Formula draft, Feedback, and AI artifacts that have owner-level rules.
-- [ ] **Step 7:** Keep RawMaterial platform-global. Mark UserLog scope as platform or tenant and require tenantId only for tenant events. Document Organization, Account, Session, and User as legacy-only.
-- [ ] **Step 8:** Document each collection, scope, source field, conflict rule, owner rule, and enforcement status in tenant-ownership-map.md. Every row must contain a resolved value.
-- [ ] **Step 9:** Run npx prisma format && npx prisma validate && npx prisma generate.
-- [ ] **Step 10:** Run npm test -- tests/architecture/tenant-schema.test.ts.
-- [ ] **Step 11:** Expected: PASS.
-- [ ] **Step 12:** Commit: git add prisma docs/commercial/data tests/architecture && git commit -m "feat: add tenant provenance to private schemas"
+- [x] **Step 1:** Write a schema test that parses schema.prisma and asserts tenantId on Product, StockEntry, Formula, FormulaVersionLog, FormulaComment, Order, CreditTransaction, ProductLog, Conversation, Feedback, AiResponse, ChatThread, ChatMessage, and PriceCalculation.
+- [x] **Step 2:** Assert compound tenant indexes for every resource key used by a lookup, including [tenantId,id] conceptually through Mongo _id filtering, [tenantId,formulaId], [tenantId,userProfileId], [tenantId,threadId], [tenantId,createdAt], and [tenantId,status].
+- [x] **Step 3:** Run npm test -- tests/architecture/tenant-schema.test.ts.
+- [x] **Step 4:** Expected: FAIL and list models without tenantId.
+- [x] **Step 5:** Add nullable tenantId String? @db.ObjectId to each listed model during expansion. Keep organizationId temporarily for dual-read comparison; never make tenantId required before Task 4 verifies the backfill.
+- [x] **Step 6:** Add actorProfileId to records currently carrying free-form createdBy/userId where attribution is required. Add ownerProfileId to Conversation, ChatThread, Formula draft, Feedback, and AI artifacts that have owner-level rules.
+- [x] **Step 7:** Keep RawMaterial platform-global. Mark UserLog scope as platform or tenant and require tenantId only for tenant events. Document Organization, Account, Session, and User as legacy-only.
+- [x] **Step 8:** Document each collection, scope, source field, conflict rule, owner rule, and enforcement status in tenant-ownership-map.md. Every row must contain a resolved value.
+- [x] **Step 9:** Run npx prisma format && npx prisma validate && npx prisma generate.
+- [x] **Step 10:** Run npm test -- tests/architecture/tenant-schema.test.ts.
+- [x] **Step 11:** Expected: PASS.
+- [x] **Step 12:** Commit: git add prisma docs/commercial/data tests/architecture && git commit -m "feat: add tenant provenance to private schemas"
 
 ### Task 3: Build an auditable tenant backfill and quarantine workflow
 
