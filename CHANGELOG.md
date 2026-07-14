@@ -1,5 +1,13 @@
 # Changelog
 
+## [2026-07-15] chore: Prepare isolated commercialization worktree
+
+### Summary
+
+- Ignored the project-local `.worktrees/` directory so the `v2/dev` commercialization branch can be developed in an isolated Git worktree without polluting repository status.
+
+---
+
 ## [2026-07-15] docs: Commercial migration implementation program
 
 ### Summary

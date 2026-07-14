@@ -64,5 +64,6 @@ _archive/
 
 # Local tool directories
 .claude/
+.worktrees/
 .planning/
 .playwright-mcp/
