@@ -1,5 +1,32 @@
 # Changelog
 
+## [2026-07-15] docs: Commercial migration implementation program
+
+### Summary
+
+Added the execution-ready program and six gated implementation plans for commercializing R&D AI. The plans translate the approved Clerk tenancy and OODA design into test-driven tasks with exact file ownership, interfaces, dependency pins, failing-test anchors, implementation anchors, verification commands, rollback evidence, and commit boundaries.
+
+### Plans
+
+- Added docs/superpowers/plans/2026-07-15-commercialization-program.md for gate order, shared invariants, rollback mapping, and release criteria.
+- Added docs/superpowers/plans/2026-07-15-commercial-security-containment.md for the patched Next.js/React baseline, route protection, server-derived identity, public-secret removal, credential rotation, and static boundary enforcement.
+- Added docs/superpowers/plans/2026-07-15-clerk-identity-tenant-provisioning.md for Clerk sessions, identity projections, platform-created universities, invitation/webhook reconciliation, bcrypt import, and cutover.
+- Added docs/superpowers/plans/2026-07-15-tenant-data-authorization.md for tenant provenance, audited backfill/quarantine, scoped repositories, support access, and router/tool conversion.
+- Added docs/superpowers/plans/2026-07-15-tenant-ai-control-plane.md for effective policy, deployments, quotas, usage, tool governance, upload quarantine, and Qdrant knowledge isolation.
+- Added docs/superpowers/plans/2026-07-15-ooda-agent-orchestration.md for versioned contracts, bounded specialist subgraphs, OODA nodes, durable interrupts/checkpoints, formula validation, private workers, one run API, and typed UI events.
+- Added docs/superpowers/plans/2026-07-15-commercial-evaluation-rollout.md for the frozen baseline, quantitative release thresholds, shadow/canary, load and resilience, operations, tenant lifecycle, CI, and legacy retirement.
+
+### Additional implementation decisions
+
+- Pinned the planned web baseline to Next.js 16.2.10, React 19.2.7, and Clerk Next.js 7.5.18 based on current package compatibility.
+- Isolated current LangGraph 1.4.7 in a new orchestration workspace so legacy LangChain dependencies can coexist until cutover.
+- Added partial unique MongoDB index setup for nullable Clerk/legacy IDs instead of invalid nullable Prisma uniqueness assumptions.
+- Added a separate invitation projection because an invited email may not yet have a Clerk user or internal user profile.
+- Stored AI cost as integer micro-USD because Prisma Decimal is unsupported by the MongoDB connector.
+- Added explicit public AI key removal and rotation, one-membership enforcement, bounded specialist subgraphs, upload authorization/quarantine, private run workers, support grants, and load/failure recovery gates found during plan self-review.
+
+---
+
 ## [2026-07-15] docs: Commercial Clerk tenancy and OODA AI migration design
 
 ### Summary
