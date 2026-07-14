@@ -36,7 +36,7 @@ function capture_proxy_logs() {
 }
 
 describe("G0 Task 2 review fixes", () => {
-  it.each(["/login", "/signup"])("keeps %s public during G0", async (pathname) => {
+  it.each(["/sign-in", "/sign-up", "/onboarding"])("keeps %s public after the Clerk cutover (G1.7)", async (pathname) => {
     capture_proxy_logs();
     const response = await proxy(new NextRequest(`http://localhost${pathname}`));
 
@@ -44,12 +44,12 @@ describe("G0 Task 2 review fixes", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("redirects anonymous protected traffic to the legacy login route", async () => {
+  it("redirects anonymous protected traffic to the sign-in surface", async () => {
     capture_proxy_logs();
     const response = await proxy(new NextRequest("http://localhost/dashboard"));
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("http://localhost/login");
+    expect(response.headers.get("location")).toBe("http://localhost/sign-in");
   });
 
   it("logs only safe structured proxy boundary decisions", async () => {

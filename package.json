@@ -31,7 +31,8 @@
     "create-sales-index": "npm run create-sales-index --workspace=apps/ai",
     "index-sales-data": "npm run index-sales-data --workspace=apps/ai",
     "index:qdrant": "npm run index:qdrant --workspace=apps/ai",
-    "check:qdrant": "npm run check:qdrant --workspace=apps/ai"
+    "check:qdrant": "npm run check:qdrant --workspace=apps/ai",
+    "test:e2e": "playwright test"
   },
   "keywords": [
     "monorepo",
@@ -46,6 +47,7 @@
     "url": "git+https://github.com/your-org/rnd-ai-management.git"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@types/node": "^24.6.2",
     "@vitest/coverage-v8": "4.1.10",
     "mongodb-memory-server": "^11.2.0",

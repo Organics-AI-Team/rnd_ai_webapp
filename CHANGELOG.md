@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-07-15] feat: Authentication cut over to Clerk (G1.7 — G1 complete)
+
+### Summary
+
+- Custom client authentication is retired: deleted `apps/web/lib/auth-context.tsx`, `/login`, and `/signup`; `authRouter` now exposes only a public health probe (login/logout/me/signup procedures removed, including bcrypt verification and custom session creation). Onboarding is invitation-only through Clerk.
+- New purpose-built `apps/web/lib/app-auth.tsx` adapts Clerk session state (useUser/orgRole/signOut) plus the tenant-scoped organizations query into the narrow `{user, organization, isLoading, logout}` view the UI consumes; 17 consumer files swept to it. No tokens in localStorage or JavaScript-readable cookies — Clerk manages its own httpOnly session. Deployments without a publishable key render the signed-out state.
+- Route contract updated: public paths are `/sign-in`, `/sign-up`, `/onboarding`; anonymous protected traffic redirects to `/sign-in` (regression tests updated to the post-cutover contract). The legacy resolver remains only as the `CLERK_CUTOVER=false` rollback adapter for existing cookie sessions.
+- E2E scaffold: `@playwright/test@1.61.1` pinned, `test:e2e` script + `playwright.config.ts` (webServer `dev:web`), and `tests/e2e/clerk-auth.spec.ts` with 7 staged cases that self-skip without `E2E_CLERK_CONFIGURED=true` (staging execution recorded in G1 evidence).
+- Recorded `docs/commercial/evidence/g1-release.md` with the gate map, code-side command evidence, and the PENDING_EXTERNAL_STAGING checklist (dashboard snapshot, staged migration+reconciliation, webhook health, staged e2e, rollback rehearsal).
+
+### Verification approach
+
+- Full suite 154/154 after the sweep (regression tests pin the new /sign-in contract); `npm run verify:commercial` exit 0; playwright lists 7 tests; the security scanner confirms no localStorage tokens, no custom password/session code paths, no public org creation.
+
+---
+
 ## [2026-07-15] feat: Legacy bcrypt identities imported into Clerk (G1.6)
 
 ### Summary

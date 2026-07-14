@@ -3,7 +3,7 @@
 import React, { Suspense, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Package, Search } from 'lucide-react';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth } from "@/lib/app-auth";
 import { useChatThreads } from '@/hooks/use_chat_threads';
 import {
   AIChatHeader,

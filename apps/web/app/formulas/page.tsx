@@ -9,7 +9,7 @@
  * @date 2026-03-30
  */
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { trpc } from "@/lib/trpc-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

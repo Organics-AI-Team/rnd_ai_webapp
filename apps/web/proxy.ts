@@ -4,7 +4,7 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 import { is_clerk_cutover, is_clerk_enabled } from "./lib/server/clerk-config";
 
-const PUBLIC_PATHS = ["/login", "/signup"];
+const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/onboarding"];
 
 type ProxyClassification = "public" | "protected";
 type ProxyPhase = "entry" | "decision" | "exit";
@@ -35,7 +35,7 @@ function log_proxy_event(
  * Check whether a pathname is intentionally public in the legacy flow.
  *
  * @param pathname - Request pathname to classify.
- * @returns True when the path is a public G0 login or signup route.
+ * @returns True when the path is a public authentication route.
  */
 function is_public_path(pathname: string): boolean {
   return PUBLIC_PATHS.some((public_path) => (
@@ -44,9 +44,9 @@ function is_public_path(pathname: string): boolean {
 }
 
 /**
- * Legacy request guidance (pre-Clerk): redirect anonymous protected pages to
- * the G0 login route; pass API traffic through because server handlers
- * authorize every operation themselves (G0.5/G0.6).
+ * Legacy request guidance (rollback window only): redirect anonymous
+ * protected pages to the sign-in surface; pass API traffic through because
+ * server handlers authorize every operation themselves (G0.5/G0.6).
  *
  * @param request - Incoming Next.js request.
  * @returns Redirect for anonymous protected pages, otherwise pass-through.
@@ -61,7 +61,7 @@ async function legacy_guidance(request: NextRequest): Promise<NextResponse> {
   const token = request.cookies.get("auth_token")?.value;
   if (!token && classification === "protected") {
     log_proxy_event("decision", "redirect", classification);
-    const response = NextResponse.redirect(new URL("/login", request.url));
+    const response = NextResponse.redirect(new URL("/sign-in", request.url));
     log_proxy_event("exit", "redirect", classification);
     return response;
   }
@@ -74,7 +74,7 @@ async function legacy_guidance(request: NextRequest): Promise<NextResponse> {
 
 /**
  * Public routes under the Clerk surface. The legacy /login and /signup pages
- * stay public until the G1.7 cutover deletes them.
+ * were deleted at the G1.7 cutover.
  */
 const is_public = createRouteMatcher([
   "/sign-in(.*)",
@@ -82,8 +82,6 @@ const is_public = createRouteMatcher([
   "/onboarding",
   "/api/webhooks/clerk",
   "/api/health",
-  "/login(.*)",
-  "/signup(.*)",
 ]);
 
 /**

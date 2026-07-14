@@ -16,10 +16,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OrderStatusType } from "@/lib/types";
 import { useState } from "react";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 
 export default function ShippingPage() {
-  const { user, organization, refreshUser } = useAuth();
+  const { organization } = useAuth();
   const { data: orders = [], isLoading, error } = trpc.orders.list.useQuery();
   const utils = trpc.useUtils();
   const updateStatus = trpc.orders.updateStatus.useMutation({
@@ -38,9 +38,8 @@ export default function ShippingPage() {
         });
       }
       utils.orders.list.invalidate();
-      utils.auth.me.invalidate();
-      // Refresh user data to update credits in real-time
-      await refreshUser();
+      // Refresh tenant credits in real-time
+      await utils.organizations.list.invalidate();
       setEditingOrderId(null);
       setConfirmingOrderId(null);
     },

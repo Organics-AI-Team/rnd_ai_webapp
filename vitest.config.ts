@@ -23,6 +23,7 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts", "apps/**/__tests__/**/*.test.ts"],
+    exclude: ["tests/e2e/**", "**/node_modules/**"],
     environment: "node",
     setupFiles: ["tests/setup.ts"],
     clearMocks: true,

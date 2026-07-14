@@ -13,7 +13,7 @@
  * @module CalculationPage
  */
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { trpc } from "@/lib/trpc-client";
 import { ConsolePageShell } from "@/components/console_page_shell";
 import { Button } from "@/components/ui/button";

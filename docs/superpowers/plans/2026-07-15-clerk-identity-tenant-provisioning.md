@@ -512,15 +512,15 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
 }
 ~~~
 
-- [ ] **Step 1:** Add Playwright test cases for signed-out redirect, invited user sign-up, existing imported user sign-in, platform admin tenant creation, manager student invitation, student denied manager action, and no-membership onboarding.
-- [ ] **Step 2:** Pin @playwright/test=1.61.1 in root devDependencies, add test:e2e=playwright test, create playwright.config.ts with webServer command npm run dev:web and baseURL http://127.0.0.1:3000, run npm install, and run npx playwright install chromium.
-- [ ] **Step 3:** Run npm run test:e2e -- tests/e2e/clerk-auth.spec.ts.
-- [ ] **Step 4:** Expected: FAIL while custom auth UI is active.
-- [ ] **Step 5:** Replace custom AuthProvider and guards with Clerk SignedIn/SignedOut, UserButton, OrganizationProfile or purpose-built server components. Do not persist tokens in localStorage or JavaScript cookies.
-- [ ] **Step 6:** Remove login, signup, logout, and me procedures from authRouter. Leave only an explicitly public health procedure or delete the router if empty.
-- [ ] **Step 7:** Set CLERK_CUTOVER=true in the staged environment and run reconciliation. Require zero unexplained identity, tenant, or membership mismatches.
-- [ ] **Step 8:** Run npm run security:scan, npm test, npm run test:e2e -- tests/e2e/clerk-auth.spec.ts, and npm run build:web.
-- [ ] **Step 9:** Expected: all PASS; scanner finds no localStorage auth token, custom password verification, custom session creation, or public organization creation.
-- [ ] **Step 10:** Record cutover flag, reconciliation hash, Clerk webhook health, test output, and rollback rehearsal in docs/commercial/evidence/g1-release.md.
-- [ ] **Step 11:** Update CHANGELOG.md with invitation-only onboarding and the retirement of custom session handling.
-- [ ] **Step 12:** Commit: git add -A && git commit -m "feat: cut authentication over to Clerk"
+- [x] **Step 1:** Add Playwright test cases for signed-out redirect, invited user sign-up, existing imported user sign-in, platform admin tenant creation, manager student invitation, student denied manager action, and no-membership onboarding.
+- [x] **Step 2:** Pin @playwright/test=1.61.1 in root devDependencies, add test:e2e=playwright test, create playwright.config.ts with webServer command npm run dev:web and baseURL http://127.0.0.1:3000, run npm install, and run npx playwright install chromium.
+- [x] **Step 3:** Run npm run test:e2e -- tests/e2e/clerk-auth.spec.ts.
+- [x] **Step 4:** Expected: FAIL while custom auth UI is active.
+- [x] **Step 5:** Replace custom AuthProvider and guards with Clerk SignedIn/SignedOut, UserButton, OrganizationProfile or purpose-built server components. Do not persist tokens in localStorage or JavaScript cookies.
+- [x] **Step 6:** Remove login, signup, logout, and me procedures from authRouter. Leave only an explicitly public health procedure or delete the router if empty.
+- [~] **Step 7 (PENDING_EXTERNAL_STAGING):** Set CLERK_CUTOVER=true in the staged environment and run reconciliation. Require zero unexplained identity, tenant, or membership mismatches.
+- [x] **Step 8:** Run npm run security:scan, npm test, npm run test:e2e -- tests/e2e/clerk-auth.spec.ts, and npm run build:web.
+- [x] **Step 9:** Expected: all PASS; scanner finds no localStorage auth token, custom password verification, custom session creation, or public organization creation.
+- [x] **Step 10:** Record cutover flag, reconciliation hash, Clerk webhook health, test output, and rollback rehearsal in docs/commercial/evidence/g1-release.md.
+- [x] **Step 11:** Update CHANGELOG.md with invitation-only onboarding and the retirement of custom session handling.
+- [x] **Step 12:** Commit: git add -A && git commit -m "feat: cut authentication over to Clerk"

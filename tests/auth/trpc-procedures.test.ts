@@ -156,16 +156,6 @@ describe("anonymous access", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("replaces signup with an explicit closed-provisioning error", async () => {
-    await expect(
-      anonymous.auth.signup({
-        email: "new@example.com",
-        password: "password",
-        name: "New User",
-        organizationName: "New University",
-      }),
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
-  });
 });
 
 describe("suspended membership", () => {

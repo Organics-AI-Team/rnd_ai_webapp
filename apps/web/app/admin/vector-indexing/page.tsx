@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Database, Upload, Search, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth } from "@/lib/app-auth";
 
 export default function VectorIndexingPage() {
   const { user } = useAuth();
