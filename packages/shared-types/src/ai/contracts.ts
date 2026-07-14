@@ -368,3 +368,24 @@ export const agent_run_event_v1_schema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 export type AgentRunEventV1 = z.infer<typeof agent_run_event_v1_schema>;
+
+// ============================================
+// AI RUN SCHEMA-VERSION PINS (G3.1)
+// ============================================
+// The payload shapes above are owned by the G4 OODA agent orchestration plan
+// (docs/superpowers/plans/2026-07-15-ooda-agent-orchestration.md). G3 only
+// pins the literal versions persisted on AIRun.inputSchemaVersion and
+// AIRun.outputSchemaVersion.
+
+/**
+ * Literal schema-version values a run contract may declare. New revisions
+ * widen this union alongside a new payload schema; existing literals are
+ * never mutated so stored pins stay resolvable.
+ */
+export type AgentRunSchemaVersion = "1";
+
+/** Version pinned on AIRun.inputSchemaVersion for newly created runs. */
+export const AGENT_RUN_INPUT_SCHEMA_VERSION: AgentRunSchemaVersion = "1";
+
+/** Version pinned on AIRun.outputSchemaVersion for newly created runs. */
+export const AGENT_RUN_OUTPUT_SCHEMA_VERSION: AgentRunSchemaVersion = "1";

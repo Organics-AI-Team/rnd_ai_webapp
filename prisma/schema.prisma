@@ -769,3 +769,317 @@ model SupportAccessGrant {
   @@index([platformProfileId, expiresAt])
   @@map("support_access_grants")
 }
+
+// ============================================
+// TENANT AI CONTROL PLANE (G3.1)
+// Every AI run pins immutable policy, deployment, prompt, and schema
+// versions. Usage and approvals are append-only ledgers reconciled by
+// idempotency keys. Monetary amounts are integer micro-USD BigInt because
+// the MongoDB connector does not support Prisma Decimal.
+// ============================================
+
+enum AIProfileStatus {
+  active
+  disabled
+}
+
+enum AgentDeploymentStatus {
+  draft
+  active
+  retired
+}
+
+enum PromptStatus {
+  draft
+  approved
+  active
+  retired
+}
+
+enum KnowledgeScope {
+  platform
+  tenant
+}
+
+enum KnowledgeVisibility {
+  managers
+  all_members
+}
+
+enum KnowledgeSourceStatus {
+  pending
+  quarantined
+  indexing
+  ready
+  failed
+  deleted
+}
+
+enum AIRunStatus {
+  queued
+  running
+  waiting_clarification
+  waiting_approval
+  completed
+  partial
+  failed
+  cancelled
+}
+
+enum AIUsageEntryType {
+  reservation
+  actual
+  release
+  adjustment
+}
+
+enum AIApprovalStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+enum AIArtifactStatus {
+  draft
+  pending_review
+  confirmed
+  rejected
+  superseded
+}
+
+model TenantAIProfile {
+  id                              String          @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId                        String          @unique @db.ObjectId
+  status                          AIProfileStatus @default(active)
+  planKey                         String
+  policyVersion                   Int             @default(1)
+  allowedProviders                String[]
+  allowedModels                   String[]
+  allowedTools                    String[]
+  monthlyRequestLimit             BigInt
+  monthlyTokenLimit               BigInt
+  monthlyCostLimitMicrousd        BigInt
+  perUserMonthlyRequestLimit      BigInt
+  perUserMonthlyTokenLimit        BigInt
+  perUserMonthlyCostLimitMicrousd BigInt
+  perRunTokenLimit                BigInt
+  perRunCostLimitMicrousd         BigInt
+  maxConcurrentRuns               Int
+  maxIterations                   Int
+  defaultLocale                   String
+  retentionDays                   Int
+  allowWebSearch                  Boolean         @default(false)
+  allowTenantKnowledge            Boolean         @default(true)
+  knowledgeStorageLimitBytes      BigInt
+  reviewPolicy                    Json?
+  qualityPolicy                   Json?
+  createdByProfileId              String          @db.ObjectId
+  updatedByProfileId              String?         @db.ObjectId
+  createdAt                       DateTime        @default(now())
+  updatedAt                       DateTime        @updatedAt
+
+  @@index([tenantId, status])
+  @@map("tenant_ai_profiles")
+}
+
+model AgentDeployment {
+  id                     String                @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId               String                @db.ObjectId
+  agentKey               String
+  revision               Int
+  status                 AgentDeploymentStatus @default(draft)
+  agentDefinitionVersion String
+  orchestratorVersion    String
+  promptVersionId        String                @db.ObjectId
+  allowedProviders       String[]
+  allowedModels          String[]
+  temperature            Float?
+  maxOutputTokens        Int?
+  modelRouting           Json?
+  toolAllowlist          String[]
+  approvalRules          Json?
+  featureFlags           Json?
+  inputSchemaVersion     String
+  outputSchemaVersion    String
+  activatedByProfileId   String?               @db.ObjectId
+  activatedAt            DateTime?
+  retiredAt              DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  @@unique([tenantId, agentKey, revision])
+  @@index([tenantId, agentKey, status])
+  @@map("agent_deployments")
+}
+
+model PromptVersion {
+  id                    String         @id @default(auto()) @map("_id") @db.ObjectId
+  scope                 KnowledgeScope
+  // scopeKey is the literal "platform" or the tenant ObjectId string; the
+  // repository validates that scopeKey and tenantId agree.
+  scopeKey              String
+  tenantId              String?        @db.ObjectId
+  promptKey             String
+  semanticVersion       String
+  revision              Int
+  status                PromptStatus   @default(draft)
+  contentHash           String
+  content               String
+  variables             String[]
+  parentPromptVersionId String?        @db.ObjectId
+  evaluationResultId    String?        @db.ObjectId
+  createdByProfileId    String         @db.ObjectId
+  approvedByProfileId   String?        @db.ObjectId
+  activatedAt           DateTime?
+  retiredAt             DateTime?
+  createdAt             DateTime       @default(now())
+
+  @@unique([scopeKey, promptKey, revision])
+  @@index([scopeKey, promptKey, status])
+  @@map("prompt_versions")
+}
+
+model KnowledgeSource {
+  id                 String                @id @default(auto()) @map("_id") @db.ObjectId
+  scope              KnowledgeScope
+  // scopeKey mirrors PromptVersion; the repository validates platform scope
+  // has no tenantId and tenant scope carries the matching ObjectId string.
+  scopeKey           String
+  tenantId           String?               @db.ObjectId
+  sourceType         String
+  name               String
+  objectKey          String?
+  visibility         KnowledgeVisibility   @default(managers)
+  allowedRoles       String[]
+  contentHash        String
+  sourceVersion      Int                   @default(1)
+  byteSize           BigInt                @default(0)
+  provenance         Json?
+  consentBasis       String?
+  freshnessDate      DateTime?
+  retainedUntil      DateTime?
+  embeddingModel     String?
+  embeddingVersion   String?
+  status             KnowledgeSourceStatus @default(pending)
+  errorCode          String?
+  createdByProfileId String                @db.ObjectId
+  deletedAt          DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([scope, status])
+  @@index([tenantId, status])
+  @@map("knowledge_sources")
+}
+
+model AIRun {
+  id                     String      @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId               String      @db.ObjectId
+  actorProfileId         String      @db.ObjectId
+  threadId               String?     @db.ObjectId
+  agentKey               String
+  deploymentId           String      @db.ObjectId
+  agentDefinitionVersion String
+  orchestratorVersion    String
+  policyVersion          Int
+  policySnapshot         Json
+  promptVersionId        String      @db.ObjectId
+  inputSchemaVersion     String
+  outputSchemaVersion    String
+  status                 AIRunStatus @default(queued)
+  currentStage           String?
+  correlationId          String      @unique
+  idempotencyKey         String
+  requestBudget          Json?
+  usageSummary           Json?
+  safeDecisionSummaries  Json?
+  toolAuditEventIds      String[]
+  provider               String?
+  model                  String?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  retainedUntil          DateTime?
+  errorCode              String?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("ai_runs")
+}
+
+model AIUsageLedger {
+  id               String           @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId         String           @db.ObjectId
+  runId            String           @db.ObjectId
+  actorProfileId   String           @db.ObjectId
+  agentKey         String
+  entryType        AIUsageEntryType
+  operationType    String
+  reservationId    String?          @db.ObjectId
+  requestCount     Int              @default(0)
+  provider         String?
+  model            String?
+  inputTokens      BigInt           @default(0)
+  outputTokens     BigInt           @default(0)
+  toolCalls        Int              @default(0)
+  costMicrousd     BigInt           @default(0)
+  adjustmentReason String?
+  // billingPeriod is the UTC month bucket "YYYY-MM" used for quota rollups.
+  billingPeriod    String
+  occurredAt       DateTime         @default(now())
+  idempotencyKey   String           @unique
+  createdAt        DateTime         @default(now())
+
+  @@index([tenantId, billingPeriod])
+  @@index([tenantId, billingPeriod, actorProfileId])
+  @@map("ai_usage_ledger")
+}
+
+model AIArtifact {
+  id                     String           @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId               String           @db.ObjectId
+  runId                  String           @db.ObjectId
+  ownerProfileId         String           @db.ObjectId
+  artifactType           String
+  schemaVersion          String
+  revision               Int              @default(1)
+  status                 AIArtifactStatus @default(draft)
+  content                Json
+  contentHash            String
+  validationResult       Json?
+  sourceEvidenceIds      String[]
+  parentArtifactId       String?          @db.ObjectId
+  supersededByArtifactId String?          @db.ObjectId
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@index([tenantId, ownerProfileId, status])
+  @@index([tenantId, status])
+  @@map("ai_artifacts")
+}
+
+model AIApproval {
+  id                   String           @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId             String           @db.ObjectId
+  runId                String           @db.ObjectId
+  artifactId           String?          @db.ObjectId
+  checkpointId         String
+  requestedByProfileId String           @db.ObjectId
+  requiredPermission   String
+  status               AIApprovalStatus @default(pending)
+  decidedByProfileId   String?          @db.ObjectId
+  decisionEdits        Json?
+  decisionReason       String?
+  requestedAt          DateTime         @default(now())
+  expiresAt            DateTime?
+  decidedAt            DateTime?
+  idempotencyKey       String           @unique
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([tenantId, status, requestedAt])
+  @@map("ai_approvals")
+}
