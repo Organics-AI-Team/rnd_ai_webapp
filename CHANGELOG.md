@@ -1,5 +1,24 @@
 # Changelog
 
+## [2026-07-15] feat: Clerk membership lifecycle synchronization (G1.5)
+
+### Summary
+
+- Added the signed Clerk webhook ingress (`apps/web/app/api/webhooks/clerk/route.ts` → `handle_clerk_webhook`): svix v1 signature verified (timing-safe, 5-minute tolerance) before any parsing; processed event IDs stored in `clerk_webhook_receipts` (unique index added to `setup:commercial-indexes`) so duplicates acknowledge 200 without reapplying; projection writes use monotonic `clerkSyncedAt` guards so an older event never overwrites newer state; deletions mark records `revoked`/`deleted`, never hard-delete identity.
+- Multiple-membership containment: when a webhook reveals a second active membership for a profile, authorization is suspended, both projections are preserved for repair, and a `membership_reconciliation_required` audit event is recorded — the system never silently picks a side.
+- Added `invite_tenant_user`/`suspend_tenant_user` services and the `tenantMembers` router (`list`/`inviteUser`/`suspendUser` behind the fine-grained tenant permissions): managers invite students only (the Clerk role is always the user role — this path cannot mint a manager; appointment stays platform-side), and the single-membership rule rejects any email with an active or pending university elsewhere (`MULTIPLE_MEMBERSHIPS_DISABLED`), while same-tenant re-invites stay idempotent.
+- Added `reconcile:clerk --tenant=<id>`: compares Clerk memberships against internal projections, emits a JSON report, repairs safe missing projections, and marks contradictory roles for manual repair.
+- Added the manager members page (`/settings/members`): list, invite student, suspend — no role-promotion UI (and the server rejects it regardless).
+- Scanner: `/api/webhooks/` routes are exempt from the principal-guard rule because webhook ingress authenticates by signature verification (fixture-tested).
+- Deviation: webhook signature verification is implemented against the documented svix v1 scheme with node:crypto (timing-safe) rather than `@clerk/backend/webhooks`' `verifyWebhook`, so tests exercise real signatures deterministically; the scheme and secret format are identical.
+
+### Verification approach
+
+- TDD RED first, then 14 new tests green: invalid signature (400, nothing touched), duplicate event applied once, out-of-order event ignored, soft-delete, membership revocation, multi-membership suspension with preserved projections, invitation acceptance; manager-invites-user-only, student caller rejected, cross-university active/pending memberships rejected, same-tenant idempotent re-invite, manager suspension, student suspension rejected.
+- Full suite 145/145; `npm run verify:commercial` exit 0.
+
+---
+
 ## [2026-07-15] feat: Platform-controlled university provisioning (G1.4)
 
 ### Summary

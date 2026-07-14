@@ -17,7 +17,8 @@
     "index:qdrant": "tsx scripts/index-qdrant.ts",
     "check:qdrant": "tsx scripts/check-qdrant.ts",
     "setup:commercial-indexes": "tsx scripts/setup-commercial-indexes.ts",
-    "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts"
+    "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
+    "reconcile:clerk": "tsx server/services/provisioning/reconcile-clerk.ts"
   },
   "dependencies": {
     "@clerk/backend": "3.11.5",

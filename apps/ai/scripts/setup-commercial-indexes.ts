@@ -78,6 +78,11 @@ const commercial_indexes: readonly CommercialIndex[] = [
     specification: { clerkInvitationId: 1 },
     options: { name: "uniq_invitation_clerk_id", unique: true },
   },
+  {
+    collection: "clerk_webhook_receipts",
+    specification: { eventId: 1 },
+    options: { name: "uniq_webhook_receipt_event", unique: true },
+  },
 ];
 
 /**

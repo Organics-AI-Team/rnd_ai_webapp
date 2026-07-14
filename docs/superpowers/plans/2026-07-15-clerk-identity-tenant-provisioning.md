@@ -393,20 +393,20 @@ export async function POST(request: Request): Promise<Response> {
 }
 ~~~
 
-- [ ] **Step 1:** Write failing webhook tests for duplicate/out-of-order user, organization, invitation, membership create/update/delete events and invalid signatures.
-- [ ] **Step 2:** Write failing invitation tests proving managers may invite only tenant users and may suspend users, while only platform admins may appoint managers. Also prove the first release rejects a second active or pending university membership for a normal user.
-- [ ] **Step 3:** Run npm test -- tests/provisioning.
-- [ ] **Step 4:** Expected: FAIL.
-- [ ] **Step 5:** Verify the webhook with verifyWebhook(request) and CLERK_WEBHOOK_SIGNING_SECRET before parsing business fields.
-- [ ] **Step 6:** Store processed Clerk event IDs in clerk_webhook_receipts with unique event ID, type, occurredAt, processedAt, and result. A duplicate returns 200 without reapplying.
-- [ ] **Step 7:** Apply events with version/occurredAt monotonic checks so an older event cannot overwrite newer projection state. Deletion marks records revoked/deleted; it does not hard-delete business identity.
-- [ ] **Step 8:** Implement tenantMembers.inviteUser using tenantPermissionProcedure(tenant:members:invite_user) and always pass the user role to Clerk. Implement appointManager in the platform router only.
-- [ ] **Step 9:** Before invitation, resolve the normalized email to any existing UserProfile/invitation and reject another active or pending university with MULTIPLE_MEMBERSHIPS_DISABLED. If a Clerk webhook reveals multiple active memberships, suspend authorization for that profile, mark reconciliation required, and preserve both projections for repair rather than choosing one.
-- [ ] **Step 10:** Implement reconcile-clerk --tenant=<tenant-id> that compares Clerk and Mongo identities/memberships, emits a JSON report, repairs safe missing projections, and marks contradictory roles for manual repair.
-- [ ] **Step 11:** Build the manager member page with list, invite student, and suspend actions only. Hide and server-reject role promotion.
-- [ ] **Step 12:** Run npm test -- tests/provisioning.
-- [ ] **Step 13:** Expected: PASS.
-- [ ] **Step 14:** Commit: git add apps tests/provisioning && git commit -m "feat: synchronize Clerk membership lifecycle"
+- [x] **Step 1:** Write failing webhook tests for duplicate/out-of-order user, organization, invitation, membership create/update/delete events and invalid signatures.
+- [x] **Step 2:** Write failing invitation tests proving managers may invite only tenant users and may suspend users, while only platform admins may appoint managers. Also prove the first release rejects a second active or pending university membership for a normal user.
+- [x] **Step 3:** Run npm test -- tests/provisioning.
+- [x] **Step 4:** Expected: FAIL.
+- [x] **Step 5:** Verify the webhook with verifyWebhook(request) and CLERK_WEBHOOK_SIGNING_SECRET before parsing business fields.
+- [x] **Step 6:** Store processed Clerk event IDs in clerk_webhook_receipts with unique event ID, type, occurredAt, processedAt, and result. A duplicate returns 200 without reapplying.
+- [x] **Step 7:** Apply events with version/occurredAt monotonic checks so an older event cannot overwrite newer projection state. Deletion marks records revoked/deleted; it does not hard-delete business identity.
+- [x] **Step 8:** Implement tenantMembers.inviteUser using tenantPermissionProcedure(tenant:members:invite_user) and always pass the user role to Clerk. Implement appointManager in the platform router only.
+- [x] **Step 9:** Before invitation, resolve the normalized email to any existing UserProfile/invitation and reject another active or pending university with MULTIPLE_MEMBERSHIPS_DISABLED. If a Clerk webhook reveals multiple active memberships, suspend authorization for that profile, mark reconciliation required, and preserve both projections for repair rather than choosing one.
+- [x] **Step 10:** Implement reconcile-clerk --tenant=<tenant-id> that compares Clerk and Mongo identities/memberships, emits a JSON report, repairs safe missing projections, and marks contradictory roles for manual repair.
+- [x] **Step 11:** Build the manager member page with list, invite student, and suspend actions only. Hide and server-reject role promotion.
+- [x] **Step 12:** Run npm test -- tests/provisioning.
+- [x] **Step 13:** Expected: PASS.
+- [x] **Step 14:** Commit: git add apps tests/provisioning && git commit -m "feat: synchronize Clerk membership lifecycle"
 
 ### Task 6: Import legacy identities without forced password resets
 

@@ -173,6 +173,9 @@ function find_unguarded_route_handlers(
   const path = normalize_path(file.path);
   if (!/app\/api\/.*route\.ts$/.test(path)) return [];
   if (path.includes("/api/trpc/")) return [];
+  // Webhook ingress authenticates by signature verification (svix), not by
+  // a session principal; handle_clerk_webhook rejects unsigned requests.
+  if (path.includes("/api/webhooks/")) return [];
   const findings: SecurityFinding[] = [];
   const visit = (node: ts.Node): void => {
     if (
