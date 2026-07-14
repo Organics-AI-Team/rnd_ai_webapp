@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026-07-15] feat: Verified tenant ownership backfill (G2.3)
+
+### Summary
+
+- Added `tenant-ownership-mapper.ts`: pure deterministic `resolve_tenant_ownership` (direct organizationId mapping → parent tenant → uniquely mapped legacy actor; disagreement/absence → quarantine with candidates and reason — never a silent assignment), plus the audit engine covering all 14 backfill collections with parent-cache resolution (formulas→version logs/comments, chat_threads→messages).
+- `tenant:audit` (dry run) emits JSON totals (already_scoped/resolvable/ambiguous/orphaned/malformed/conflicts), by_collection, by_tenant, SHA-256 bucket hashes, and an overall audit_hash. `tenant:backfill` requires `--apply --audit-hash=<hash>`, refuses when data changed after the reviewed audit, applies conditional `{_id, tenantId: null}` updates (replay cannot overwrite concurrent assignments), quarantines the rest into `tenant_ownership_quarantine`, and writes `migration_receipts` per collection. `tenant:verify` repeats the audit and exits non-zero while anything remains unscoped — blocking G2.4 enforcement on dirty data.
+- Runbook `docs/commercial/runbooks/tenant-backfill.md`: backup, dry-run, review, apply, verify, quarantine repair, `TENANT_ENFORCEMENT=shadow` rollback, and evidence commands.
+
+### Verification approach
+
+- TDD RED → GREEN 8/8 mapper fixtures (direct/parent/user-unique/agreeing matches, conflicting evidence, no-owner, malformed ObjectId as absent evidence, deterministic replay); suite 199/199; verify:commercial exit 0.
+
+---
+
 ## [2026-07-15] feat: Tenant provenance on every private schema (G2.2)
 
 ### Summary

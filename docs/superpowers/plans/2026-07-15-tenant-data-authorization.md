@@ -186,18 +186,18 @@ export function resolve_tenant_ownership(
 }
 ~~~
 
-- [ ] **Step 1:** Write failing fixtures for direct organization match, parent Formula match, parent ChatThread match, user-only unique match, conflicting parent/user match, missing parent, malformed ObjectId, and replay.
-- [ ] **Step 2:** Run npm test -- tests/migrations/tenant-ownership-mapper.test.ts.
-- [ ] **Step 3:** Expected: FAIL.
-- [ ] **Step 4:** Implement mapping precedence: direct organizationId -> parent tenantId -> uniquely mapped legacy user. If two sources disagree or none resolve, return quarantine with source values and reason; do not choose one.
-- [ ] **Step 5:** Make audit dry-run scan every listed collection and output JSON counts: total, already_scoped, resolvable, ambiguous, orphaned, malformed, conflicts, by_collection, by_tenant. Include a SHA-256 of sorted record IDs per bucket.
-- [ ] **Step 6:** Make backfill require --apply --audit-hash=<hash>. Use conditional updates matching _id and tenantId=null so replay cannot overwrite a concurrent assignment. Write migration_receipts for each batch.
-- [ ] **Step 7:** Make verify repeat the audit and compare per-tenant counts to source mappings. Exit non-zero if ambiguous, orphaned, malformed, conflicts, or changed-after-audit is nonzero.
-- [ ] **Step 8:** Add npm scripts tenant:audit, tenant:backfill, and tenant:verify.
-- [ ] **Step 9:** Document backup, dry-run, review, apply, verify, quarantine repair, rollback, and evidence commands with exact flags.
-- [ ] **Step 10:** Run npm test -- tests/migrations/tenant-ownership-mapper.test.ts.
-- [ ] **Step 11:** Expected: PASS.
-- [ ] **Step 12:** Commit: git add apps/ai scripts tests/migrations docs/commercial/runbooks && git commit -m "feat: add verified tenant ownership backfill"
+- [x] **Step 1:** Write failing fixtures for direct organization match, parent Formula match, parent ChatThread match, user-only unique match, conflicting parent/user match, missing parent, malformed ObjectId, and replay.
+- [x] **Step 2:** Run npm test -- tests/migrations/tenant-ownership-mapper.test.ts.
+- [x] **Step 3:** Expected: FAIL.
+- [x] **Step 4:** Implement mapping precedence: direct organizationId -> parent tenantId -> uniquely mapped legacy user. If two sources disagree or none resolve, return quarantine with source values and reason; do not choose one.
+- [x] **Step 5:** Make audit dry-run scan every listed collection and output JSON counts: total, already_scoped, resolvable, ambiguous, orphaned, malformed, conflicts, by_collection, by_tenant. Include a SHA-256 of sorted record IDs per bucket.
+- [x] **Step 6:** Make backfill require --apply --audit-hash=<hash>. Use conditional updates matching _id and tenantId=null so replay cannot overwrite a concurrent assignment. Write migration_receipts for each batch.
+- [x] **Step 7:** Make verify repeat the audit and compare per-tenant counts to source mappings. Exit non-zero if ambiguous, orphaned, malformed, conflicts, or changed-after-audit is nonzero.
+- [x] **Step 8:** Add npm scripts tenant:audit, tenant:backfill, and tenant:verify.
+- [x] **Step 9:** Document backup, dry-run, review, apply, verify, quarantine repair, rollback, and evidence commands with exact flags.
+- [x] **Step 10:** Run npm test -- tests/migrations/tenant-ownership-mapper.test.ts.
+- [x] **Step 11:** Expected: PASS.
+- [x] **Step 12:** Commit: git add apps/ai scripts tests/migrations docs/commercial/runbooks && git commit -m "feat: add verified tenant ownership backfill"
 
 ### Task 4: Introduce tenant-scoped domain repositories
 

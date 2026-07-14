@@ -19,7 +19,10 @@
     "setup:commercial-indexes": "tsx scripts/setup-commercial-indexes.ts",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
     "reconcile:clerk": "tsx server/services/provisioning/reconcile-clerk.ts",
-    "migrate:clerk": "tsx scripts/migrate-legacy-users-to-clerk.ts"
+    "migrate:clerk": "tsx scripts/migrate-legacy-users-to-clerk.ts",
+    "tenant:audit": "tsx scripts/audit-tenant-ownership.ts",
+    "tenant:backfill": "tsx scripts/backfill-tenant-ownership.ts",
+    "tenant:verify": "tsx scripts/verify-tenant-ownership.ts"
   },
   "dependencies": {
     "@clerk/backend": "3.11.5",
