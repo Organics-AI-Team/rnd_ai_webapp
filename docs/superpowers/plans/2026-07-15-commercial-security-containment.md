@@ -394,17 +394,17 @@ export async function with_request_principal(
 }
 ~~~
 
-- [ ] **Step 1:** Write table-driven tests that invoke every listed handler without a cookie, with an expired cookie, and with a valid principal. Expect 401, 401, and a non-auth result respectively.
-- [ ] **Step 2:** Add tests that send a different userId, orgId, organizationId, or tenantId in JSON and assert 400 IDENTITY_FIELD_NOT_ALLOWED.
-- [ ] **Step 3:** Run npm test -- tests/auth/route-authorization.test.ts.
-- [ ] **Step 4:** Expected: FAIL because direct routes are unguarded.
-- [ ] **Step 5:** Implement with_request_principal(request, permission, handler). It verifies the legacy cookie, checks permission, rejects identity fields recursively, and calls handler(principal).
-- [ ] **Step 6:** Wrap agent and AI execution routes with ai:run, indexing routes with tenant:settings:write, and retrieval routes with tenant:read.
-- [ ] **Step 7:** Pass principal.internal_user_id and principal.active_tenant_id into service context; delete all fallbacks to body identity.
-- [ ] **Step 8:** Keep apps/web/app/api/trpc/[trpc]/route.ts outside this wrapper because its tRPC context performs the same verification.
-- [ ] **Step 9:** Run npm test -- tests/auth/route-authorization.test.ts.
-- [ ] **Step 10:** Expected: PASS for all 13 route files.
-- [ ] **Step 11:** Commit: git add apps/web/app/api apps/web/lib/server tests/auth && git commit -m "fix: authorize direct API handlers"
+- [x] **Step 1:** Write table-driven tests that invoke every listed handler without a cookie, with an expired cookie, and with a valid principal. Expect 401, 401, and a non-auth result respectively.
+- [x] **Step 2:** Add tests that send a different userId, orgId, organizationId, or tenantId in JSON and assert 400 IDENTITY_FIELD_NOT_ALLOWED.
+- [x] **Step 3:** Run npm test -- tests/auth/route-authorization.test.ts.
+- [x] **Step 4:** Expected: FAIL because direct routes are unguarded.
+- [x] **Step 5:** Implement with_request_principal(request, permission, handler). It verifies the legacy cookie, checks permission, rejects identity fields recursively, and calls handler(principal).
+- [x] **Step 6:** Wrap agent and AI execution routes with ai:run, indexing routes with tenant:settings:write, and retrieval routes with tenant:read.
+- [x] **Step 7:** Pass principal.internal_user_id and principal.active_tenant_id into service context; delete all fallbacks to body identity.
+- [x] **Step 8:** Keep apps/web/app/api/trpc/[trpc]/route.ts outside this wrapper because its tRPC context performs the same verification.
+- [x] **Step 9:** Run npm test -- tests/auth/route-authorization.test.ts.
+- [x] **Step 10:** Expected: PASS for all 13 route files.
+- [x] **Step 11:** Commit: git add apps/web/app/api apps/web/lib/server tests/auth && git commit -m "fix: authorize direct API handlers"
 
 ### Task 7: Make boundary regressions fail CI
 

@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { GeminiService } from '@/ai/services/providers/gemini-service';
 import { EnhancedHybridSearchService } from '@/ai/services/rag/enhanced-hybrid-search-service';
@@ -88,15 +89,21 @@ async function initializeServices() {
 }
 
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   await initializeServices();
 
   try {
-    const body = await request.json();
+    // Identity always derives from the verified principal, never the body.
+    const body: Record<string, any> = {
+      ...((guarded_body ?? {}) as Record<string, any>),
+      userId: principal.internal_user_id,
+      organizationId: principal.active_tenant_id,
+    };
     const { prompt, userId, context, stream = false, useSearch = false, preferences } = body;
 
-    if (!prompt || !userId) {
+    if (!prompt) {
       return NextResponse.json(
-        { error: 'Missing required fields: prompt, userId' },
+        { error: 'Missing required field: prompt' },
         { status: 400 }
       );
     }
@@ -275,14 +282,17 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 export async function GET(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal) => {
   await initializeServices();
 
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
-  const userId = searchParams.get('userId');
+  // Identity always derives from the verified principal, not query params.
+  const userId = principal.internal_user_id;
 
   try {
     switch (action) {
@@ -346,18 +356,22 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 export async function PUT(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   await initializeServices();
 
   try {
-    const body = await request.json();
-    const { userId, feedback, messageId } = body;
+    const body = (guarded_body ?? {}) as Record<string, any>;
+    const { feedback, messageId } = body;
+    // Identity always derives from the verified principal.
+    const userId = principal.internal_user_id;
 
-    if (!userId || !feedback) {
+    if (!feedback) {
       return NextResponse.json(
-        { error: 'Missing required fields: userId, feedback' },
+        { error: 'Missing required field: feedback' },
         { status: 400 }
       );
     }
@@ -407,6 +421,7 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 // Handle OPTIONS for CORS

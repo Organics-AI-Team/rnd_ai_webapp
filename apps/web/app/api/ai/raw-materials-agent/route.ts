@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { RawMaterialsAgent } from '@/ai/agents/raw-materials-ai/agent';
 import { GeminiToolService } from '@/ai/services/providers/gemini-tool-service';
@@ -221,6 +222,7 @@ async function handleEnhancedResponse(
  * Health check and metrics endpoint
  */
 export async function GET(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async () => {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
 
@@ -284,6 +286,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 /**
@@ -291,10 +294,16 @@ export async function GET(request: NextRequest) {
  * Generate AI response with tool calling and enhanced features
  */
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   console.log('📥 [RawMaterialsAgentAPI] Received request');
 
   try {
-    const body = await request.json();
+    // Identity always derives from the verified principal, never the body.
+    const body: Record<string, any> = {
+      ...((guarded_body ?? {}) as Record<string, any>),
+      userId: principal.internal_user_id,
+      organizationId: principal.active_tenant_id,
+    };
     const {
       prompt,
       userId,
@@ -306,9 +315,9 @@ export async function POST(request: NextRequest) {
       preferences = {}
     } = body;
 
-    if (!prompt || !userId) {
+    if (!prompt) {
       return NextResponse.json(
-        { error: 'Missing required fields: prompt, userId' },
+        { error: 'Missing required field: prompt' },
         { status: 400 }
       );
     }
@@ -404,6 +413,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -418,18 +428,21 @@ export async function POST(request: NextRequest) {
  * @returns JSON success/error response
  */
 export async function PUT(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   console.log('[RawMaterialsAgentAPI] PUT feedback - start');
 
   try {
     initialize_services();
 
-    const body = await request.json();
-    const { userId, feedback, messageId } = body;
+    const body = (guarded_body ?? {}) as Record<string, any>;
+    const { feedback, messageId } = body;
+    // Identity always derives from the verified principal.
+    const userId = principal.internal_user_id;
 
-    if (!userId || !feedback) {
+    if (!feedback) {
       console.warn('[RawMaterialsAgentAPI] PUT feedback - missing fields');
       return NextResponse.json(
-        { error: 'Missing required fields: userId, feedback' },
+        { error: 'Missing required field: feedback' },
         { status: 400 }
       );
     }
@@ -476,4 +489,5 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }

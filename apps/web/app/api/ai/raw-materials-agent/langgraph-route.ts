@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { createLangGraphRawMaterialsAgent } from '@/ai/agents/raw-materials-ai/langgraph-agent';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
@@ -146,12 +147,18 @@ async function getWorkflowStats(services: any): Promise<NextResponse> {
  * Main POST handler
  */
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   try {
     // Initialize services
     const services = initializeLangGraphServices();
 
     // Parse request body
-    const body = await request.json();
+    // Identity always derives from the verified principal, never the body.
+    const body: Record<string, any> = {
+      ...((guarded_body ?? {}) as Record<string, any>),
+      userId: principal.internal_user_id,
+      organizationId: principal.active_tenant_id,
+    };
     const { action = 'process' } = body;
 
     console.log(`📥 [LangGraphRoute] ${action} request received`);
@@ -182,12 +189,14 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
+  });
 }
 
 /**
  * GET handler for health check and basic info
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async () => {
   try {
     const services = initializeLangGraphServices();
 
@@ -221,4 +230,6 @@ export async function GET() {
       timestamp: new Date().toISOString()
     }, { status: 503 });
   }
+  });
 }
+

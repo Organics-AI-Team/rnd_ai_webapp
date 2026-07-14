@@ -4,11 +4,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 import { HybridSearchService } from '@/ai/services/rag/hybrid-search-service';
 
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'tenant:read', async (_principal, guarded_body) => {
   try {
-    const body = await request.json();
+    const body = (guarded_body ?? {}) as any;
     const {
       query,
       serviceName = 'rawMaterialsAI',
@@ -105,11 +107,14 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 export async function GET(request: NextRequest) {
-  return NextResponse.json(
-    { error: 'GET method not supported. Please use POST.' },
-    { status: 405 }
-  );
+  return with_request_principal(request, 'tenant:read', async () => {
+    return NextResponse.json(
+      { error: 'GET method not supported. Please use POST.' },
+      { status: 405 }
+    );
+  });
 }

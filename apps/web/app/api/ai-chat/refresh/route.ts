@@ -4,10 +4,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 
 export async function POST(req: NextRequest) {
+  return with_request_principal(req, 'tenant:settings:write', async (_principal, guarded_body) => {
   try {
-    const { action } = await req.json();
+    const { action } = (guarded_body ?? {}) as { action?: string };
 
     if (action === 'refresh_embeddings') {
       // In a real implementation, you might:
@@ -46,4 +48,5 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }

@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 import { getEmbeddingService } from '@/lib/services/embedding';
 import { MongoClient, Db } from 'mongodb';
 
@@ -86,6 +87,7 @@ async function fetchFormulas(db: Db) {
 }
 
 export async function POST(req: NextRequest) {
+  return with_request_principal(req, 'tenant:settings:write', async (_principal, guarded_body) => {
   // Guard: embedding service still depends on Pinecone SDK; not available on Qdrant deployment
   if (!process.env.PINECONE_API_KEY) {
     console.warn('[index-data] PINECONE_API_KEY not set — indexing via this route is unavailable on Qdrant deployment. Use apps/ai/scripts/index-qdrant.ts instead.');
@@ -100,7 +102,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { indexType = 'all', forceReindex = false } = await req.json();
+    const { indexType = 'all', forceReindex = false } = (guarded_body ?? {}) as {
+      indexType?: string;
+      forceReindex?: boolean;
+    };
 
     console.log(`Starting to index ${indexType} data...`);
 
@@ -190,9 +195,11 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 export async function GET(req: NextRequest) {
+  return with_request_principal(req, 'tenant:settings:write', async () => {
   // Guard: embedding service still depends on Pinecone SDK; not available on Qdrant deployment
   if (!process.env.PINECONE_API_KEY) {
     console.warn('[index-data] PINECONE_API_KEY not set — stats via this route unavailable on Qdrant deployment.');
@@ -224,4 +231,5 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }

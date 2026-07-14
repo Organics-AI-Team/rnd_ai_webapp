@@ -98,8 +98,6 @@ function RawMaterialsAIPageContent() {
         signal: abort_controller.signal,
         body: JSON.stringify({
           prompt: user_input,
-          userId: user?.id || 'anonymous',
-          organizationId: user?.organizationId,
           sessionId: chat.active_thread?.id || undefined,
           conversationHistory: chat.messages.map((m) => ({
             role: m.role,
@@ -166,7 +164,6 @@ function RawMaterialsAIPageContent() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user?.id,
           feedback: {
             messageId,
             type: isPositive ? 'positive' : 'negative',

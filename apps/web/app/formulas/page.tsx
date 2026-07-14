@@ -223,8 +223,6 @@ export default function FormulasPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: `Generate a formula for: ${aiBrief}. Return only the formula data.`,
-          organizationId: user?.organizationId,
-          userId: user?.id,
           conversationHistory: [],
         }),
       });

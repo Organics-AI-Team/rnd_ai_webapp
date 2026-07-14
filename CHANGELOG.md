@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-07-15] fix: Guarded direct API handlers and removed body identity (G0.6)
+
+### Summary
+
+- Added `apps/web/lib/server/with-request-principal.ts`: every direct route handler now runs behind `with_request_principal(request, permission, handler)`, which verifies the legacy session cookie, asserts one named permission, recursively rejects client-supplied identity fields (`userId`/`orgId`/`organizationId`/`tenantId`/`actorId`/`accountId`, case- and separator-insensitive, anywhere in the JSON body) with `400 IDENTITY_FIELD_NOT_ALLOWED`, and passes the verified `RequestPrincipal` plus the screened body to the handler. Anonymous/invalid sessions get 401; suspended memberships get 403.
+- Guarded all 13 direct route files: agent routes, AI chat/enhanced/cosmetic routes, and the LangGraph module with `ai:run`; `index-data` and `ai-chat/refresh` with `tenant:settings:write`; the three RAG retrieval routes with `tenant:read`. `apps/web/app/api/trpc/[trpc]` stays outside the wrapper because its tRPC context performs the same verification (G0.5).
+- Deleted every body/query identity fallback: handlers now derive `userId`/`organizationId` exclusively from the principal (including `enhanced-chat` GET, which previously took `userId` from query params), and the web pages (raw-materials AI, sales AI, formulas AI-suggest, feedback PUTs) no longer send identity fields.
+- Test injection point: `set_identity_store_for_testing()` lets route tests run against an in-memory identity store with no MongoDB.
+
+### Verification approach
+
+- TDD RED first: 38 of 43 new table-driven tests failing against unguarded routes (each of the 13 handlers invoked without a cookie, with an expired cookie, and with forged identity fields); GREEN after guarding.
+- Full suite 85/85; `npm run typecheck` 0 errors; `npm run build:web` completes.
+
+---
+
 ## [2026-07-15] fix: Verified principals required for all tRPC operations (G0.5)
 
 ### Summary

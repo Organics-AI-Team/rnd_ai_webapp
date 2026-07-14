@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { CosmeticKnowledgeService } from '@/ai/services/knowledge/cosmetic-knowledge-sources';
 import { CosmeticQualityScorer } from '@/ai/services/quality/cosmetic-quality-scorer';
@@ -95,10 +96,16 @@ function get_react_agent_service(): ReactAgentService {
  * Enhanced AI response with cosmetic-specific optimizations
  */
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   console.log('📥 [CosmeticEnhancedAPI] Received enhanced request');
 
   try {
-    const body = await request.json();
+    // Identity always derives from the verified principal, never the body.
+    const body: Record<string, any> = {
+      ...((guarded_body ?? {}) as Record<string, any>),
+      userId: principal.internal_user_id,
+      organizationId: principal.active_tenant_id,
+    };
     const {
       prompt,
       userId,
@@ -114,9 +121,9 @@ export async function POST(request: NextRequest) {
       preferences = {}
     } = body;
 
-    if (!prompt || !userId) {
+    if (!prompt) {
       return NextResponse.json(
-        { error: 'Missing required fields: prompt, userId' },
+        { error: 'Missing required field: prompt' },
         { status: 400 }
       );
     }
@@ -454,6 +461,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 /**
@@ -576,6 +584,7 @@ function handleStreamingResponse(
  * Health check and service status
  */
 export async function GET(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async () => {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
 
@@ -691,6 +700,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -705,16 +715,19 @@ export async function GET(request: NextRequest) {
  * @returns JSON success/error response
  */
 export async function PUT(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   console.log('[CosmeticEnhancedAPI] PUT feedback - start');
 
   try {
-    const body = await request.json();
-    const { userId, feedback, messageId } = body;
+    const body = (guarded_body ?? {}) as Record<string, any>;
+    const { feedback, messageId } = body;
+    // Identity always derives from the verified principal.
+    const userId = principal.internal_user_id;
 
-    if (!userId || !feedback) {
+    if (!feedback) {
       console.warn('[CosmeticEnhancedAPI] PUT feedback - missing required fields');
       return NextResponse.json(
-        { error: 'Missing required fields: userId, feedback' },
+        { error: 'Missing required field: feedback' },
         { status: 400 }
       );
     }
@@ -761,6 +774,7 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 // Helper functions

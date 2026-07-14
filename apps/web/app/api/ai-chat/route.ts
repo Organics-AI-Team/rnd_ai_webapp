@@ -7,6 +7,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { getEmbeddingService } from '@/lib/services/embedding';
 import { NextRequest } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 
 // Allow streaming responses up to 60 seconds
 export const maxDuration = 60;
@@ -28,9 +29,13 @@ const AGENT_SYSTEM_PROMPTS = {
 };
 
 export async function POST(req: NextRequest) {
+  return with_request_principal(req, 'ai:run', async (_principal, guarded_body) => {
   const startTime = Date.now();
   try {
-    const { messages, agent_type = 'chemical_compound' } = await req.json();
+    const { messages, agent_type = 'chemical_compound' } = (guarded_body ?? {}) as {
+      messages?: Array<{ role: string; content: string }>;
+      agent_type?: string;
+    };
 
     if (!messages || !Array.isArray(messages)) {
       return new Response('Invalid messages format', { status: 400 });
@@ -154,4 +159,5 @@ export async function POST(req: NextRequest) {
     });
     return new Response('Internal server error', { status: 500 });
   }
+  });
 }
