@@ -272,18 +272,18 @@ export async function resolve_clerk_principal(
 }
 ~~~
 
-- [ ] **Step 1:** Expand Permission to the complete platform and university catalogue from the design specification, using colon-separated TypeScript literals that map one-to-one to dotted policy names.
-- [ ] **Step 2:** Write failing cases for missing user, inactive profile, no active Clerk organization, organization/projection mismatch, suspended tenant, stale/missing membership, platform-only admin, tenant manager, and tenant user.
-- [ ] **Step 3:** Assert that a platform-only admin gets active_tenant_id=null and tenant_role=null; a tenant request must never fabricate membership from platform role.
-- [ ] **Step 4:** Run npm test -- tests/auth/clerk-principal-resolver.test.ts.
-- [ ] **Step 5:** Expected: FAIL because the resolver does not exist.
-- [ ] **Step 6:** Implement resolve_clerk_principal(auth_state, repositories). Load UserProfile by userId. If orgId exists, load Tenant by clerkOrganizationId and active membership by tenant/profile. Map Clerk role through one function: org:manager or org:admin to manager; org:user or org:member to user. Reject any Clerk/internal role mismatch and emit a reconciliation audit event.
-- [ ] **Step 7:** Read platformRole from UserProfile for every high-impact platform request; do not read it from session claims.
-- [ ] **Step 8:** Add authenticatedProcedure, tenantMemberProcedure, tenantPermissionProcedure(permission), platformAdminProcedure, and superAdminProcedure. Each returns typed TRPCError codes.
-- [ ] **Step 9:** Change tRPC and direct route context to await Clerk auth. CLERK_CUTOVER=false may call the G0 resolver; true may only call the Clerk resolver. Record resolver_used on every request audit event.
-- [ ] **Step 10:** Run npm test -- tests/auth/clerk-principal-resolver.test.ts and npm test -- tests/auth.
-- [ ] **Step 11:** Expected: PASS.
-- [ ] **Step 12:** Commit: git add apps packages/shared-types tests/auth && git commit -m "feat: resolve server authorization from Clerk sessions"
+- [x] **Step 1:** Expand Permission to the complete platform and university catalogue from the design specification, using colon-separated TypeScript literals that map one-to-one to dotted policy names.
+- [x] **Step 2:** Write failing cases for missing user, inactive profile, no active Clerk organization, organization/projection mismatch, suspended tenant, stale/missing membership, platform-only admin, tenant manager, and tenant user.
+- [x] **Step 3:** Assert that a platform-only admin gets active_tenant_id=null and tenant_role=null; a tenant request must never fabricate membership from platform role.
+- [x] **Step 4:** Run npm test -- tests/auth/clerk-principal-resolver.test.ts.
+- [x] **Step 5:** Expected: FAIL because the resolver does not exist.
+- [x] **Step 6:** Implement resolve_clerk_principal(auth_state, repositories). Load UserProfile by userId. If orgId exists, load Tenant by clerkOrganizationId and active membership by tenant/profile. Map Clerk role through one function: org:manager or org:admin to manager; org:user or org:member to user. Reject any Clerk/internal role mismatch and emit a reconciliation audit event.
+- [x] **Step 7:** Read platformRole from UserProfile for every high-impact platform request; do not read it from session claims.
+- [x] **Step 8:** Add authenticatedProcedure, tenantMemberProcedure, tenantPermissionProcedure(permission), platformAdminProcedure, and superAdminProcedure. Each returns typed TRPCError codes.
+- [x] **Step 9:** Change tRPC and direct route context to await Clerk auth. CLERK_CUTOVER=false may call the G0 resolver; true may only call the Clerk resolver. Record resolver_used on every request audit event.
+- [x] **Step 10:** Run npm test -- tests/auth/clerk-principal-resolver.test.ts and npm test -- tests/auth.
+- [x] **Step 11:** Expected: PASS.
+- [x] **Step 12:** Commit: git add apps packages/shared-types tests/auth && git commit -m "feat: resolve server authorization from Clerk sessions"
 
 ### Task 4: Build idempotent platform-controlled university provisioning
 

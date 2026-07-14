@@ -1,17 +1,25 @@
 import { TRPCError, initTRPC } from "@trpc/server";
 import { cache } from "react";
 import { cookies } from "next/headers";
+import { auth } from "@clerk/nextjs/server";
 import { ObjectId } from "mongodb";
 import client_promise from "@rnd-ai/shared-database";
 import type { Permission, RequestPrincipal } from "@rnd-ai/shared-types";
 
 import { AuthorizationError } from "./auth/errors";
-import { require_active_tenant, require_permission } from "./auth/authorize";
+import {
+  require_active_tenant,
+  require_permission,
+  require_platform_admin,
+  require_super_admin,
+} from "./auth/authorize";
 import {
   resolve_legacy_principal,
   type LegacyUserRecord,
 } from "./auth/legacy-principal-resolver";
 import { create_legacy_identity_store } from "./auth/mongo-legacy-identity-store";
+import { resolve_clerk_principal } from "./auth/clerk-principal-resolver";
+import { create_identity_projection_repositories } from "./auth/identity-repositories";
 
 /**
  * Request context resolved once per request from verified server state. No
@@ -22,26 +30,90 @@ export interface TRPCContext {
   principal: RequestPrincipal | null;
   auth_error: "UNAUTHENTICATED" | "MEMBERSHIP_INACTIVE" | null;
   legacy_user: LegacyUserRecord | null;
+  resolver_used: "clerk" | "legacy";
 }
 
-const unauthenticated_context: TRPCContext = {
-  principal: null,
-  auth_error: "UNAUTHENTICATED",
-  legacy_user: null,
-};
+/**
+ * Whether ingress authorization has been cut over to Clerk (G1.7 switch).
+ * While false, the G0 legacy resolver remains authoritative — the documented
+ * G1 rollback lever.
+ *
+ * @returns True when CLERK_CUTOVER is exactly "true".
+ */
+function is_clerk_cutover(): boolean {
+  return process.env.CLERK_CUTOVER === "true";
+}
 
 /**
- * Resolve the legacy session cookie into a verified principal exactly once
- * per request. Resolution failures fail closed: the context carries a stable
- * failure code and no identity fields.
+ * Translate a resolution failure into a fail-closed context.
+ *
+ * @param resolver_used - Which resolver produced the failure.
+ * @param error - Thrown resolution error.
+ * @returns Unauthenticated context with a stable failure code.
+ */
+function failed_context(
+  resolver_used: "clerk" | "legacy",
+  error: unknown,
+): TRPCContext {
+  if (error instanceof AuthorizationError) {
+    return {
+      principal: null,
+      auth_error:
+        error.code === "MEMBERSHIP_INACTIVE"
+          ? "MEMBERSHIP_INACTIVE"
+          : "UNAUTHENTICATED",
+      legacy_user: null,
+      resolver_used,
+    };
+  }
+  console.error("[trpc] principal resolution failed:", error);
+  return {
+    principal: null,
+    auth_error: "UNAUTHENTICATED",
+    legacy_user: null,
+    resolver_used,
+  };
+}
+
+/**
+ * Resolve the verified principal exactly once per request. After the Clerk
+ * cutover only the Clerk resolver runs; before it, only the G0 legacy cookie
+ * resolver runs. resolver_used is recorded on the context for request audit.
+ * Resolution failures fail closed.
  *
  * @returns Context with the verified principal or a typed resolution failure.
  */
 export const createTRPCContext = cache(async (): Promise<TRPCContext> => {
+  if (is_clerk_cutover()) {
+    try {
+      const auth_state = await auth();
+      const client = await client_promise;
+      const repositories = create_identity_projection_repositories(client.db());
+      const principal = await resolve_clerk_principal(
+        {
+          userId: auth_state.userId,
+          orgId: auth_state.orgId ?? null,
+          orgRole: auth_state.orgRole ?? null,
+          sessionId: auth_state.sessionId ?? null,
+        },
+        repositories,
+      );
+      console.info({ boundary: "trpc-context", resolver_used: "clerk" });
+      return {
+        principal,
+        auth_error: null,
+        legacy_user: build_clerk_compat_record(principal),
+        resolver_used: "clerk",
+      };
+    } catch (error) {
+      return failed_context("clerk", error);
+    }
+  }
+
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value;
   if (!token) {
-    return unauthenticated_context;
+    return failed_context("legacy", new AuthorizationError("UNAUTHENTICATED", ""));
   }
 
   try {
@@ -51,22 +123,32 @@ export const createTRPCContext = cache(async (): Promise<TRPCContext> => {
     const legacy_user = await store.find_user_by_account_id(
       principal.provider_user_id,
     );
-    return { principal, auth_error: null, legacy_user };
+    console.info({ boundary: "trpc-context", resolver_used: "legacy" });
+    return { principal, auth_error: null, legacy_user, resolver_used: "legacy" };
   } catch (error) {
-    if (error instanceof AuthorizationError) {
-      return {
-        principal: null,
-        auth_error:
-          error.code === "MEMBERSHIP_INACTIVE"
-            ? "MEMBERSHIP_INACTIVE"
-            : "UNAUTHENTICATED",
-        legacy_user: null,
-      };
-    }
-    console.error("[trpc] principal resolution failed:", error);
-    return unauthenticated_context;
+    return failed_context("legacy", error);
   }
 });
+
+/**
+ * Build the legacy-compat user record for a Clerk-resolved principal so the
+ * unconverted router bodies keep working until the G2 repository conversion.
+ *
+ * @param principal - Clerk-resolved principal.
+ * @returns Legacy-record-shaped view of the principal.
+ */
+function build_clerk_compat_record(principal: RequestPrincipal): LegacyUserRecord {
+  return {
+    id: principal.internal_user_id,
+    accountId: principal.provider_user_id,
+    organizationId: principal.active_tenant_id ?? "",
+    name: "",
+    email: "",
+    role: principal.tenant_role === "manager" ? "admin" : "shopper",
+    status: "active",
+    isActive: true,
+  };
+}
 
 const t = initTRPC.context<TRPCContext>().create();
 
@@ -211,4 +293,59 @@ export const managerProcedure = authenticatedProcedure.use(({ ctx, next }) => {
   return next({
     ctx: { ...ctx, organizationId: ctx.principal.active_tenant_id as string },
   });
+});
+
+/**
+ * Procedure requiring an active tenant membership without a specific named
+ * permission — membership presence is the assertion.
+ */
+export const tenantMemberProcedure = authenticatedProcedure.use(({ ctx, next }) => {
+  try {
+    require_active_tenant(ctx.principal);
+  } catch (error) {
+    if (error instanceof AuthorizationError) throw to_trpc_error(error);
+    throw error;
+  }
+  return next({
+    ctx: { ...ctx, organizationId: ctx.principal.active_tenant_id as string },
+  });
+});
+
+/**
+ * Procedure requiring an active tenant membership plus one named permission.
+ * Canonical name for the G1.3 procedure stack; tenantProcedure remains the
+ * G0-era alias used by the existing routers until the G2.5 conversion.
+ *
+ * @param permission - Named permission the operation requires.
+ * @returns Procedure whose context carries a non-null tenant scope.
+ */
+export const tenantPermissionProcedure = (permission: Permission) =>
+  tenantProcedure(permission);
+
+/**
+ * Procedure requiring any platform role (admin or super_admin), read from
+ * the database-authoritative UserProfile — never from session claims. It
+ * carries no tenant scope and never fabricates membership.
+ */
+export const platformAdminProcedure = authenticatedProcedure.use(({ ctx, next }) => {
+  try {
+    require_platform_admin(ctx.principal);
+  } catch (error) {
+    if (error instanceof AuthorizationError) throw to_trpc_error(error);
+    throw error;
+  }
+  return next({ ctx });
+});
+
+/**
+ * Procedure requiring the platform super administrator role.
+ */
+export const superAdminProcedure = authenticatedProcedure.use(({ ctx, next }) => {
+  try {
+    require_super_admin(ctx.principal);
+  } catch (error) {
+    if (error instanceof AuthorizationError) throw to_trpc_error(error);
+    throw error;
+  }
+  return next({ ctx });
 });

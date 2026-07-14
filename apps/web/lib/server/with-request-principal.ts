@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import client_promise from "@rnd-ai/shared-database";
 import type { Permission, RequestPrincipal } from "@rnd-ai/shared-types";
 
@@ -9,6 +10,9 @@ import {
   type LegacyIdentityStore,
 } from "@/server/auth/legacy-principal-resolver";
 import { create_legacy_identity_store } from "@/server/auth/mongo-legacy-identity-store";
+import { resolve_clerk_principal } from "@/server/auth/clerk-principal-resolver";
+import { create_identity_projection_repositories } from "@/server/auth/identity-repositories";
+import { is_clerk_cutover } from "./clerk-config";
 
 /**
  * Handler signature for guarded direct API routes. The body has already been
@@ -87,7 +91,10 @@ export function set_identity_store_for_testing(
 }
 
 /**
- * Resolve the verified request principal from the legacy session cookie.
+ * Resolve the verified request principal. After the Clerk cutover only the
+ * Clerk resolver runs (session values from await auth(), projections from
+ * the internal repositories); before it, only the G0 legacy cookie resolver
+ * runs. The chosen resolver is logged for request audit.
  *
  * @param request - Incoming route request.
  * @returns The verified principal.
@@ -97,10 +104,27 @@ export function set_identity_store_for_testing(
 export async function resolve_request_principal(
   request: NextRequest,
 ): Promise<RequestPrincipal> {
+  if (is_clerk_cutover()) {
+    const auth_state = await auth();
+    const repositories = create_identity_projection_repositories(
+      (await client_promise).db(),
+    );
+    console.info({ boundary: "route-guard", resolver_used: "clerk" });
+    return resolve_clerk_principal(
+      {
+        userId: auth_state.userId,
+        orgId: auth_state.orgId ?? null,
+        orgRole: auth_state.orgRole ?? null,
+        sessionId: auth_state.sessionId ?? null,
+      },
+      repositories,
+    );
+  }
   const token = request.cookies.get("auth_token")?.value ?? "";
   const store =
     identity_store_override ??
     create_legacy_identity_store((await client_promise).db());
+  console.info({ boundary: "route-guard", resolver_used: "legacy" });
   return resolve_legacy_principal(token, store);
 }
 

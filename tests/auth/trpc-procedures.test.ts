@@ -29,6 +29,7 @@ function build_ctx(
   return {
     principal,
     auth_error,
+    resolver_used: "legacy",
     legacy_user: principal
       ? {
           id: principal.internal_user_id,

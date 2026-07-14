@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-07-15] feat: Server authorization from Clerk sessions (G1.3)
+
+### Summary
+
+- Added `apps/ai/server/auth/clerk-principal-resolver.ts`: `resolve_clerk_principal(auth_state, repositories)` turns verified `await auth()` values (userId, orgId, orgRole, sessionId) into a database-authoritative `RequestPrincipal`. Platform roles read from the `UserProfile` record, never session claims; a platform admin gets `active_tenant_id=null`/`tenant_role=null` and a tenant request never fabricates membership from a platform role. One mapping function handles Clerk roles (`org:manager`/`org:admin` → manager; `org:user`/`org:member` → user); any Clerk/internal role mismatch is rejected and appends a `role_reconciliation` record to `platform_audit_events`.
+- Expanded `Permission` to the complete platform + university catalogue from design §6.2 (colon-separated literals mapping 1:1 to dotted policy names) with per-role permission sets; the G0 coarse names remain as documented transitional aliases until the G2.5 router conversion.
+- Procedure stack extended in `apps/ai/server/trpc.ts`: `tenantMemberProcedure`, `tenantPermissionProcedure(permission)`, `platformAdminProcedure`, `superAdminProcedure` (typed TRPCError codes), alongside the existing `authenticatedProcedure`/`tenantProcedure`/`managerProcedure`.
+- Cutover discipline: both the tRPC context and the direct-route guard now select exactly one resolver per request — `CLERK_CUTOVER=true` may only call the Clerk resolver, false may only call the G0 legacy resolver — and record `resolver_used` on the request context/audit log. New `apps/ai/server/auth/identity-repositories.ts` assembles the projection-repository ports.
+- Added `require_platform_admin`/`require_super_admin` assertions to `apps/ai/server/auth/authorize.ts`.
+
+### Verification approach
+
+- TDD RED first (resolver missing), then 11/11 resolver tests: role mapping (custom + compatibility), missing user, inactive profile, platform-only principal, no-fabricated-membership, unknown organization, suspended tenant, revoked membership, role-mismatch reconciliation audit, manager and user permission sets.
+- Full suite 121/121; `npm run verify:commercial` exit 0.
+
+---
+
 ## [2026-07-15] feat: Internal identity, tenant, and membership projections (G1.2)
 
 ### Summary
