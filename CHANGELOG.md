@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-07-15] feat: Provider-neutral request principal (G0.4)
+
+### Summary
+
+- Added provider-neutral authorization contracts to `packages/shared-types/src/auth.ts`: `PlatformRole`, `TenantRole`, `Permission`, `RequestPrincipal`, and per-role permission catalogues (`TENANT_ROLE_PERMISSIONS`, `PLATFORM_ROLE_PERMISSIONS`). Platform and tenant role dimensions are separate types; neither converts into the other.
+- Added `apps/ai/server/auth/legacy-principal-resolver.ts`: `resolve_legacy_principal(token, db, now)` resolves a verified legacy session through one session query plus an account/user/organization lookup sequence against an injected read-only `LegacyIdentityStore` port (Prisma adapter lands with tRPC wiring in G0.5; tests use in-memory fakes).
+- Legacy role mapping grants no platform authority: legacy `admin` maps to tenant `manager`; `shipper`/`shopper` map to tenant `user`; `platform_role` is always null for legacy identities.
+- Added `apps/ai/server/auth/authorize.ts` (`require_permission`, `require_active_tenant`) and `apps/ai/server/auth/errors.ts` (`AuthorizationError` with stable codes `UNAUTHENTICATED`, `MEMBERSHIP_INACTIVE`, `FORBIDDEN`).
+- Rejection semantics: missing/unknown/expired session, inactive or missing account, missing user profile, and missing organization raise `UNAUTHENTICATED`; suspended/inactive user or inactive organization raise `MEMBERSHIP_INACTIVE`.
+
+### Verification approach
+
+- TDD: captured the RED run (2 test files failing on missing modules), then GREEN with 19 passing auth tests covering all rejection cases, role mapping, and authorization assertions.
+- Full suite remains green (33 tests across 5 files) and `npm run typecheck` passes; the four new modules also pass an isolated `tsc --strict` check.
+
+---
+
 ## [2026-07-15] docs: Dynamic agentic orchestrator design supersedes fixed OODA pipeline
 
 ### Summary

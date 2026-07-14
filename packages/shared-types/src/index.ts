@@ -7,6 +7,12 @@ import { z } from "zod";
 export * from "./messaging";
 
 // ============================================
+// PROVIDER-NEUTRAL AUTHORIZATION CONTRACTS
+// ============================================
+
+export * from "./auth";
+
+// ============================================
 // PRODUCT/INVENTORY SCHEMAS
 // ============================================
 

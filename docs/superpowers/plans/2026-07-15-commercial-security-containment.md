@@ -226,11 +226,11 @@ it("never grants a platform role from a legacy tenant role", async () => {
 });
 ~~~
 
-- [ ] **Step 1:** Write a failing resolver test for missing, expired, inactive-account, suspended-user, missing-organization, and valid session cases.
-- [ ] **Step 2:** Write a failing authorization test proving a legacy admin maps only to tenant manager, never platform admin, and that shipper/shopper map to tenant user.
-- [ ] **Step 3:** Run npm test -- tests/auth.
-- [ ] **Step 4:** Expected: FAIL because the modules do not exist.
-- [ ] **Step 5:** Add these contracts to packages/shared-types/src/auth.ts:
+- [x] **Step 1:** Write a failing resolver test for missing, expired, inactive-account, suspended-user, missing-organization, and valid session cases.
+- [x] **Step 2:** Write a failing authorization test proving a legacy admin maps only to tenant manager, never platform admin, and that shipper/shopper map to tenant user.
+- [x] **Step 3:** Run npm test -- tests/auth.
+- [x] **Step 4:** Expected: FAIL because the modules do not exist.
+- [x] **Step 5:** Add these contracts to packages/shared-types/src/auth.ts:
 
 **Implementation anchor:**
 
@@ -259,12 +259,12 @@ export interface RequestPrincipal {
 }
 ~~~
 
-- [ ] **Step 6:** Implement resolve_legacy_principal(token, db) with one session query and one user/account/organization lookup sequence. Reject any record whose expiry/status/isActive is invalid.
-- [ ] **Step 7:** Return provider_user_id as the legacy account ID and map admin to manager; shipper and shopper map to user. Return platform_role=null for every legacy user.
-- [ ] **Step 8:** Implement require_permission(principal, permission) and require_active_tenant(principal) using typed AuthorizationError codes UNAUTHENTICATED, MEMBERSHIP_INACTIVE, FORBIDDEN.
-- [ ] **Step 9:** Run npm test -- tests/auth.
-- [ ] **Step 10:** Expected: PASS.
-- [ ] **Step 11:** Commit: git add packages/shared-types apps/ai/server/auth tests/auth && git commit -m "feat: add provider-neutral request principal"
+- [x] **Step 6:** Implement resolve_legacy_principal(token, db) with one session query and one user/account/organization lookup sequence. Reject any record whose expiry/status/isActive is invalid.
+- [x] **Step 7:** Return provider_user_id as the legacy account ID and map admin to manager; shipper and shopper map to user. Return platform_role=null for every legacy user.
+- [x] **Step 8:** Implement require_permission(principal, permission) and require_active_tenant(principal) using typed AuthorizationError codes UNAUTHENTICATED, MEMBERSHIP_INACTIVE, FORBIDDEN.
+- [x] **Step 9:** Run npm test -- tests/auth.
+- [x] **Step 10:** Expected: PASS.
+- [x] **Step 11:** Commit: git add packages/shared-types apps/ai/server/auth tests/auth && git commit -m "feat: add provider-neutral request principal"
 
 ### Task 5: Put the principal into tRPC and close public procedures
 
