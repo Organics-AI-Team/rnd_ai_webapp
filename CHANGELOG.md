@@ -1,5 +1,39 @@
 # Changelog
 
+## [2026-07-15] docs: Commercial Clerk tenancy and OODA AI migration design
+
+### Summary
+
+Added the evidence-backed commercial architecture specification for replacing custom authentication with Clerk, introducing separate platform and university role scopes, enforcing tenant isolation across application and AI data, and consolidating overlapping AI paths into a governed LangGraph OODA orchestrator.
+
+### Repository audit findings
+
+- Identified public organization creation with automatic admin assignment, JavaScript-readable custom session tokens, cookie-presence middleware, and API routes excluded from middleware.
+- Counted 20 sensitive public procedures across organization, user, order, and credit routers and 12 direct API route files without verified server authentication.
+- Flagged client-controlled AI identity fields and formula tools that load or mutate records without tenant predicates.
+- Documented missing tenant provenance across AI conversations, responses, feedback, formula discussions, and version history.
+- Flagged overlapping ReAct, fixed pipeline, legacy LangGraph, agent-manager, cosmetic, and sales execution paths with silent fallbacks.
+- Confirmed the deployed boundary currently bundles AI source into the web runtime despite separate workspace naming.
+- Recorded missing standard tests, CI gates, evaluation corpus, quota ledger, durable approvals, and commercial data-governance operations.
+
+### Architecture decisions
+
+- Clerk owns identity, sessions, organizations, memberships, and invitations; MongoDB owns application and tenant AI state.
+- Platform roles (`super_admin`, `admin`) are independent from university roles (`manager`, `user`).
+- Only platform admins create universities and appoint managers; managers invite students and govern tenant AI within platform limits.
+- Every resource and AI operation derives tenant context from verified server state and enforces named permissions at the resource boundary.
+- Tenant AI policy controls models, tools, prompts, knowledge, quotas, retention, approvals, and usage.
+- A typed LangGraph `Observe -> Orient -> Decide -> Act` loop becomes the sole production AI architecture.
+- Deterministic code authorizes actions, injects tenant filters, validates artifacts, controls budgets, and commits side effects.
+- Existing bcrypt account hashes are eligible for Clerk import, avoiding a mandatory reset for valid records.
+- Implementation is decomposed into six gated subprojects from immediate containment through canary and deprecation.
+
+### Documentation
+
+- Added `docs/superpowers/specs/2026-07-15-commercial-clerk-tenancy-ooda-design.md`.
+
+---
+
 ## [2026-03-30] feat: Show chat history threads in main navigation sidebar
 
 ### Summary
