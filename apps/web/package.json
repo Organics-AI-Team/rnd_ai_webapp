@@ -5,9 +5,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf .next"
   },
   "dependencies": {
@@ -31,9 +32,9 @@
     "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.544.0",
-    "next": "^14.2.15",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "next": "16.2.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "react-markdown": "^10.1.0",
     "recharts": "^3.3.0",
     "rehype-raw": "^7.0.0",
@@ -46,10 +47,11 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@types/node": "^24.6.2",
-    "@types/react": "^19.2.0",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.36.0",
-    "eslint-config-next": "^15.5.4",
+    "eslint-config-next": "16.2.10",
     "postcss": "^8.5.6",
     "typescript": "^5.9.3"
   }

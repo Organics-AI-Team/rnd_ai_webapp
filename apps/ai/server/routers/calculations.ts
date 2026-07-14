@@ -9,6 +9,16 @@ import { Logger } from "@rnd-ai/shared-utils";
 const logger = Logger.scope('CalculationsRouter');
 
 /**
+ * Normalize a caught value to the Error contract required by Logger.
+ *
+ * @param error - Value caught from an operation.
+ * @returns The original Error or an Error wrapping a non-Error value.
+ */
+function to_error(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
  * Price Calculation Router
  *
  * Handles all price calculation operations for formulas and products.
@@ -194,15 +204,14 @@ export const calculationsRouter = router({
         });
 
         return result;
-      } catch (error: any) {
+      } catch (error: unknown) {
         const elapsedTime = Date.now() - startTime;
-        logger.error("Manual price calculation failed", {
-          error: error.message,
-          stack: error.stack,
+        const caught_error = to_error(error);
+        logger.error("Manual price calculation failed", caught_error, {
           userId: ctx.user._id,
           elapsedTimeMs: elapsedTime,
         });
-        throw error;
+        throw caught_error;
       }
     }),
 
@@ -244,12 +253,12 @@ export const calculationsRouter = router({
           _id: result.insertedId.toString(),
           ...calculation,
         };
-      } catch (error: any) {
-        logger.error("Failed to save calculation", {
-          error: error.message,
+      } catch (error: unknown) {
+        const caught_error = to_error(error);
+        logger.error("Failed to save calculation", caught_error, {
           formulaId: input.formulaId,
         });
-        throw error;
+        throw caught_error;
       }
     }),
 
@@ -291,13 +300,12 @@ export const calculationsRouter = router({
         });
 
         return calculations;
-      } catch (error: any) {
-        logger.error("Failed to list calculations", {
-          error: error.message,
-          stack: error.stack,
+      } catch (error: unknown) {
+        const caught_error = to_error(error);
+        logger.error("Failed to list calculations", caught_error, {
           userId: ctx.user._id,
         });
-        throw error;
+        throw caught_error;
       }
     }),
 
@@ -325,8 +333,9 @@ export const calculationsRouter = router({
         });
 
         if (!calculation) {
-          logger.error("Calculation not found", { calculationId: input.id });
-          throw new Error("Calculation not found");
+          const not_found_error = new Error("Calculation not found");
+          logger.error("Calculation not found", not_found_error, { calculationId: input.id });
+          throw not_found_error;
         }
 
         logger.info("Calculation retrieved successfully", {
@@ -334,12 +343,12 @@ export const calculationsRouter = router({
         });
 
         return calculation;
-      } catch (error: any) {
-        logger.error("Failed to get calculation", {
-          error: error.message,
+      } catch (error: unknown) {
+        const caught_error = to_error(error);
+        logger.error("Failed to get calculation", caught_error, {
           calculationId: input.id,
         });
-        throw error;
+        throw caught_error;
       }
     }),
 
@@ -367,10 +376,11 @@ export const calculationsRouter = router({
         });
 
         if (result.deletedCount === 0) {
-          logger.error("Calculation not found for deletion", {
+          const not_found_error = new Error("Calculation not found");
+          logger.error("Calculation not found for deletion", not_found_error, {
             calculationId: input.id,
           });
-          throw new Error("Calculation not found");
+          throw not_found_error;
         }
 
         logger.info("Calculation deleted successfully", {
@@ -378,12 +388,12 @@ export const calculationsRouter = router({
         });
 
         return { success: true };
-      } catch (error: any) {
-        logger.error("Failed to delete calculation", {
-          error: error.message,
+      } catch (error: unknown) {
+        const caught_error = to_error(error);
+        logger.error("Failed to delete calculation", caught_error, {
           calculationId: input.id,
         });
-        throw error;
+        throw caught_error;
       }
     }),
 });

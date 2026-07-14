@@ -55,7 +55,7 @@ export interface RegulatoryRestriction {
 }
 
 export interface SafetyAssessment {
-  overallSafetyRating: 'safe' | 'caution' | 'restricted' | 'prohibited';
+  overallSafetyRating: 'unknown' | 'safe' | 'caution' | 'restricted' | 'prohibited';
   skinIrritation: SafetyRating;
   eyeIrritation: SafetyRating;
   sensitization: SafetyRating;
@@ -306,7 +306,8 @@ export class CosmeticRegulatoryService {
     });
 
     // Add regional sources based on context
-    context.targetRegions.forEach(region => {
+    const target_regions = context.targetRegions || context.targetMarket || [context.region];
+    target_regions.forEach(region => {
       const regionalSource = this.findRegionalSource(region);
       if (regionalSource) {
         relevantSources.push(regionalSource);
@@ -383,6 +384,7 @@ export class CosmeticRegulatoryService {
           region: 'US',
           maxConcentration: 25, // Example: 25% for leave-on products
           productTypeRestrictions: ['rinse-off', 'leave-on'],
+          prohibitedUses: [],
           requiredWarnings: ['For external use only'],
           effectiveDate: new Date('2020-01-01'),
           lastAmended: new Date('2023-06-01')
@@ -401,6 +403,7 @@ export class CosmeticRegulatoryService {
         references: []
       },
       complianceStatus: {
+        ...this.getDefaultComplianceStatus(),
         fda: { status: 'approved', restrictions: [], requiredTests: [], documentation: [], lastChecked: new Date() }
       },
       requiredDocumentation: ['Safety Data Sheet', 'Certificate of Analysis'],
@@ -439,6 +442,7 @@ export class CosmeticRegulatoryService {
         references: []
       },
       complianceStatus: {
+        ...this.getDefaultComplianceStatus(),
         eu: { status: 'restricted', restrictions: ['Max 10% in leave-on products'], requiredTests: ['Eye irritation test'], documentation: ['Safety Assessment'], lastChecked: new Date() }
       },
       requiredDocumentation: ['EU Safety Assessment', 'Toxicological Dossier'],
@@ -456,14 +460,13 @@ export class CosmeticRegulatoryService {
           region: 'ASEAN',
           maxConcentration: 20,
           productTypeRestrictions: ['all cosmetic products'],
+          prohibitedUses: [],
           requiredWarnings: ['Use as directed'],
           effectiveDate: new Date('2021-01-01'),
           lastAmended: new Date('2023-07-01')
         }
       ],
-      complianceStatus: {
-        // ASEAN compliance would be calculated based on member country regulations
-      },
+      complianceStatus: this.getDefaultComplianceStatus(),
       requiredDocumentation: ['ASEAN Cosmetic Notification File'],
       lastUpdated: new Date(),
       sources: ['ASEAN Cosmetic Directive']
@@ -474,6 +477,7 @@ export class CosmeticRegulatoryService {
     // Simulate CTPA database lookup
     return {
       safetyAssessment: {
+        ...this.getDefaultSafetyAssessment(),
         overallSafetyRating: 'safe',
         notes: ['UK industry assessment'],
         references: []
@@ -487,6 +491,7 @@ export class CosmeticRegulatoryService {
     // Simulate EWG Skin Deep lookup
     return {
       safetyAssessment: {
+        ...this.getDefaultSafetyAssessment(),
         overallSafetyRating: 'caution',
         notes: ['EWG rating based on available data'],
         references: []
@@ -590,7 +595,17 @@ export class CosmeticRegulatoryService {
     }
 
     // Merge individual safety ratings
-    const ratingFields: Array<keyof SafetyAssessment> = [
+    type SafetyRatingField = keyof Pick<
+      SafetyAssessment,
+      | 'skinIrritation'
+      | 'eyeIrritation'
+      | 'sensitization'
+      | 'phototoxicity'
+      | 'carcinogenicity'
+      | 'reproductiveToxicity'
+      | 'mutagenicity'
+    >;
+    const ratingFields: SafetyRatingField[] = [
       'skinIrritation', 'eyeIrritation', 'sensitization',
       'phototoxicity', 'carcinogenicity', 'reproductiveToxicity', 'mutagenicity'
     ];
@@ -624,7 +639,13 @@ export class CosmeticRegulatoryService {
     rating1: SafetyAssessment['overallSafetyRating'],
     rating2: SafetyAssessment['overallSafetyRating']
   ): SafetyAssessment['overallSafetyRating'] {
-    const ratingOrder = ['safe', 'caution', 'restricted', 'prohibited'];
+    const ratingOrder: SafetyAssessment['overallSafetyRating'][] = [
+      'safe',
+      'caution',
+      'unknown',
+      'restricted',
+      'prohibited'
+    ];
 
     const index1 = ratingOrder.indexOf(rating1);
     const index2 = ratingOrder.indexOf(rating2);
@@ -652,13 +673,27 @@ export class CosmeticRegulatoryService {
     base: ComplianceStatus,
     additional: Partial<ComplianceStatus>
   ): ComplianceStatus {
+    /**
+     * Preserve an established regional result when an additional source has no
+     * result or only the default unknown status.
+     */
+    const merge_region = (
+      base_region: RegulatoryCompliance,
+      additional_region: RegulatoryCompliance | undefined
+    ): RegulatoryCompliance => {
+      if (!additional_region || additional_region.status === 'unknown') {
+        return base_region;
+      }
+      return additional_region;
+    };
+
     return {
-      fda: additional.fda || base.fda,
-      eu: additional.eu || base.eu,
-      asean: additional.asean || base.asean,
-      china: additional.china || base.china,
-      japan: additional.japan || base.japan,
-      canada: additional.canada || base.canada
+      fda: merge_region(base.fda, additional.fda),
+      eu: merge_region(base.eu, additional.eu),
+      asean: merge_region(base.asean, additional.asean),
+      china: merge_region(base.china, additional.china),
+      japan: merge_region(base.japan, additional.japan),
+      canada: merge_region(base.canada, additional.canada)
     };
   }
 
@@ -859,7 +894,8 @@ export class CosmeticRegulatoryService {
   }
 
   private generateCacheKey(ingredientName: string, context: CosmeticSearchContext): string {
-    return `${ingredientName.toLowerCase()}_${context.targetRegions.join('_')}`;
+    const target_regions = context.targetRegions || context.targetMarket || [context.region];
+    return `${ingredientName.toLowerCase()}_${target_regions.join('_')}`;
   }
 
   private isCacheValid(cachedData: CachedRegulatoryData): boolean {

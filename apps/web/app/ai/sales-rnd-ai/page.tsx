@@ -4,7 +4,7 @@ import React, { Suspense, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TrendingUp, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { use_chat_threads } from '@/hooks/use_chat_threads';
+import { useChatThreads } from '@/hooks/use_chat_threads';
 import {
   AIChatHeader,
   AIChatMessagesContainer,
@@ -47,7 +47,7 @@ function SalesRndAIPageContent() {
   const { user } = useAuth();
   const search_params = useSearchParams();
   const thread_param = search_params.get('thread');
-  const chat = use_chat_threads('sales_rnd_ai', thread_param);
+  const chat = useChatThreads('sales_rnd_ai', thread_param);
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -154,7 +154,7 @@ function SalesRndAIPageContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, user, chat]);
+  }, [input, isLoading, user, chat, setInput, setIsLoading]);
 
   /**
    * Submits user feedback for ML preference learning.

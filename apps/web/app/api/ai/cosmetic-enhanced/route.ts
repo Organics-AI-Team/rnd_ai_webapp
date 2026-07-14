@@ -13,10 +13,6 @@ import { GeminiService } from '@/ai/services/providers/gemini-service';
 import { ResponseReranker } from '@/ai/services/response/response-reranker';
 import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
 
-// Initialize services — default to Gemini (no OpenAI/Pinecone required)
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const AI_API_KEY = GEMINI_API_KEY || '';
-
 let knowledgeService: CosmeticKnowledgeService | null = null;
 let qualityScorer: CosmeticQualityScorer | null = null;
 let regulatoryService: CosmeticRegulatoryService | null = null;
@@ -24,11 +20,15 @@ let credibilityService: CosmeticCredibilityWeightingService | null = null;
 let thresholdsService: CosmeticQualityThresholdsService | null = null;
 let enhancedAIService: GeminiService | null = null;
 let responseReranker: ResponseReranker | null = null;
+let reactAgentService: ReactAgentService | null = null;
 
 /**
- * Initialize all cosmetic AI services
+ * Get all cosmetic AI services, initializing environment-dependent clients on first use.
+ *
+ * @returns Cached cosmetic AI services.
+ * @throws Error when the Gemini API key is unavailable or a service cannot initialize.
  */
-function initializeServices() {
+function get_services() {
   if (knowledgeService && qualityScorer && regulatoryService &&
       credibilityService && thresholdsService && enhancedAIService && responseReranker) {
     return {
@@ -45,17 +45,18 @@ function initializeServices() {
   console.log('🚀 [CosmeticEnhancedAPI] Initializing cosmetic AI services...');
 
   try {
-    if (!GEMINI_API_KEY) {
+    const gemini_api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!gemini_api_key) {
       throw new Error('Missing GEMINI_API_KEY — required for cosmetic AI services');
     }
 
     // Initialize all services using Gemini + Qdrant (no OpenAI/Pinecone needed)
-    knowledgeService = new CosmeticKnowledgeService(AI_API_KEY);
+    knowledgeService = new CosmeticKnowledgeService(gemini_api_key);
     qualityScorer = new CosmeticQualityScorer();
     regulatoryService = new CosmeticRegulatoryService();
     credibilityService = new CosmeticCredibilityWeightingService();
     thresholdsService = new CosmeticQualityThresholdsService();
-    enhancedAIService = new GeminiService(GEMINI_API_KEY, { model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
+    enhancedAIService = new GeminiService(gemini_api_key, { model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
     responseReranker = new ResponseReranker();
 
     console.log('✅ [CosmeticEnhancedAPI] All services initialized successfully');
@@ -74,6 +75,18 @@ function initializeServices() {
     console.error('❌ [CosmeticEnhancedAPI] Service initialization failed:', error);
     throw error;
   }
+}
+
+/**
+ * Get the cached ReAct agent, initializing its SDK clients on first use.
+ *
+ * @returns Cached ReAct agent service.
+ */
+function get_react_agent_service(): ReactAgentService {
+  if (!reactAgentService) {
+    reactAgentService = new ReactAgentService();
+  }
+  return reactAgentService;
 }
 
 /**
@@ -108,12 +121,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Initialize services
-    const services = initializeServices();
+    const services = get_services();
 
     // Try ReAct agent first (primary path — uses Gemini + Qdrant tools)
     try {
       console.log('[cosmetic-enhanced] POST: attempting ReAct agent path');
-      const reactAgent = new ReactAgentService();
+      const reactAgent = get_react_agent_service();
       const reactResult = await reactAgent.execute({
         prompt,
         user_id: userId,
@@ -309,9 +322,7 @@ export async function POST(request: NextRequest) {
               requireSafetyData: queryType === 'ingredient_safety',
               requireRegulatoryCompliance: enableRegulatoryCheck,
               requireFormulationGuidance: queryType === 'formulation_advice',
-              requireEfficacyData: queryType === 'efficacy_claim',
-              requireConcentrationLimits: true,
-              requireDocumentation: enableRegulatoryCheck
+              requireEfficacyData: queryType === 'efficacy_claim'
             }
           }
         );
@@ -568,7 +579,7 @@ export async function GET(request: NextRequest) {
   const action = searchParams.get('action');
 
   try {
-    const services = initializeServices();
+    const services = get_services();
 
     switch (action) {
       case 'health':

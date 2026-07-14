@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@/server";
 import { trpc } from "@/lib/trpc-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +41,10 @@ interface FormulaIngredient {
   notes?: string;
 }
 
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type Formula = RouterOutputs["formulas"]["getById"];
+type FormulaStatus = Formula["status"];
+
 /**
  * FormulaForm — Create or edit a formula.
  * Reads `?edit=<id>` from the URL to determine edit mode.
@@ -60,7 +66,7 @@ export function FormulaForm() {
   const [ingredients, setIngredients] = useState<FormulaIngredient[]>([]);
   const [totalAmount, setTotalAmount] = useState(100);
   const [remarks, setRemarks] = useState("");
-  const [status, setStatus] = useState<"draft" | "confirmed" | "testing" | "approved" | "rejected">("draft");
+  const [status, setStatus] = useState<FormulaStatus>("draft");
   const [formLoaded, setFormLoaded] = useState(false);
 
   const [showIngredientPicker, setShowIngredientPicker] = useState(false);
@@ -77,26 +83,36 @@ export function FormulaForm() {
   // Pre-populate form fields when formula data arrives
   useEffect(() => {
     if (existingFormula && !formLoaded) {
-      console.log("[formula-form] populating edit form", { id: editId });
-      setFormulaName(existingFormula.formulaName || "");
-      setVersion(existingFormula.version || 1);
-      setClient(existingFormula.client || "");
-      setTargetBenefits(existingFormula.targetBenefits || []);
-      setTotalAmount(existingFormula.totalAmount || 100);
-      setRemarks(existingFormula.remarks || "");
-      setStatus((existingFormula.status as any) || "draft");
-      setIngredients(
-        (existingFormula.ingredients || []).map((ing: any) => ({
-          materialId: ing.materialId || "",
-          rm_code: ing.rm_code || "",
-          productName: ing.productName || "",
-          inci_name: ing.inci_name || "",
-          amount: ing.amount || 0,
-          percentage: ing.percentage || 0,
-          notes: ing.notes || "",
-        }))
-      );
-      setFormLoaded(true);
+      const formula: Formula = existingFormula;
+      let is_active = true;
+
+      queueMicrotask(() => {
+        if (!is_active) return;
+        console.log("[formula-form] populating edit form", { id: editId });
+        setFormulaName(formula.formulaName || "");
+        setVersion(formula.version || 1);
+        setClient(formula.client || "");
+        setTargetBenefits(formula.targetBenefits || []);
+        setTotalAmount(formula.totalAmount || 100);
+        setRemarks(formula.remarks || "");
+        setStatus(formula.status || "draft");
+        setIngredients(
+          (formula.ingredients || []).map((ing) => ({
+            materialId: ing.materialId || "",
+            rm_code: ing.rm_code || "",
+            productName: ing.productName || "",
+            inci_name: ing.inci_name || "",
+            amount: ing.amount || 0,
+            percentage: ing.percentage || 0,
+            notes: ing.notes || "",
+          }))
+        );
+        setFormLoaded(true);
+      });
+
+      return () => {
+        is_active = false;
+      };
     }
   }, [existingFormula, formLoaded, editId]);
 

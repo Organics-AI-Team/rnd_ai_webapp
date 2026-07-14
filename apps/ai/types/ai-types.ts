@@ -8,6 +8,10 @@ export interface AIRequest {
     userPreferences?: UserPreferences;
     category?: string;
     conversationHistory?: Array<{ role: string; content: string }>;
+    searchResults?: unknown[];
+    productType?: string;
+    targetRegions?: string[];
+    queryType?: string;
   };
 }
 

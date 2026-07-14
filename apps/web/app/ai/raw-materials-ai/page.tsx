@@ -4,7 +4,7 @@ import React, { Suspense, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Package, Search } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { use_chat_threads } from '@/hooks/use_chat_threads';
+import { useChatThreads } from '@/hooks/use_chat_threads';
 import {
   AIChatHeader,
   AIChatMessagesContainer,
@@ -47,7 +47,7 @@ function RawMaterialsAIPageContent() {
   const { user } = useAuth();
   const search_params = useSearchParams();
   const thread_param = search_params.get('thread');
-  const chat = use_chat_threads('raw_materials_ai', thread_param);
+  const chat = useChatThreads('raw_materials_ai', thread_param);
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -150,7 +150,7 @@ function RawMaterialsAIPageContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, user, chat]);
+  }, [input, isLoading, user, chat, setInput, setIsLoading]);
 
   /**
    * Submits user feedback for ML preference learning.

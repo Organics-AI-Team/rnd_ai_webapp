@@ -40,7 +40,7 @@ interface IndexManagementResult {
 
 export default function AIIndexingPage() {
   const [isManagingIndex, setIsManagingIndex] = useState(false);
-  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [lastManagementResult, setLastManagementResult] = useState<IndexManagementResult | null>(null);
   const [indexStats, setIndexStats] = useState<IndexStats | null>(null);
@@ -139,8 +139,36 @@ export default function AIIndexingPage() {
 
   // Load stats and index info on mount
   useEffect(() => {
-    refreshAllData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    let is_active = true;
+
+    /**
+     * Load the initial index data and ignore results after unmount.
+     */
+    async function load_initial_data(): Promise<void> {
+      try {
+        const [stats_response, info_response] = await Promise.all([
+          fetch('/api/index-data'),
+          fetch('/api/index-data/manage'),
+        ]);
+        const [stats_result, info_result] = await Promise.all([
+          stats_response.json(),
+          info_response.json(),
+        ]);
+
+        if (!is_active) return;
+        if (stats_result.success) setIndexStats(stats_result.stats);
+        if (info_result.success) setIndexInfo(info_result.indexInfo);
+      } catch (error) {
+        if (is_active) console.error('Failed to load initial index data:', error);
+      } finally {
+        if (is_active) setIsLoadingStats(false);
+      }
+    }
+
+    void load_initial_data();
+    return () => {
+      is_active = false;
+    };
   }, []);
 
   return (

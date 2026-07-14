@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +16,18 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShoppingCart, Package, CheckCircle } from "lucide-react";
 
+/**
+ * Read the public order organization identifier from the current URL.
+ *
+ * @returns Organization identifier, or an empty string during server rendering.
+ */
+function read_organization_id(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("org") || "";
+}
+
 export default function ClientOrderPage() {
-  const [organizationId, setOrganizationId] = useState("");
+  const [organizationId] = useState(read_organization_id);
   const [formData, setFormData] = useState({
     productName: "",
     price: "",
@@ -31,13 +41,6 @@ export default function ClientOrderPage() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const submitOrder = trpc.orders.submitClientOrder.useMutation();
-
-  // Get organization ID from URL or use default
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const orgId = params.get('org') || '';
-    setOrganizationId(orgId);
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

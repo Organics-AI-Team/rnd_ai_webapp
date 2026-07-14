@@ -20,6 +20,8 @@ export {
 
 // Pre-configured connections
 export {
+  get_main_client_promise,
+  get_raw_materials_client_promise,
   main_client_promise,
   raw_materials_client_promise
 } from './mongodb/connections';

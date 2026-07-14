@@ -1,5 +1,5 @@
 /**
- * use_chat_threads Hook
+ * useChatThreads Hook
  *
  * Manages persistent chat thread state via tRPC. Provides:
  *   - Thread list (sorted by most recent)
@@ -78,29 +78,28 @@ export interface UseChatThreadsReturn {
  * @param initial_thread_id - Optional thread ID to auto-select on mount (e.g. from URL ?thread= param)
  * @returns Chat thread state and actions
  */
-export function use_chat_threads(agent_type: AgentType, initial_thread_id?: string | null): UseChatThreadsReturn {
-  const [active_thread_id, set_active_thread_id] = useState<string | null>(initial_thread_id ?? null);
+export function useChatThreads(agent_type: AgentType, initial_thread_id?: string | null): UseChatThreadsReturn {
+  const [selected_thread_id, set_active_thread_id] = useState<string | null>(initial_thread_id ?? null);
   const [is_new_chat, set_is_new_chat] = useState(false);
   const [optimistic_messages, set_optimistic_messages] = useState<ChatMessage[]>([]);
   const pending_thread_ref = useRef<string | null>(null);
-  const initial_thread_applied_ref = useRef(false);
-
-  /**
-   * Ref that mirrors active_thread_id state.
-   * Needed because add_message's useCallback closure captures stale state —
-   * between user message (creates thread) and assistant message (same turn),
-   * React hasn't re-rendered yet so the closure still sees null.
-   */
-  const active_thread_id_ref = useRef<string | null>(null);
-  useEffect(() => {
-    active_thread_id_ref.current = active_thread_id;
-  }, [active_thread_id]);
+  const active_thread_id_ref = useRef<string | null>(initial_thread_id ?? null);
 
   // --- tRPC queries ---
   const threads_query = trpc.chatThreads.list.useQuery(
     { agentType: agent_type, limit: 30 },
     { refetchOnWindowFocus: false },
   );
+
+  const active_thread_id = selected_thread_id
+    || (!is_new_chat ? threads_query.data?.[0]?.id || null : null);
+
+  /**
+   * Keep the imperative message-send ref aligned with the derived active thread.
+   */
+  useEffect(() => {
+    active_thread_id_ref.current = active_thread_id;
+  }, [active_thread_id]);
 
   const messages_query = trpc.chatThreads.getMessages.useQuery(
     { threadId: active_thread_id || '', limit: 50 },
@@ -112,47 +111,19 @@ export function use_chat_threads(agent_type: AgentType, initial_thread_id?: stri
   const add_message_mutation = trpc.chatThreads.addMessage.useMutation();
   const archive_mutation = trpc.chatThreads.archive.useMutation();
 
-  // --- Auto-select thread: prioritize initial_thread_id from URL, then most recent ---
-  useEffect(() => {
-    if (!threads_query.data || threads_query.data.length === 0) return;
-
-    // If initial_thread_id was provided and hasn't been applied yet, select it
-    if (initial_thread_id && !initial_thread_applied_ref.current) {
-      const target = threads_query.data.find((t: any) => t.id === initial_thread_id);
-      if (target) {
-        console.log('[use_chat_threads] auto-select initial_thread_id', { initial_thread_id });
-        active_thread_id_ref.current = initial_thread_id;
-        set_active_thread_id(initial_thread_id);
-        set_is_new_chat(false);
-        initial_thread_applied_ref.current = true;
-        return;
-      }
-    }
-
-    // Fallback: auto-select most recent thread if nothing is active
-    if (!active_thread_id && !is_new_chat) {
-      set_active_thread_id(threads_query.data[0].id);
-    }
-  }, [threads_query.data, active_thread_id, is_new_chat, initial_thread_id]);
-
-  // --- Clear optimistic messages when real messages load ---
-  useEffect(() => {
-    if (messages_query.data && active_thread_id) {
-      set_optimistic_messages([]);
-    }
-  }, [messages_query.data, active_thread_id]);
-
   // --- Merge server messages with optimistic messages ---
-  const merged_messages: ChatMessage[] = [
-    ...(messages_query.data || []).map((m: any) => ({
+  const server_messages: ChatMessage[] = (messages_query.data || []).map((m: any) => ({
       id: m.id,
       threadId: m.threadId,
       role: m.role as 'user' | 'assistant',
       content: m.content,
       metadata: m.metadata,
       createdAt: new Date(m.createdAt),
-    })),
-    ...optimistic_messages,
+    }));
+  const server_message_ids = new Set(server_messages.map((message) => message.id));
+  const merged_messages: ChatMessage[] = [
+    ...server_messages,
+    ...optimistic_messages.filter((message) => !server_message_ids.has(message.id)),
   ];
 
   /**
@@ -242,6 +213,12 @@ export function use_chat_threads(agent_type: AgentType, initial_thread_id?: stri
         content,
         metadata,
       });
+
+      // Adopt the server ID so query results can replace the optimistic row
+      // without a query-to-state synchronization effect.
+      set_optimistic_messages((previous_messages) => previous_messages.map((message) =>
+        message.id === optimistic_id ? { ...message, id: result.id } : message
+      ));
 
       // Refresh thread list to update lastMessageAt + messageCount
       threads_query.refetch();

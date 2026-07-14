@@ -20,6 +20,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
+  const [threadTimeReference] = useState(() => new Date().getTime());
 
   // --- Fetch recent chat threads for sidebar history ---
   const raw_materials_threads = trpc.chatThreads.list.useQuery(
@@ -44,13 +45,13 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Format relative time — ultra-short for sidebar display.
+   * Format relative time against the stable sidebar-mount reference.
    *
    * @param date - Date to format
-   * @returns Short time string (e.g. "now", "5m", "2h", "3d", "Mar 30")
+   * @returns Short time string (for example, "now", "5m", "2h", or "Mar 30")
    */
   const format_thread_time = (date: Date): string => {
-    const ms = Date.now() - new Date(date).getTime();
+    const ms = threadTimeReference - new Date(date).getTime();
     const min = Math.floor(ms / 60000);
     const hr = Math.floor(ms / 3600000);
     const day = Math.floor(ms / 86400000);

@@ -56,35 +56,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Load token from localStorage on mount and sync with cookie
   useEffect(() => {
+    let is_active = true;
     const storedToken = localStorage.getItem("auth_token");
     if (storedToken) {
-      setToken(storedToken);
       // Ensure cookie is set
       document.cookie = `auth_token=${storedToken}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
-    } else {
-      setIsLoading(false);
     }
+
+    queueMicrotask(() => {
+      if (!is_active) return;
+      if (storedToken) setToken(storedToken);
+      else setIsLoading(false);
+    });
+
+    return () => {
+      is_active = false;
+    };
   }, []);
 
   // Update user when meData changes
   useEffect(() => {
-    if (meData) {
-      const userWithId = { ...meData.user, id: meData.user._id };
-      setUser(userWithId);
-      setOrganization(meData.organization);
-      setIsLoading(false);
-    } else if (token && meError) {
-      // Token exists but meData failed with error (invalid session)
-      setUser(null);
-      setOrganization(null);
-      setToken(null);
-      localStorage.removeItem("auth_token");
-      document.cookie = "auth_token=; path=/; max-age=0";
-      setIsLoading(false);
-    } else if (!token) {
-      // No token, just finish loading
-      setIsLoading(false);
-    }
+    let is_active = true;
+
+    queueMicrotask(() => {
+      if (!is_active) return;
+      if (meData) {
+        const userWithId = { ...meData.user, id: meData.user._id };
+        setUser(userWithId);
+        setOrganization(meData.organization);
+        setIsLoading(false);
+      } else if (token && meError) {
+        // Token exists but meData failed with error (invalid session)
+        setUser(null);
+        setOrganization(null);
+        setToken(null);
+        localStorage.removeItem("auth_token");
+        document.cookie = "auth_token=; path=/; max-age=0";
+        setIsLoading(false);
+      } else if (!token) {
+        // No token, just finish loading
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      is_active = false;
+    };
   }, [meData, token, meError]);
 
   const login = async (email: string, password: string) => {

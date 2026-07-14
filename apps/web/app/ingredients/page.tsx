@@ -51,15 +51,12 @@ export default function IngredientsPage() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const itemsPerPage = 50;
 
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, sortField, sortDirection]);
-
   /**
    * Triggers search with current input value.
    */
   const handleSearch = () => {
     setSearchTerm(searchInput);
+    setCurrentPage(1);
   };
 
   /**
@@ -186,7 +183,10 @@ export default function IngredientsPage() {
         <div className="h-4 w-px bg-gray-200/60" />
         <select
           value={sortField}
-          onChange={(e) => setSortField(e.target.value)}
+          onChange={(e) => {
+            setSortField(e.target.value);
+            setCurrentPage(1);
+          }}
           className="h-8 px-2 border border-gray-200/60 rounded-lg text-[11px] bg-white text-gray-600"
         >
           <option value="productCode">Code</option>
@@ -197,7 +197,10 @@ export default function IngredientsPage() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+          onClick={() => {
+            setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+            setCurrentPage(1);
+          }}
           className="h-8 px-2 text-gray-400 hover:text-gray-600"
         >
           <ArrowUpDown className="h-3.5 w-3.5 mr-1" />

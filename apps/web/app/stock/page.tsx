@@ -168,11 +168,6 @@ function StockContent() {
     },
   });
 
-  // Reset to page 1 when filters change
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [statusFilter, materialFilter, sortField, sortDirection]);
-
   // ---------- Loading / auth guards ----------
 
   if (isLoading || stockLoading) {
@@ -750,6 +745,7 @@ function StockContent() {
                         onClick={() => {
                           console.log("[stock] filtering by material:", summary.materialId);
                           setMaterialFilter(summary.materialId);
+                          setCurrentPage(1);
                           document
                             .getElementById("detailed-entries-section")
                             ?.scrollIntoView({ behavior: "smooth" });
@@ -776,7 +772,10 @@ function StockContent() {
             <span className="text-[11px] text-gray-400 flex-shrink-0">รายการสต็อก</span>
             {materialFilter ? (
               <button
-                onClick={() => setMaterialFilter("")}
+                onClick={() => {
+                  setMaterialFilter("");
+                  setCurrentPage(1);
+                }}
                 className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-700 transition-colors bg-white border border-gray-200/60 rounded-md px-1.5 py-0.5"
               >
                 <X className="h-2.5 w-2.5" />
@@ -792,7 +791,10 @@ function StockContent() {
           <div className="ml-auto flex items-center gap-1.5">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as "all" | "active" | "expired" | "depleted");
+                setCurrentPage(1);
+              }}
               className="h-7 px-2 border border-gray-200/60 rounded-lg text-[11px] bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-300"
             >
               <option value="all">ทั้งหมด</option>
@@ -803,7 +805,10 @@ function StockContent() {
 
             <select
               value={sortField}
-              onChange={(e) => setSortField(e.target.value)}
+              onChange={(e) => {
+                setSortField(e.target.value);
+                setCurrentPage(1);
+              }}
               className="h-7 px-2 border border-gray-200/60 rounded-lg text-[11px] bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-300"
             >
               <option value="createdAt">วันที่เพิ่ม</option>
@@ -813,7 +818,10 @@ function StockContent() {
             </select>
 
             <button
-              onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+              onClick={() => {
+                setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+                setCurrentPage(1);
+              }}
               className="h-7 px-2 border border-gray-200/60 rounded-lg text-[11px] bg-white text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-1"
             >
               <ArrowUpDown className="h-3 w-3" />

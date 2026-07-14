@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
-import { FormulaSchema } from "@/lib/types";
+import type { Formula } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
+
+type FormulaDocument = Omit<Formula, "_id">;
 
 export const formulasRouter = router({
   // Get next auto-generated formula code
@@ -43,7 +45,7 @@ export const formulasRouter = router({
     const db = client.db();
 
     const formulas = await db
-      .collection("formulas")
+      .collection<FormulaDocument>("formulas")
       .find({ organizationId: ctx.user.organizationId })
       .sort({ createdAt: -1 })
       .toArray();
@@ -61,7 +63,7 @@ export const formulasRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      const formula = await db.collection("formulas").findOne({
+      const formula = await db.collection<FormulaDocument>("formulas").findOne({
         _id: new ObjectId(input.id),
         organizationId: ctx.user.organizationId,
       });
@@ -95,7 +97,7 @@ export const formulasRouter = router({
         })).min(1, "At least one ingredient is required"),
         totalAmount: z.number().positive().optional(),
         remarks: z.string().optional(),
-        status: z.enum(["draft", "testing", "approved", "rejected"]).default("draft"),
+        status: z.enum(["draft", "confirmed", "testing", "approved", "rejected"]).default("draft"),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -177,7 +179,7 @@ export const formulasRouter = router({
         })).optional(),
         totalAmount: z.number().positive().optional(),
         remarks: z.string().optional(),
-        status: z.enum(["draft", "testing", "approved", "rejected"]).optional(),
+        status: z.enum(["draft", "confirmed", "testing", "approved", "rejected"]).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {

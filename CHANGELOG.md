@@ -1,5 +1,24 @@
 # Changelog
 
+## [2026-07-15] build: Upgrade to patched Next and React baseline
+
+### Summary
+
+- Pinned the web runtime to Next.js 16.2.10, React/React DOM 19.2.7, matching React type packages, and eslint-config-next 16.2.10; pinned the AI workspace MongoDB driver to 6.21.0.
+- Replaced the removed `next lint` command with ESLint, migrated the configuration from the obsolete FlatCompat adapter to Next.js 16 native flat exports, restored explicit TypeScript checking, removed the build-time TypeScript bypass, and migrated redirect-only request guidance from `middleware.ts` to the Next.js 16 `proxy.ts` convention.
+- Repaired the existing TypeScript contract drift in legacy agent calls, LangGraph state annotations, logger errors, cosmetic regulatory and threshold types, dashboard metrics, and formula router outputs/statuses.
+- Cleared the React 19 lint baseline without suppressions by deriving query-backed chat state, reconciling optimistic messages by server ID, moving pagination resets into user events, and making effect-driven external data updates asynchronous and cleanup-safe.
+- Deferred environment-dependent Gemini and MongoDB client construction until request-time use so production builds do not require runtime secrets.
+- Kept the existing webpack configuration active under Next.js 16 by selecting webpack explicitly for production builds.
+
+### Verification approach
+
+- Installed the pinned workspace dependency graph and confirmed the exact top-level package versions.
+- Ran the web lint command, root TypeScript check, focused framework architecture test, and Next.js 16 production build with TypeScript validation enabled.
+- Reviewed all touched React components against the repository's component, hook, rendering, accessibility, and type-safety conventions.
+
+---
+
 ## [2026-07-15] test: Add commercial verification baseline
 
 ### Summary
