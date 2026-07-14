@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-07-15] feat: Platform-controlled university provisioning (G1.4)
+
+### Summary
+
+- Added `apps/ai/server/services/provisioning/`: `provision_university(actor, input, ports)` runs an idempotent state machine — Tenant(provisioning) keyed by a client-generated UUID idempotency key → ensure Clerk organization (create-or-get with private metadata `internal_tenant_id`; never a second organization) → persist `clerkOrganizationId` → ensure the initial manager invitation (create-or-get by normalized email, role from the configured `CLERK_ORG_ROLE_MODE` mapper) → persist `TenantInvitationProjection` → activate + platform audit event. Membership projections are created only when Clerk reports an accepted membership (G1.5).
+- When a retry cannot prove external Clerk state, the tenant parks in `repair_required` with a correlation ID (`ClerkStateUnprovableError` path) — provisioning never risks a duplicate organization.
+- Input contract: normalized lower-case slug, allowlisted data-residency region, stored plan key, manager email, UUID idempotency key (strict zod schema).
+- New `platformTenants` router: `list` and `create` behind `platformAdminProcedure`; `grantPlatformRole` behind `superAdminProcedure` only (audited, database-authoritative). Production ports adapt `@clerk/backend` at one explicit boundary (`ClerkBackendLike`).
+- Platform console (`apps/web/app/platform/`): server-side role-checked layout, tenant metadata table, and the exact create form (idempotency key generated once per form instance). No tenant business data, no impersonation shortcut.
+
+### Verification approach
+
+- TDD RED first, then 10/10 provisioning tests: success, non-platform caller rejected before any side effect, duplicate slug, replay after failure injection at each of the four external steps without duplicate Clerk objects, unprovable-state repair_required with correlation ID, and input normalization/allowlist enforcement.
+- Full suite 131/131; `npm run verify:commercial` exit 0 (a real ClerkClient/structural-type mismatch was caught by typecheck and resolved with the explicit boundary adapter).
+
+---
+
 ## [2026-07-15] feat: Server authorization from Clerk sessions (G1.3)
 
 ### Summary

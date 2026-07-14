@@ -337,17 +337,17 @@ export async function provision_university(
 }
 ~~~
 
-- [ ] **Step 1:** Write a fake Clerk client and failing tests for successful provisioning, replay after each step, Clerk organization failure, invitation failure, duplicate slug, and non-platform caller.
-- [ ] **Step 2:** Run npm test -- tests/provisioning/provision-university.test.ts.
-- [ ] **Step 3:** Expected: FAIL because the service does not exist.
-- [ ] **Step 4:** Define CreateUniversityInput with normalized lower-case slug, an allowlisted region, a stored plan key, manager email, and a client-generated UUID idempotency key.
-- [ ] **Step 5:** Implement this state machine: insert Tenant(provisioning); create Clerk organization with private metadata internal_tenant_id; persist clerkOrganizationId; invite the initial manager with the role returned by one configured mapper (custom: org:manager; built_in: org:admin) and redirect URL; persist TenantInvitationProjection; activate tenant; append audit event. Create TenantMembershipProjection only after Clerk reports an accepted organization membership. Each step checks stored state before calling Clerk again.
-- [ ] **Step 6:** If a retry cannot prove external state, set Tenant.status=repair_required and return a correlation ID. Never create a second organization.
-- [ ] **Step 7:** Expose platformTenants.create through platformAdminProcedure and platformTenants.grantPlatformRole through superAdminProcedure only.
-- [ ] **Step 8:** The platform UI must render server-side role checks, a tenant table, and the exact create input. It must not contain tenant business data or a support impersonation shortcut.
-- [ ] **Step 9:** Run npm test -- tests/provisioning/provision-university.test.ts.
-- [ ] **Step 10:** Expected: PASS including replay after every failpoint.
-- [ ] **Step 11:** Commit: git add apps/ai/server apps/web/app/platform tests/provisioning && git commit -m "feat: provision universities through platform administration"
+- [x] **Step 1:** Write a fake Clerk client and failing tests for successful provisioning, replay after each step, Clerk organization failure, invitation failure, duplicate slug, and non-platform caller.
+- [x] **Step 2:** Run npm test -- tests/provisioning/provision-university.test.ts.
+- [x] **Step 3:** Expected: FAIL because the service does not exist.
+- [x] **Step 4:** Define CreateUniversityInput with normalized lower-case slug, an allowlisted region, a stored plan key, manager email, and a client-generated UUID idempotency key.
+- [x] **Step 5:** Implement this state machine: insert Tenant(provisioning); create Clerk organization with private metadata internal_tenant_id; persist clerkOrganizationId; invite the initial manager with the role returned by one configured mapper (custom: org:manager; built_in: org:admin) and redirect URL; persist TenantInvitationProjection; activate tenant; append audit event. Create TenantMembershipProjection only after Clerk reports an accepted organization membership. Each step checks stored state before calling Clerk again.
+- [x] **Step 6:** If a retry cannot prove external state, set Tenant.status=repair_required and return a correlation ID. Never create a second organization.
+- [x] **Step 7:** Expose platformTenants.create through platformAdminProcedure and platformTenants.grantPlatformRole through superAdminProcedure only.
+- [x] **Step 8:** The platform UI must render server-side role checks, a tenant table, and the exact create input. It must not contain tenant business data or a support impersonation shortcut.
+- [x] **Step 9:** Run npm test -- tests/provisioning/provision-university.test.ts.
+- [x] **Step 10:** Expected: PASS including replay after every failpoint.
+- [x] **Step 11:** Commit: git add apps/ai/server apps/web/app/platform tests/provisioning && git commit -m "feat: provision universities through platform administration"
 
 ### Task 5: Add manager invitations and Clerk webhook projections
 

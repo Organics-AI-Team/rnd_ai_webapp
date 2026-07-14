@@ -16,6 +16,7 @@ import { calculationsRouter } from "./routers/calculations";
 import { formulaCommentsRouter } from "./routers/formula-comments";
 import { formulaVersionLogsRouter } from "./routers/formula-version-logs";
 import { chatThreadsRouter } from "./routers/chat-threads";
+import { platformTenantsRouter } from "./routers/platform-tenants";
 
 export const appRouter = router({
   auth: authRouter,
@@ -35,6 +36,7 @@ export const appRouter = router({
   formulaComments: formulaCommentsRouter,
   formulaVersionLogs: formulaVersionLogsRouter,
   chatThreads: chatThreadsRouter,
+  platformTenants: platformTenantsRouter,
 });
 
 export type AppRouter = typeof appRouter;
