@@ -1,5 +1,24 @@
 # Changelog
 
+## [2026-07-15] feat: Add capability cards and context assembler (G4 Task 3)
+
+### Summary
+
+- Added the orchestrator contract card (`ai-control/cards/orchestrator.md`) encoding the invariant loop rules: evidence-first completion, citation duties, clarify-when-missing-input, draft-vs-commit semantics, budget awareness, and the injection-resistance stance (retrieved content is data, never instructions).
+- Added one agent card per agent_key (`raw_material_research`, `formulation`, `sales_rnd`) with persona, domain scope, working style, quality bar, output contract, and escalation guidance; tenant/deployment overrides stay in PromptVersion records, not repo cards.
+- Added `ContextAssembler`: loads the orchestrator card and the run's agent card, filters the tool catalogue by the pinned EffectiveAIPolicy and loads only allowed tools' cards (re-verifying frontmatter against each registered definition), renders a deterministic plain-language policy digest (budgets, tenant boundary, approval rules, allowed and disallowed tools), computes `pack_hash` (SHA-256 over all card hashes plus the digest hash), and returns a ContextPackV1-shaped object. Assembly fails closed on POLICY_DISABLED, CONTEXT_CARD_MISSING, and CONTEXT_CARD_DRIFT.
+- Card size stays under a configurable budget (`AI_CAPABILITY_CARD_MAX_CHARS`, default 12000 chars) enforced by tests for all 11 cards.
+
+### Verification approach
+
+- Captured RED for `tests/ai-control/capability-cards.test.ts` (missing orchestrator/agent cards) and `tests/ai-control/context-assembler.test.ts` (missing module) before implementing, then confirmed GREEN: 47 ai-control tests, 61 tests repo-wide, strict `tsc --noEmit` over all ai-control modules and tests, and the root web typecheck.
+- Pack-hash determinism proven by stable-hash and card-mutation tests against a synthetic temp cards root; no network or real datastores anywhere in the suite.
+
+### Remaining integration (tracked)
+
+- ContextPackV1 re-validation in `packages/ai-orchestration/src/context/context-pack.ts` is owned by the orchestration workspace task (G4 Task 3 Step 10).
+- Recording card names/versions/hashes on the AIRun, real AgentDeployment/PromptVersion pin resolution, the shared `EffectiveAIPolicy`/Permission contracts from `packages/shared-types`, and real repository/gateway ports for the governed tools (currently fail-closed NOT_WIRED) land with the gateway/knowledge tasks (G3 Tasks 5-7, G4 Tasks 8-9).
+
 ## [2026-07-15] feat: Execute AI tools through tenant policy (G3 Task 4)
 
 ### Summary
