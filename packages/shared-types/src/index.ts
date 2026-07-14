@@ -13,6 +13,12 @@ export * from "./messaging";
 export * from "./auth";
 
 // ============================================
+// TENANT EXECUTION & OWNERSHIP CONTRACTS
+// ============================================
+
+export * from "./tenant";
+
+// ============================================
 // PRODUCT/INVENTORY SCHEMAS
 // ============================================
 

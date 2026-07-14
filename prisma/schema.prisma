@@ -680,3 +680,23 @@ model TenantInvitationProjection {
   @@index([tenantId, emailNormalized, status])
   @@map("tenant_invitation_projections")
 }
+
+model SupportAccessGrant {
+  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId            String    @db.ObjectId
+  platformProfileId   String    @db.ObjectId
+  reason              String
+  permissions         String[]
+  requestedAt         DateTime  @default(now())
+  approvedByProfileId String?   @db.ObjectId
+  approvedAt          DateTime?
+  expiresAt           DateTime?
+  revokedAt           DateTime?
+  correlationId       String    @unique
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([tenantId, expiresAt])
+  @@index([platformProfileId, expiresAt])
+  @@map("support_access_grants")
+}

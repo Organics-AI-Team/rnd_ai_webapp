@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026-07-15] feat: Tenant execution and ownership contracts (G2.1)
+
+### Summary
+
+- Added `packages/shared-types/src/tenant.ts`: frozen `TenantExecutionContext` (tenant_id, actor, clerk identifiers, membership, role, permissions, access_mode member|support, support_grant_id, correlation_id, request_started_at) — the scope every repository will require from G2.4 on — plus `SupportAccessGrantView`, the diagnostic-permission allowlist, and the 72h grant ceiling.
+- Added `build_tenant_execution_context(principal, support_grant, extras)`: member mode requires an active membership; support mode requires a non-expired, non-revoked grant approved by a different profile and restricts permissions to the grant's diagnostic set; requested/body tenant mismatches raise `TENANT_MISMATCH`; the returned context is `Object.freeze`d so tenant_id cannot be swapped mid-request.
+- Added the `SupportAccessGrant` Prisma model (unique correlationId; [tenantId,expiresAt] and [platformProfileId,expiresAt] indexes), the support-access repository (request/approve/revoke/find_active_for), request validation (diagnostic allowlist, duration ceiling), and the `platformSupportAccess` router: request via platformAdminProcedure; approve/revoke via superAdminProcedure with self-approval rejected; request/approval/revocation audited.
+
+### Verification approach
+
+- TDD RED first, then 7/7 context tests (member, suspended, platform-admin-without-grant, expired grant, self-approved/revoked grant, support-mode permission restriction, tenant mismatch, frozen mutation rejection); suite 161/161; `npm run verify:commercial` exit 0; `prisma generate` clean.
+
+---
+
 ## [2026-07-15] feat: Authentication cut over to Clerk (G1.7 — G1 complete)
 
 ### Summary

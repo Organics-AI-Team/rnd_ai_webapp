@@ -69,18 +69,18 @@ export interface TenantExecutionContext {
 }
 ~~~
 
-- [ ] **Step 1:** Write failing tests for an active member, suspended membership, platform admin without membership, expired support grant, valid support grant, and requested/body tenant mismatch.
-- [ ] **Step 2:** Run npm test -- tests/auth/tenant-execution-context.test.ts.
-- [ ] **Step 3:** Expected: FAIL because the context builder does not exist.
-- [ ] **Step 4:** Define TenantExecutionContext with tenant_id, actor_profile_id, clerk_user_id, clerk_organization_id, membership_id, tenant_role, permissions, access_mode(member|support), support_grant_id, correlation_id, and request_started_at.
-- [ ] **Step 5:** Define SupportAccessGrant with tenantId, platformProfileId, reason, approvedByProfileId, expiresAt, revokedAt, and audit correlation. It grants only the named diagnostic permissions, never blanket manager role.
-- [ ] **Step 6:** Add SupportAccessGrant to Prisma with tenantId, platformProfileId, reason, permissions, requestedAt, approvedByProfileId, approvedAt, expiresAt, revokedAt, correlationId unique, and indexes on [tenantId,expiresAt] and [platformProfileId,expiresAt].
-- [ ] **Step 7:** Expose request through platformAdminProcedure and approve/revoke through superAdminProcedure. Reject self-approval, durations above the platform maximum, content permissions not explicitly requested, and access without an unexpired approved record; audit request, approval, use, expiry, and revocation.
-- [ ] **Step 8:** Implement build_tenant_execution_context(principal, support_grant). For member mode, require active_tenant_id and active membership. For support mode, require a non-expired, non-revoked grant approved by a different super admin.
-- [ ] **Step 9:** Freeze the returned context in development/test so code cannot swap tenant_id mid-request.
-- [ ] **Step 10:** Run npm test -- tests/auth/tenant-execution-context.test.ts.
-- [ ] **Step 11:** Expected: PASS.
-- [ ] **Step 12:** Commit: git add packages/shared-types prisma apps/ai/server/auth apps/ai/server/repositories apps/ai/server/routers tests/auth && git commit -m "feat: define tenant execution context"
+- [x] **Step 1:** Write failing tests for an active member, suspended membership, platform admin without membership, expired support grant, valid support grant, and requested/body tenant mismatch.
+- [x] **Step 2:** Run npm test -- tests/auth/tenant-execution-context.test.ts.
+- [x] **Step 3:** Expected: FAIL because the context builder does not exist.
+- [x] **Step 4:** Define TenantExecutionContext with tenant_id, actor_profile_id, clerk_user_id, clerk_organization_id, membership_id, tenant_role, permissions, access_mode(member|support), support_grant_id, correlation_id, and request_started_at.
+- [x] **Step 5:** Define SupportAccessGrant with tenantId, platformProfileId, reason, approvedByProfileId, expiresAt, revokedAt, and audit correlation. It grants only the named diagnostic permissions, never blanket manager role.
+- [x] **Step 6:** Add SupportAccessGrant to Prisma with tenantId, platformProfileId, reason, permissions, requestedAt, approvedByProfileId, approvedAt, expiresAt, revokedAt, correlationId unique, and indexes on [tenantId,expiresAt] and [platformProfileId,expiresAt].
+- [x] **Step 7:** Expose request through platformAdminProcedure and approve/revoke through superAdminProcedure. Reject self-approval, durations above the platform maximum, content permissions not explicitly requested, and access without an unexpired approved record; audit request, approval, use, expiry, and revocation.
+- [x] **Step 8:** Implement build_tenant_execution_context(principal, support_grant). For member mode, require active_tenant_id and active membership. For support mode, require a non-expired, non-revoked grant approved by a different super admin.
+- [x] **Step 9:** Freeze the returned context in development/test so code cannot swap tenant_id mid-request.
+- [x] **Step 10:** Run npm test -- tests/auth/tenant-execution-context.test.ts.
+- [x] **Step 11:** Expected: PASS.
+- [x] **Step 12:** Commit: git add packages/shared-types prisma apps/ai/server/auth apps/ai/server/repositories apps/ai/server/routers tests/auth && git commit -m "feat: define tenant execution context"
 
 ### Task 2: Expand every private schema with tenant provenance
 
