@@ -271,16 +271,16 @@ export async function agent(
 }
 ~~~
 
-- [ ] **Step 1:** Write deterministic scripted-model tests: fresh request proposes a retrieval tool; follow-up reuses conversation context; missing required input proposes request_clarification with bounded questions; a finalize turn routes to finalize; an unknown tool name is retried once then routes fail with MODEL_OUTPUT_INVALID; a malformed provider tool call is retried once; prompt injection inside retrieved text never becomes an instruction; iteration/token/cost/deadline budget exhaustion routes fail with the correct LIMIT_* code before the model is called.
-- [ ] **Step 2:** Run npm test -- tests/orchestration/agent-node.test.ts.
-- [ ] **Step 3:** Expected: FAIL.
-- [ ] **Step 4:** In ingress, verify input version and the run/deployment/policy/prompt/context-pack pins supplied by the gateway, initialize counters/deadline, seed initial observations (thread summary, attachment references) through trusted ports, and emit run.accepted. Do not load authorization from input.
-- [ ] **Step 5:** Implement message-builder.ts: render the system context from ContextPackV1 (orchestrator card + agent card + policy digest + tool cards), then the conversation, then observations as trust-labeled tool results with source type, source ID, content hash, retrieved_at, and scope. Untrusted content is fenced and labeled; it is never concatenated into the system section.
-- [ ] **Step 6:** Implement the agent node: exactly one ModelGateway turn per iteration with the declared tool list from the context pack (including request_clarification and finalize as declared tools); increment iteration; record DecisionRecordV1; set pending_action for gate routing. No structured-output schema is imposed beyond native tool calling.
-- [ ] **Step 7:** Route: tool call -> gate; request_clarification -> request_clarification node; finalize -> finalize node; budget exhaustion -> fail with LIMIT_MAX_ITERATIONS, LIMIT_DEADLINE, LIMIT_TOKENS, or LIMIT_COST and a partial safe result rather than any fallback executor.
-- [ ] **Step 8:** Run npm test -- tests/orchestration/agent-node.test.ts.
-- [ ] **Step 9:** Expected: PASS.
-- [ ] **Step 10:** Commit: git add packages/ai-orchestration tests/orchestration && git commit -m "feat: implement agentic reasoning node and ingress"
+- [x] **Step 1:** Write deterministic scripted-model tests: fresh request proposes a retrieval tool; follow-up reuses conversation context; missing required input proposes request_clarification with bounded questions; a finalize turn routes to finalize; an unknown tool name is retried once then routes fail with MODEL_OUTPUT_INVALID; a malformed provider tool call is retried once; prompt injection inside retrieved text never becomes an instruction; iteration/token/cost/deadline budget exhaustion routes fail with the correct LIMIT_* code before the model is called.
+- [x] **Step 2:** Run npm test -- tests/orchestration/agent-node.test.ts.
+- [x] **Step 3:** Expected: FAIL.
+- [x] **Step 4:** In ingress, verify input version and the run/deployment/policy/prompt/context-pack pins supplied by the gateway, initialize counters/deadline, seed initial observations (thread summary, attachment references) through trusted ports, and emit run.accepted. Do not load authorization from input.
+- [x] **Step 5:** Implement message-builder.ts: render the system context from ContextPackV1 (orchestrator card + agent card + policy digest + tool cards), then the conversation, then observations as trust-labeled tool results with source type, source ID, content hash, retrieved_at, and scope. Untrusted content is fenced and labeled; it is never concatenated into the system section.
+- [x] **Step 6:** Implement the agent node: exactly one ModelGateway turn per iteration with the declared tool list from the context pack (including request_clarification and finalize as declared tools); increment iteration; record DecisionRecordV1; set pending_action for gate routing. No structured-output schema is imposed beyond native tool calling.
+- [x] **Step 7:** Route: tool call -> gate; request_clarification -> request_clarification node; finalize -> finalize node; budget exhaustion -> fail with LIMIT_MAX_ITERATIONS, LIMIT_DEADLINE, LIMIT_TOKENS, or LIMIT_COST and a partial safe result rather than any fallback executor.
+- [x] **Step 8:** Run npm test -- tests/orchestration/agent-node.test.ts.
+- [x] **Step 9:** Expected: PASS.
+- [x] **Step 10:** Commit: git add packages/ai-orchestration tests/orchestration && git commit -m "feat: implement agentic reasoning node and ingress"
 
 ### Task 5: Implement the deterministic governor: gate, act, validators, and loop detection
 

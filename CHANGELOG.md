@@ -1,5 +1,20 @@
 # Changelog
 
+## [2026-07-15] feat: Implement agentic reasoning node and ingress (G4 Task 4)
+
+### Summary
+
+- Implemented the deterministic ingress node: re-validates AgentRunInputV1, fail-closed context-pack validation, orchestrator-version and context-pack-hash pin verification, trusted observation seeding (user message + optional thread summary through injected ports), and typed run.accepted / stage.changed / observation.added events. Ingress never loads authorization from input; on verification failure it sets a typed error that the agent node routes to fail before any model call.
+- Implemented the agent reasoning node — the only model-facing node: deterministic LIMIT_MAX_ITERATIONS / LIMIT_DEADLINE / LIMIT_TOKENS / LIMIT_COST budget checks BEFORE the model call (decimal-safe cost comparison), exactly one native tool-calling turn per iteration, a single bounded retry with a system-authored correction for malformed/unknown/no-tool turns, then MODEL_OUTPUT_INVALID — never a fallback executor.
+- DecisionRecordV1 is derived from the model's native tool call (kind tool/clarify/finalize, arguments hash, ≤600-char safe rationale); pending_action routes to gate / request_clarification / finalize via Command.
+- Implemented message-builder: system prompt rendered only from the hash-pinned context pack; observations rendered as provenance-labeled data blocks (type, source, IDs, content hash, trust, retrieved_at, scope); untrusted content is fenced, labeled, and framed as data never instructions — it is never concatenated into the system section.
+
+### Verification approach
+
+- RED first (module missing), then GREEN: 19 tests covering fresh-request tool proposal, conversation reuse, bounded clarification, finalize routing, unknown-tool retry-then-fail, malformed-turn recovery, prompt-injection containment (injected directives stay fenced; an injected tool name never becomes a pending action), and all four LIMIT_* pre-model failures with zero model calls. Full orchestration suite 59/59 with package typecheck clean.
+
+---
+
 ## [2026-07-15] feat: Define agentic loop contracts and state (G4 Task 2)
 
 ### Summary

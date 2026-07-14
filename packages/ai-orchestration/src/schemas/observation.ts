@@ -7,6 +7,7 @@
  * about them.
  */
 import { z } from "zod";
+import { sha256_hex } from "../hash";
 
 /** Trust label controlling how observation content may be rendered. */
 export const observation_trust_v1 = z.enum([
@@ -58,3 +59,21 @@ export const observation_v1_schema = z
   })
   .strict();
 export type ObservationV1 = z.infer<typeof observation_v1_schema>;
+
+/** Arguments for constructing a normalized observation. */
+export type BuildObservationArgs = Omit<ObservationV1, "content_hash">;
+
+/**
+ * Build a validated observation, deriving its content hash from the content
+ * so provenance can never drift from the recorded text.
+ *
+ * @param args - Observation fields except content_hash.
+ * @returns Schema-validated ObservationV1 with a derived SHA-256 content hash.
+ * @throws ZodError when the assembled observation violates the schema.
+ */
+export function build_observation(args: BuildObservationArgs): ObservationV1 {
+  return observation_v1_schema.parse({
+    ...args,
+    content_hash: sha256_hex(args.content),
+  });
+}
