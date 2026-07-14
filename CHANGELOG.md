@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-07-15] feat: Scaffold isolated agentic orchestration package (G4 Task 1)
+
+### Summary
+
+- Created the private `@rnd-ai/ai-orchestration` workspace (type=commonjs, src entrypoint) with exactly the pinned governed-loop dependencies: @langchain/langgraph 1.4.7, @langchain/core 1.2.2, @langchain/langgraph-checkpoint-mongodb 1.4.0, mongodb 6.21.0, zod 3.25.76, decimal.js 10.6.0, @rnd-ai/shared-types 1.0.0. The apps/ai legacy graph keeps its own 0.2.x LangGraph via nested workspace resolution, so the two never share an instance.
+- Defined the injected port contracts (ModelGateway with one native tool-calling turn per call, KnowledgeGateway, ToolExecutor, ArtifactService, RunRepository, ApprovalService, UsageService, PolicyEngine, Clock, IdGenerator, LoopLogger) — every method receives TrustedRuntimeContext outside model input.
+- Exported ORCHESTRATOR_VERSION="agentic-1.0.0" with a supported-version assertion that rejects resuming a run pinned to an unknown orchestrator version instead of falling back to any legacy executor.
+- Added a boundary test that walks the workspace's import specifiers (static, dynamic, export-from, require) and rejects apps/ai/agents, apps/ai/services, apps/web, @langchain/langgraph/prebuilt, and provider SDKs; a missing workspace is itself a violation so the contract cannot silently pass.
+- Added root scripts typecheck:orchestration and chained it into root typecheck.
+
+### Verification approach
+
+- Captured the RED run (3 failed: workspace missing) before creating the package, then GREEN (3 passed) plus a clean `tsc --noEmit` for the package after implementation.
+
+---
+
 ## [2026-07-15] docs: Dynamic agentic orchestrator design supersedes fixed OODA pipeline
 
 ### Summary

@@ -78,17 +78,17 @@ export interface OrchestrationPorts {
 }
 ~~~
 
-- [ ] **Step 1:** Write a boundary test that walks packages/ai-orchestration imports and rejects paths under apps/ai/agents, apps/ai/services, apps/web, @langchain/langgraph/prebuilt legacy agents, or provider SDKs.
-- [ ] **Step 2:** Run npm test -- tests/orchestration/package-boundary.test.ts.
-- [ ] **Step 3:** Expected: FAIL because the workspace does not exist.
-- [ ] **Step 4:** Create @rnd-ai/ai-orchestration as private, type=commonjs to match apps/ai during coexistence, exports=./src/index.ts, and scripts typecheck=tsc --noEmit and test=vitest run. The pinned LangGraph packages expose supported require builds as well as ESM builds.
-- [ ] **Step 5:** Pin dependencies @langchain/langgraph=1.4.7, @langchain/core=1.2.2, @langchain/langgraph-checkpoint-mongodb=1.4.0, mongodb=6.21.0, zod=3.25.76, decimal.js=10.6.0, and @rnd-ai/shared-types=1.0.0.
-- [ ] **Step 6:** Define ports for ModelGateway (native tool-calling turn: messages + tool declarations in, one assistant turn out), KnowledgeGateway, ToolExecutor, ArtifactService, RunRepository, ApprovalService, UsageService, Clock, and IdGenerator. Each method receives TrustedRuntimeContext outside model input.
-- [ ] **Step 7:** Export ORCHESTRATOR_VERSION="agentic-1.0.0" and reject an unknown version when resuming a pinned run.
-- [ ] **Step 8:** Add typecheck:orchestration at the root and include it in root typecheck.
-- [ ] **Step 9:** Run npm install, npm run typecheck:orchestration, and npm test -- tests/orchestration/package-boundary.test.ts.
-- [ ] **Step 10:** Expected: PASS.
-- [ ] **Step 11:** Commit: git add packages/ai-orchestration package.json package-lock.json tests/orchestration && git commit -m "feat: scaffold isolated agentic orchestration package"
+- [x] **Step 1:** Write a boundary test that walks packages/ai-orchestration imports and rejects paths under apps/ai/agents, apps/ai/services, apps/web, @langchain/langgraph/prebuilt legacy agents, or provider SDKs.
+- [x] **Step 2:** Run npm test -- tests/orchestration/package-boundary.test.ts.
+- [x] **Step 3:** Expected: FAIL because the workspace does not exist.
+- [x] **Step 4:** Create @rnd-ai/ai-orchestration as private, type=commonjs to match apps/ai during coexistence, exports=./src/index.ts, and scripts typecheck=tsc --noEmit and test=vitest run. The pinned LangGraph packages expose supported require builds as well as ESM builds.
+- [x] **Step 5:** Pin dependencies @langchain/langgraph=1.4.7, @langchain/core=1.2.2, @langchain/langgraph-checkpoint-mongodb=1.4.0, mongodb=6.21.0, zod=3.25.76, decimal.js=10.6.0, and @rnd-ai/shared-types=1.0.0.
+- [x] **Step 6:** Define ports for ModelGateway (native tool-calling turn: messages + tool declarations in, one assistant turn out), KnowledgeGateway, ToolExecutor, ArtifactService, RunRepository, ApprovalService, UsageService, Clock, and IdGenerator. Each method receives TrustedRuntimeContext outside model input.
+- [x] **Step 7:** Export ORCHESTRATOR_VERSION="agentic-1.0.0" and reject an unknown version when resuming a pinned run.
+- [x] **Step 8:** Add typecheck:orchestration at the root and include it in root typecheck.
+- [x] **Step 9:** Run npm install, npm run typecheck:orchestration, and npm test -- tests/orchestration/package-boundary.test.ts.
+- [x] **Step 10:** Expected: PASS.
+- [x] **Step 11:** Commit: git add packages/ai-orchestration package.json package-lock.json tests/orchestration && git commit -m "feat: scaffold isolated agentic orchestration package"
 
 ### Task 2: Define versioned input, event, output, and loop state contracts
 
