@@ -331,16 +331,16 @@ export async function gate(
 }
 ~~~
 
-- [ ] **Step 1:** Write tests for disallowed tool, missing permission, emergency disable, revoked deployment pin, budget reservation failure, approval-class action, repeated normalized identical actions (loop detection threshold), successful read action, failed retryable action, non-retryable action, output-schema violation from a tool, and blocking artifact validation returning to agent as an observation.
-- [ ] **Step 2:** Run npm test -- tests/orchestration/governor.test.ts.
-- [ ] **Step 3:** Expected: FAIL.
-- [ ] **Step 4:** Gate rechecks current emergency disable, pinned policy/deployment status, tool allowlist, permission, budget reservation, and approval class per action. It never executes a tool. A denial produces a typed, safe policy_denied observation routed back to agent so the model can re-plan within the run; identical normalized denials or identical normalized actions beyond the configured threshold route to fail with LOOP_DETECTED.
-- [ ] **Step 5:** Act calls ToolExecutor exactly once per action idempotency key (run/iteration/tool/arguments hash), validates output against the tool's output schema, and appends a normalized ObservationV1 with trust label, evidence references, cost, and latency. It does not catch policy/authorization failures as model-retryable errors.
-- [ ] **Step 6:** Run deterministic evaluators inside act on every result: schema/domain checks, evidence bookkeeping (which requirements are now satisfied), contradiction flags, and freshness. Evaluators write observation metadata; they do not call models. Any optional model-assisted evaluation happens only in finalize under policy.
-- [ ] **Step 7:** Wire routing.ts and graph.ts to the final topology from Task 2 Step 2 and remove stubs.
-- [ ] **Step 8:** Run npm test -- tests/orchestration/governor.test.ts and npm test -- tests/orchestration/graph-shape.test.ts.
-- [ ] **Step 9:** Expected: PASS.
-- [ ] **Step 10:** Commit: git add packages/ai-orchestration tests/orchestration && git commit -m "feat: implement deterministic governor for agentic loop"
+- [x] **Step 1:** Write tests for disallowed tool, missing permission, emergency disable, revoked deployment pin, budget reservation failure, approval-class action, repeated normalized identical actions (loop detection threshold), successful read action, failed retryable action, non-retryable action, output-schema violation from a tool, and blocking artifact validation returning to agent as an observation.
+- [x] **Step 2:** Run npm test -- tests/orchestration/governor.test.ts.
+- [x] **Step 3:** Expected: FAIL.
+- [x] **Step 4:** Gate rechecks current emergency disable, pinned policy/deployment status, tool allowlist, permission, budget reservation, and approval class per action. It never executes a tool. A denial produces a typed, safe policy_denied observation routed back to agent so the model can re-plan within the run; identical normalized denials or identical normalized actions beyond the configured threshold route to fail with LOOP_DETECTED.
+- [x] **Step 5:** Act calls ToolExecutor exactly once per action idempotency key (run/iteration/tool/arguments hash), validates output against the tool's output schema, and appends a normalized ObservationV1 with trust label, evidence references, cost, and latency. It does not catch policy/authorization failures as model-retryable errors.
+- [x] **Step 6:** Run deterministic evaluators inside act on every result: schema/domain checks, evidence bookkeeping (which requirements are now satisfied), contradiction flags, and freshness. Evaluators write observation metadata; they do not call models. Any optional model-assisted evaluation happens only in finalize under policy.
+- [x] **Step 7:** Wire routing.ts and graph.ts to the final topology from Task 2 Step 2 and remove stubs.
+- [x] **Step 8:** Run npm test -- tests/orchestration/governor.test.ts and npm test -- tests/orchestration/graph-shape.test.ts.
+- [x] **Step 9:** Expected: PASS.
+- [x] **Step 10:** Commit: git add packages/ai-orchestration tests/orchestration && git commit -m "feat: implement deterministic governor for agentic loop"
 
 ### Task 6: Add specialist delegation tools running the same loop
 

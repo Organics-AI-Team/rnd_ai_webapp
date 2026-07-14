@@ -8,83 +8,20 @@ import {
   render_context_pack,
 } from "../../packages/ai-orchestration/src/nodes/message-builder";
 import { build_observation } from "../../packages/ai-orchestration/src/schemas/observation";
-import {
-  build_initial_loop_state,
-} from "../../packages/ai-orchestration/src/state";
 import type { AgentLoopStateType } from "../../packages/ai-orchestration/src/state";
 import { ORCHESTRATOR_VERSION } from "../../packages/ai-orchestration/src/version";
 import type { ModelTurnV1 } from "../../packages/ai-orchestration/src/ports";
 import {
   FakeClock,
   ScriptedModelGateway,
+  goto_targets,
   make_context_pack,
   make_fake_runtime,
-  make_valid_input,
+  make_loop_state,
   tool_call_turn,
 } from "./helpers/fake_runtime";
 
 const clock_start_ms = Date.parse("2026-07-15T00:00:00.000Z");
-
-/**
- * Build a complete loop state as it stands after a successful ingress.
- *
- * @param overrides - Channel overrides for scenario setup.
- * @returns Materialized loop state for direct node invocation.
- */
-function make_loop_state(
-  overrides: Partial<AgentLoopStateType> = {},
-): AgentLoopStateType {
-  const context_pack = make_context_pack(["knowledge.search", "formula.draft"]);
-  const input = make_valid_input();
-  const base = build_initial_loop_state({
-    run_id: "run_0001",
-    thread_id: input.thread_id,
-    tenant_id: "tenant_alpha",
-    actor_profile_id: "profile_0001",
-    input,
-    context_pack,
-    pins: {
-      orchestrator_version: ORCHESTRATOR_VERSION,
-      policy_version: "policy_v1",
-      deployment_version: "deploy_v1",
-      prompt_version: "prompt_v1",
-      context_pack_hash: context_pack.pack_hash,
-    },
-    budget: {
-      max_iterations: 8,
-      max_total_tokens: 100_000,
-      max_cost_usd: "1.00",
-    },
-    started_at: "2026-07-15T00:00:00.000Z",
-    deadline_at: "2026-07-15T01:00:00.000Z",
-  }) as AgentLoopStateType;
-  const user_observation = build_observation({
-    observation_id: "obs_user_1",
-    run_id: "run_0001",
-    iteration: 0,
-    type: "user_message",
-    source: { kind: "user", tool_name: null, source_ids: [] },
-    content: input.message,
-    trust: "trusted_user",
-    cost_usd: "0",
-    latency_ms: 0,
-    occurred_at: "2026-07-15T00:00:00.000Z",
-    metadata: {},
-  });
-  return { ...base, observations: [user_observation], ...overrides };
-}
-
-/**
- * Normalize a Command goto value to a string list for assertions.
- *
- * @param command - Command returned by a node.
- * @returns Target node names.
- */
-function goto_targets(command: Command): string[] {
-  const raw = command.goto;
-  const list = Array.isArray(raw) ? raw : [raw];
-  return list.map((entry) => String(entry));
-}
 
 const injected_document = [
   "Aloe vera extract: humectant, soothing.",

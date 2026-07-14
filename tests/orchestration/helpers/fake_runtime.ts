@@ -32,6 +32,15 @@ import {
 } from "../../../packages/ai-orchestration/src/ports";
 import type { ContextPackV1 } from "../../../packages/ai-orchestration/src/context/context-pack";
 import { compute_pack_hash } from "../../../packages/ai-orchestration/src/context/context-pack";
+import type {
+  DecisionRecordV1,
+  ProposedActionV1,
+} from "../../../packages/ai-orchestration/src/contracts";
+import { hash_arguments } from "../../../packages/ai-orchestration/src/hash";
+import { build_observation } from "../../../packages/ai-orchestration/src/schemas/observation";
+import { build_initial_loop_state } from "../../../packages/ai-orchestration/src/state";
+import type { AgentLoopStateType } from "../../../packages/ai-orchestration/src/state";
+import { ORCHESTRATOR_VERSION } from "../../../packages/ai-orchestration/src/version";
 import type { AgentRunInputV1 } from "../../../packages/shared-types/src/ai/contracts";
 
 /**
@@ -127,6 +136,112 @@ export function make_valid_input(
     idempotency_key: "idem_0000000001",
     ...overrides,
   } as AgentRunInputV1;
+}
+
+/**
+ * Build a complete loop state as it stands after a successful ingress.
+ *
+ * @param overrides - Channel overrides for scenario setup.
+ * @returns Materialized loop state for direct node invocation.
+ */
+export function make_loop_state(
+  overrides: Partial<AgentLoopStateType> = {},
+): AgentLoopStateType {
+  const context_pack = make_context_pack(["knowledge.search", "formula.draft"]);
+  const input = make_valid_input();
+  const base = build_initial_loop_state({
+    run_id: "run_0001",
+    thread_id: input.thread_id,
+    tenant_id: "tenant_alpha",
+    actor_profile_id: "profile_0001",
+    input,
+    context_pack,
+    pins: {
+      orchestrator_version: ORCHESTRATOR_VERSION,
+      policy_version: "policy_v1",
+      deployment_version: "deploy_v1",
+      prompt_version: "prompt_v1",
+      context_pack_hash: context_pack.pack_hash,
+    },
+    budget: {
+      max_iterations: 8,
+      max_total_tokens: 100_000,
+      max_cost_usd: "1.00",
+    },
+    started_at: "2026-07-15T00:00:00.000Z",
+    deadline_at: "2026-07-15T01:00:00.000Z",
+  }) as AgentLoopStateType;
+  const user_observation = build_observation({
+    observation_id: "obs_user_1",
+    run_id: "run_0001",
+    iteration: 0,
+    type: "user_message",
+    source: { kind: "user", tool_name: null, source_ids: [] },
+    content: input.message,
+    trust: "trusted_user",
+    cost_usd: "0",
+    latency_ms: 0,
+    occurred_at: "2026-07-15T00:00:00.000Z",
+    metadata: {},
+  });
+  return { ...base, observations: [user_observation], ...overrides };
+}
+
+/**
+ * Build a pending tool proposal as the agent node would set it.
+ *
+ * @param tool_name - Proposed catalogue tool.
+ * @param args - Proposed arguments payload.
+ * @returns ProposedActionV1 of kind tool with a canonical arguments hash.
+ */
+export function make_pending_tool_action(
+  tool_name: string,
+  args: unknown,
+): ProposedActionV1 {
+  return {
+    kind: "tool",
+    call_id: `call_${tool_name}`,
+    tool_name,
+    arguments: args,
+    arguments_hash: hash_arguments(args),
+  };
+}
+
+/**
+ * Build a derived tool decision record for loop-detection scenarios.
+ *
+ * @param tool_name - Proposed tool name.
+ * @param args - Proposed arguments payload (hashed canonically).
+ * @param iteration - Iteration the decision belongs to.
+ * @returns DecisionRecordV1 of kind tool.
+ */
+export function make_tool_decision(
+  tool_name: string,
+  args: unknown,
+  iteration: number,
+): DecisionRecordV1 {
+  return {
+    iteration,
+    kind: "tool",
+    tool_name,
+    arguments_hash: hash_arguments(args),
+    rationale_summary: "Repeating the same plan.",
+    occurred_at: "2026-07-15T00:00:03.000Z",
+  };
+}
+
+/**
+ * Normalize a Command goto value to a string list for assertions.
+ *
+ * @param command - Command returned by a node.
+ * @returns Target node names.
+ */
+export function goto_targets(command: {
+  goto?: unknown;
+}): string[] {
+  const raw = command.goto;
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.map((entry) => String(entry));
 }
 
 /** Scripted model gateway: returns pre-programmed turns in order. */

@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-07-15] feat: Implement deterministic governor for agentic loop (G4 Task 5)
+
+### Summary
+
+- Implemented the gate node: per-action re-check via the injected policy engine (emergency disable, pinned policy/deployment status, tool allowlist, permission, budget reservation, approval class); non-fatal denials return to the agent as typed, safe policy_denied observations (trusted_system, reason-coded) so the model re-plans within the run; fatal denials (POLICY_EMERGENCY_DISABLED, POLICY_DEPLOYMENT_REVOKED) end the run; approval-class actions route to request_approval. The gate never executes a tool.
+- Implemented normalized-action loop detection (tool name + canonical arguments hash) counting both denied and executed proposals in the decision log; at the configured threshold the run fails with LOOP_DETECTED — the gate routes directly to fail so a stuck model cannot burn another reasoning turn.
+- Implemented the act node: exactly one ToolExecutor invocation per deterministic idempotency key (run:iteration:tool:arguments-hash), retries only executor-reported retryable failures within the definition's retry budget, validates output against the tool's output schema (violations become TOOL_OUTPUT_INVALID observations, not run failures), trust-labels results from the tool definition, and runs deterministic evaluators on every result: evidence bookkeeping, contradiction flags for identical arguments with diverging content, and freshness. Blocking artifact validation returns to the agent as a validation_finding observation; warnings surface on the run.
+- Implemented the fail node: safe partial output (evidence references, action rationales, usage — never hidden reasoning), usage reconciliation, run.failed persistence and event. No path anywhere falls back to a legacy executor.
+- Wired routing.ts + graph.ts to the final topology and replaced the reasoning/governor stubs; finalize is an interim deterministic minimal implementation (schema-validated output, completion persistence) until Task 8 adds artifact validators; interrupt nodes remain typed stubs until Task 7.
+
+### Verification approach
+
+- RED first (modules missing), then GREEN: 28 governor + graph-shape tests, including gate denial observations, loop-detection trips (denials and allowed repeats), idempotency-key stability, retry budgets, output-schema violations, blocking artifact findings, contradiction flagging, fail-node partial output, and four full end-to-end loop runs on the compiled graph (complete, deny-and-replan, LOOP_DETECTED, LIMIT_MAX_ITERATIONS). Full repository suite 97/97 with orchestration typecheck clean.
+
+---
+
 ## [2026-07-15] feat: Implement agentic reasoning node and ingress (G4 Task 4)
 
 ### Summary

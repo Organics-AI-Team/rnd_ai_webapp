@@ -1,5 +1,5 @@
 /**
- * The governed agentic loop graph shell.
+ * The governed agentic loop graph.
  *
  * Exactly one reasoning node (`agent`) may call the ModelGateway; every other
  * node is deterministic code. LangGraph is used for durability (checkpoints,
@@ -13,107 +13,116 @@
  *   act -> agent; request_clarification -> agent; request_approval -> gate
  *   finalize -> END; fail -> END
  *
- * Tasks 1-5 ship typed stubs for request_clarification / request_approval /
- * finalize; durable interrupts land in plan Task 7 and artifact-validated
- * finalize in plan Task 8.
+ * request_clarification / request_approval are typed stubs until durable
+ * interrupts land in plan Task 7; finalize is a deterministic minimal
+ * implementation until full artifact validators land in plan Task 8.
  */
 import { Command, END, START, StateGraph } from "@langchain/langgraph";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
+import { build_run_event } from "./events";
+import { agent } from "./nodes/agent";
+import { act } from "./nodes/act";
+import { fail } from "./nodes/fail";
+import { gate } from "./nodes/gate";
+import { ingress } from "./nodes/ingress";
+import { build_output_document } from "./output";
 import type { AgentLoopRuntime } from "./ports";
 import { log_loop_event } from "./ports";
+import { LOOP_NODE, build_run_error } from "./routing";
 import { AgentLoopState } from "./state";
 import type { AgentLoopStateType, AgentLoopStateUpdate } from "./state";
 
 /**
- * Typed stub for the ingress node (implemented in plan Task 4).
+ * Typed stub for the clarification interrupt node (durable interrupt lands
+ * in plan Task 7).
  *
  * @param _state - Current loop state.
- * @returns Empty typed update.
- */
-async function ingress_stub(
-  _state: AgentLoopStateType,
-): Promise<AgentLoopStateUpdate> {
-  return {};
-}
-
-/**
- * Typed stub for the agent reasoning node (implemented in plan Task 4).
- *
- * @param _state - Current loop state.
- * @returns Command routing to finalize so the stub loop can terminate.
- */
-async function agent_stub(_state: AgentLoopStateType): Promise<Command> {
-  return new Command({ goto: "finalize" });
-}
-
-/**
- * Typed stub for the gate node (implemented in plan Task 5).
- *
- * @param _state - Current loop state.
- * @returns Command routing to act.
- */
-async function gate_stub(_state: AgentLoopStateType): Promise<Command> {
-  return new Command({ goto: "act" });
-}
-
-/**
- * Typed stub for the act node (implemented in plan Task 5).
- *
- * @param _state - Current loop state.
- * @returns Empty typed update (act -> agent is a fixed edge).
- */
-async function act_stub(
-  _state: AgentLoopStateType,
-): Promise<AgentLoopStateUpdate> {
-  return {};
-}
-
-/**
- * Typed stub for the clarification interrupt node (plan Task 7).
- *
- * @param _state - Current loop state.
+ * @param runtime - Node runtime for structured logging.
  * @returns Empty typed update (fixed edge returns to agent).
  */
 async function request_clarification_stub(
   _state: AgentLoopStateType,
+  runtime: AgentLoopRuntime,
 ): Promise<AgentLoopStateUpdate> {
+  log_loop_event(runtime, "info", "request_clarification.stub");
   return {};
 }
 
 /**
- * Typed stub for the approval interrupt node (plan Task 7).
+ * Typed stub for the approval interrupt node (durable interrupt lands in
+ * plan Task 7).
  *
  * @param _state - Current loop state.
+ * @param runtime - Node runtime for structured logging.
  * @returns Empty typed update (fixed edge returns to gate).
  */
 async function request_approval_stub(
   _state: AgentLoopStateType,
+  runtime: AgentLoopRuntime,
 ): Promise<AgentLoopStateUpdate> {
+  log_loop_event(runtime, "info", "request_approval.stub");
   return {};
 }
 
 /**
- * Typed stub for the finalize node (deterministic validators land in Task 8).
+ * Interim deterministic finalize: builds a schema-validated output from the
+ * model's finalize proposal, records completion, and reconciles usage.
+ * Plan Task 8 replaces this with artifact validators, evidence-coverage
+ * checks, and computed quality dimensions.
  *
- * @param _state - Current loop state.
- * @returns Empty typed update.
+ * @param state - Current loop state carrying the finalize proposal.
+ * @param runtime - Injected ports and trusted context.
+ * @returns State update with the validated output and run.completed event,
+ *          or a typed error update on an invariant violation.
  */
-async function finalize_stub(
-  _state: AgentLoopStateType,
+async function finalize_minimal(
+  state: AgentLoopStateType,
+  runtime: AgentLoopRuntime,
 ): Promise<AgentLoopStateUpdate> {
-  return {};
-}
-
-/**
- * Typed stub for the fail node (implemented in plan Task 5).
- *
- * @param _state - Current loop state.
- * @returns Empty typed update.
- */
-async function fail_stub(
-  _state: AgentLoopStateType,
-): Promise<AgentLoopStateUpdate> {
-  return {};
+  log_loop_event(runtime, "info", "finalize.start");
+  const action = state.pending_action;
+  if (!action || action.kind !== "finalize") {
+    log_loop_event(runtime, "error", "finalize.missing_request");
+    return {
+      error: build_run_error(
+        runtime,
+        "ORCHESTRATOR_INVARIANT_VIOLATION",
+        "Finalize was reached without a finalize proposal.",
+      ),
+    };
+  }
+  const output = build_output_document(state, runtime, {
+    status: "completed",
+    answer: action.request.answer,
+    citations: action.request.citations,
+    uncertainty: action.request.uncertainty,
+  });
+  await runtime.ports.usage.reconcile(
+    state.run_id,
+    {
+      model_calls: state.usage.model_calls,
+      tool_calls: state.usage.tool_calls,
+      tokens_used: state.usage.tokens_used,
+      cost_usd_used: state.usage.cost_usd_used,
+    },
+    runtime.context,
+  );
+  await runtime.ports.runs.mark_completed(
+    state.run_id,
+    output,
+    runtime.context,
+  );
+  const events = [
+    build_run_event(
+      state,
+      { clock: runtime.ports.clock, ids: runtime.ports.ids },
+      0,
+      "run.completed",
+      { status: "completed", output_schema_version: "1" },
+    ),
+  ];
+  log_loop_event(runtime, "info", "finalize.finish");
+  return { output, pending_action: null, events };
 }
 
 /**
@@ -126,25 +135,39 @@ async function fail_stub(
 export function build_agent_loop_graph(runtime: AgentLoopRuntime) {
   log_loop_event(runtime, "debug", "graph.build.start");
   const graph = new StateGraph(AgentLoopState)
-    .addNode("ingress", ingress_stub)
-    .addNode("agent", agent_stub, {
-      ends: ["gate", "request_clarification", "finalize", "fail"],
-    })
-    .addNode("gate", gate_stub, {
-      ends: ["act", "request_approval", "agent", "fail"],
-    })
-    .addNode("act", act_stub)
-    .addNode("request_clarification", request_clarification_stub)
-    .addNode("request_approval", request_approval_stub)
-    .addNode("finalize", finalize_stub)
-    .addNode("fail", fail_stub)
-    .addEdge(START, "ingress")
-    .addEdge("ingress", "agent")
-    .addEdge("act", "agent")
-    .addEdge("request_clarification", "agent")
-    .addEdge("request_approval", "gate")
-    .addEdge("finalize", END)
-    .addEdge("fail", END);
+    .addNode(LOOP_NODE.ingress, (state: AgentLoopStateType) =>
+      ingress(state, runtime),
+    )
+    .addNode(
+      LOOP_NODE.agent,
+      (state: AgentLoopStateType): Promise<Command> => agent(state, runtime),
+      { ends: ["gate", "request_clarification", "finalize", "fail"] },
+    )
+    .addNode(
+      LOOP_NODE.gate,
+      (state: AgentLoopStateType): Promise<Command> => gate(state, runtime),
+      { ends: ["act", "request_approval", "agent", "fail"] },
+    )
+    .addNode(LOOP_NODE.act, (state: AgentLoopStateType) => act(state, runtime))
+    .addNode(LOOP_NODE.request_clarification, (state: AgentLoopStateType) =>
+      request_clarification_stub(state, runtime),
+    )
+    .addNode(LOOP_NODE.request_approval, (state: AgentLoopStateType) =>
+      request_approval_stub(state, runtime),
+    )
+    .addNode(LOOP_NODE.finalize, (state: AgentLoopStateType) =>
+      finalize_minimal(state, runtime),
+    )
+    .addNode(LOOP_NODE.fail, (state: AgentLoopStateType) =>
+      fail(state, runtime),
+    )
+    .addEdge(START, LOOP_NODE.ingress)
+    .addEdge(LOOP_NODE.ingress, LOOP_NODE.agent)
+    .addEdge(LOOP_NODE.act, LOOP_NODE.agent)
+    .addEdge(LOOP_NODE.request_clarification, LOOP_NODE.agent)
+    .addEdge(LOOP_NODE.request_approval, LOOP_NODE.gate)
+    .addEdge(LOOP_NODE.finalize, END)
+    .addEdge(LOOP_NODE.fail, END);
   log_loop_event(runtime, "debug", "graph.build.finish");
   return graph;
 }
