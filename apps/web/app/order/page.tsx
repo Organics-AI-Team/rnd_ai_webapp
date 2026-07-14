@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
+import { get_order_organization_id } from "@/lib/order-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,17 +19,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ShoppingCart, Package, CheckCircle } from "lucide-react";
 
 /**
- * Read the public order organization identifier from the current URL.
+ * Render the interactive order form using hydration-safe App Router search params.
  *
- * @returns Organization identifier, or an empty string during server rendering.
+ * @returns Client order form.
  */
-function read_organization_id(): string {
-  if (typeof window === "undefined") return "";
-  return new URLSearchParams(window.location.search).get("org") || "";
-}
-
-export default function ClientOrderPage() {
-  const [organizationId] = useState(read_organization_id);
+function ClientOrderContent() {
+  const search_params = useSearchParams();
+  const organizationId = get_order_organization_id(search_params);
   const [formData, setFormData] = useState({
     productName: "",
     price: "",
@@ -276,5 +274,24 @@ export default function ClientOrderPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Render the public order form behind the App Router search-params boundary.
+ *
+ * @returns Suspense-wrapped order form.
+ */
+export default function ClientOrderPage() {
+  return (
+    <Suspense
+      fallback={(
+        <div className="min-h-screen flex items-center justify-center bg-blue-50">
+          <p className="text-sm text-gray-600">Loading order form...</p>
+        </div>
+      )}
+    >
+      <ClientOrderContent />
+    </Suspense>
   );
 }

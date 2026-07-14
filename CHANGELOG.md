@@ -10,12 +10,15 @@
 - Cleared the React 19 lint baseline without suppressions by deriving query-backed chat state, reconciling optimistic messages by server ID, moving pagination resets into user events, and making effect-driven external data updates asynchronous and cleanup-safe.
 - Deferred environment-dependent Gemini and MongoDB client construction until request-time use so production builds do not require runtime secrets.
 - Kept the existing webpack configuration active under Next.js 16 by selecting webpack explicitly for production builds.
+- Resolved the G0 Task 2 review findings while preserving the binding G0 route contract: `/login` and `/signup` remain public, anonymous protected pages redirect to `/login`, and the Clerk-style route rename stays deferred to G1.
+- Added privacy-safe structured proxy lifecycle logs, hydration-safe App Router search-parameter handling for the public order form, one-time chat-thread default pinning across refetch reordering, and schema-backed formula-status narrowing without an `any` assertion.
 
 ### Verification approach
 
 - Installed the pinned workspace dependency graph and confirmed the exact top-level package versions.
 - Ran the web lint command, root TypeScript check, focused framework architecture test, and Next.js 16 production build with TypeScript validation enabled.
 - Reviewed all touched React components against the repository's component, hook, rendering, accessibility, and type-safety conventions.
+- Added and ran an eight-case review regression suite, then verified both public auth routes and their bidirectional navigation in a real browser with no console, runtime, or Next error-overlay failures.
 
 ---
 

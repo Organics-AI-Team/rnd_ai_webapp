@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server";
 import { trpc } from "@/lib/trpc-client";
+import { is_formula_status } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -345,7 +346,9 @@ export function FormulaForm() {
             <select
               id="status"
               value={status}
-              onChange={(e) => setStatus(e.target.value as any)}
+              onChange={(e) => {
+                if (is_formula_status(e.target.value)) setStatus(e.target.value);
+              }}
               className="w-full px-3 py-2 border rounded-md"
             >
               <option value="draft">Draft</option>

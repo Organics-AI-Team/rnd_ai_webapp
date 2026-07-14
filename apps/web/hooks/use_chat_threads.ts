@@ -16,6 +16,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { trpc } from '@/lib/trpc-client';
+import { select_default_thread_once } from '@/lib/chat-thread-selection';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,6 +81,9 @@ export interface UseChatThreadsReturn {
  */
 export function useChatThreads(agent_type: AgentType, initial_thread_id?: string | null): UseChatThreadsReturn {
   const [selected_thread_id, set_active_thread_id] = useState<string | null>(initial_thread_id ?? null);
+  const [default_thread_id, set_default_thread_id] = useState<string | null | undefined>(
+    initial_thread_id ?? undefined,
+  );
   const [is_new_chat, set_is_new_chat] = useState(false);
   const [optimistic_messages, set_optimistic_messages] = useState<ChatMessage[]>([]);
   const pending_thread_ref = useRef<string | null>(null);
@@ -91,8 +95,21 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
     { refetchOnWindowFocus: false },
   );
 
+  // Pin the first server-provided default in state. React immediately retries
+  // this component when the default first becomes available, so no transient
+  // effect can lose the selection during Strict Mode cleanup or a fast refetch.
+  const resolved_default_thread_id = select_default_thread_once(
+    default_thread_id,
+    is_new_chat,
+    threads_query.data || [],
+  );
+  if (resolved_default_thread_id !== default_thread_id) {
+    set_default_thread_id(resolved_default_thread_id);
+  }
+
   const active_thread_id = selected_thread_id
-    || (!is_new_chat ? threads_query.data?.[0]?.id || null : null);
+    || resolved_default_thread_id
+    || null;
 
   /**
    * Keep the imperative message-send ref aligned with the derived active thread.
@@ -133,6 +150,7 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
    */
   const select_thread = useCallback((thread_id: string) => {
     console.log('[use_chat_threads] select_thread', { thread_id });
+    set_default_thread_id(thread_id);
     active_thread_id_ref.current = thread_id;
     pending_thread_ref.current = null;
     set_active_thread_id(thread_id);
@@ -146,6 +164,7 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
    */
   const start_new_chat = useCallback(() => {
     console.log('[use_chat_threads] start_new_chat');
+    set_default_thread_id(null);
     active_thread_id_ref.current = null;
     pending_thread_ref.current = null;
     set_active_thread_id(null);
@@ -187,6 +206,7 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
 
         thread_id = new_thread.id;
         pending_thread_ref.current = thread_id;
+        set_default_thread_id(thread_id);
         active_thread_id_ref.current = thread_id;
         set_active_thread_id(thread_id);
         set_is_new_chat(false);
@@ -246,6 +266,7 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
       await archive_mutation.mutateAsync({ threadId: thread_id });
 
       if (active_thread_id === thread_id) {
+        set_default_thread_id(null);
         set_active_thread_id(null);
         set_is_new_chat(true);
       }
