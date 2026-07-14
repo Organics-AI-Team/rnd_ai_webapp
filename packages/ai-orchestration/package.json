@@ -1,0 +1,28 @@
+{
+  "name": "@rnd-ai/ai-orchestration",
+  "version": "1.0.0",
+  "description": "Governed agentic orchestration loop: one model-driven reasoning node wrapped by a deterministic governor (LangGraph used for durability, not flow control)",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@langchain/core": "1.2.2",
+    "@langchain/langgraph": "1.4.7",
+    "@langchain/langgraph-checkpoint-mongodb": "1.4.0",
+    "@rnd-ai/shared-types": "1.0.0",
+    "decimal.js": "10.6.0",
+    "mongodb": "6.21.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

@@ -78,17 +78,17 @@ export interface OrchestrationPorts {
 }
 ~~~
 
-- [ ] **Step 1:** Write a boundary test that walks packages/ai-orchestration imports and rejects paths under apps/ai/agents, apps/ai/services, apps/web, @langchain/langgraph/prebuilt legacy agents, or provider SDKs.
-- [ ] **Step 2:** Run npm test -- tests/orchestration/package-boundary.test.ts.
-- [ ] **Step 3:** Expected: FAIL because the workspace does not exist.
-- [ ] **Step 4:** Create @rnd-ai/ai-orchestration as private, type=commonjs to match apps/ai during coexistence, exports=./src/index.ts, and scripts typecheck=tsc --noEmit and test=vitest run. The pinned LangGraph packages expose supported require builds as well as ESM builds.
-- [ ] **Step 5:** Pin dependencies @langchain/langgraph=1.4.7, @langchain/core=1.2.2, @langchain/langgraph-checkpoint-mongodb=1.4.0, mongodb=6.21.0, zod=3.25.76, decimal.js=10.6.0, and @rnd-ai/shared-types=1.0.0.
-- [ ] **Step 6:** Define ports for ModelGateway (native tool-calling turn: messages + tool declarations in, one assistant turn out), KnowledgeGateway, ToolExecutor, ArtifactService, RunRepository, ApprovalService, UsageService, Clock, and IdGenerator. Each method receives TrustedRuntimeContext outside model input.
-- [ ] **Step 7:** Export ORCHESTRATOR_VERSION="agentic-1.0.0" and reject an unknown version when resuming a pinned run.
-- [ ] **Step 8:** Add typecheck:orchestration at the root and include it in root typecheck.
-- [ ] **Step 9:** Run npm install, npm run typecheck:orchestration, and npm test -- tests/orchestration/package-boundary.test.ts.
-- [ ] **Step 10:** Expected: PASS.
-- [ ] **Step 11:** Commit: git add packages/ai-orchestration package.json package-lock.json tests/orchestration && git commit -m "feat: scaffold isolated agentic orchestration package"
+- [x] **Step 1:** Write a boundary test that walks packages/ai-orchestration imports and rejects paths under apps/ai/agents, apps/ai/services, apps/web, @langchain/langgraph/prebuilt legacy agents, or provider SDKs.
+- [x] **Step 2:** Run npm test -- tests/orchestration/package-boundary.test.ts.
+- [x] **Step 3:** Expected: FAIL because the workspace does not exist.
+- [x] **Step 4:** Create @rnd-ai/ai-orchestration as private, type=commonjs to match apps/ai during coexistence, exports=./src/index.ts, and scripts typecheck=tsc --noEmit and test=vitest run. The pinned LangGraph packages expose supported require builds as well as ESM builds.
+- [x] **Step 5:** Pin dependencies @langchain/langgraph=1.4.7, @langchain/core=1.2.2, @langchain/langgraph-checkpoint-mongodb=1.4.0, mongodb=6.21.0, zod=3.25.76, decimal.js=10.6.0, and @rnd-ai/shared-types=1.0.0.
+- [x] **Step 6:** Define ports for ModelGateway (native tool-calling turn: messages + tool declarations in, one assistant turn out), KnowledgeGateway, ToolExecutor, ArtifactService, RunRepository, ApprovalService, UsageService, Clock, and IdGenerator. Each method receives TrustedRuntimeContext outside model input.
+- [x] **Step 7:** Export ORCHESTRATOR_VERSION="agentic-1.0.0" and reject an unknown version when resuming a pinned run.
+- [x] **Step 8:** Add typecheck:orchestration at the root and include it in root typecheck.
+- [x] **Step 9:** Run npm install, npm run typecheck:orchestration, and npm test -- tests/orchestration/package-boundary.test.ts.
+- [x] **Step 10:** Expected: PASS.
+- [x] **Step 11:** Commit: git add packages/ai-orchestration package.json package-lock.json tests/orchestration && git commit -m "feat: scaffold isolated agentic orchestration package"
 
 ### Task 2: Define versioned input, event, output, and loop state contracts
 
@@ -145,21 +145,21 @@ export const AgentLoopState = Annotation.Root({
 });
 ~~~
 
-- [ ] **Step 1:** Write contract tests rejecting unknown fields, missing schema version, unsupported agent key, empty message, client identity/security fields, oversized attachment metadata, and unsupported output/event versions.
-- [ ] **Step 2:** Write a graph-shape test asserting exactly the nodes ingress, agent, gate, act, request_clarification, request_approval, finalize, and fail, with agent as the only model-facing node, plus only the allowed edges (START->ingress, ingress->agent, agent->{gate, request_clarification, finalize, fail}, gate->{act, request_approval, agent}, act->agent, request_clarification->agent, request_approval->gate, finalize->END, fail->END).
-- [ ] **Step 3:** Run npm test -- tests/orchestration/contracts.test.ts tests/orchestration/graph-shape.test.ts.
-- [ ] **Step 4:** Expected: FAIL.
-- [ ] **Step 5:** Define strict AgentRunInputV1: schema_version="1", thread_id, agent_key, message, attachment_source_ids, response_preferences(language,detail), and idempotency_key. It contains no tenant/user/role/policy/model/tool/provider fields.
-- [ ] **Step 6:** Define ContextPackV1: schema_version, orchestrator_card, agent_card, policy_digest, tool_cards (name -> {version, sha256, markdown}), and pack_hash. The pack is assembled outside this package (Task 3) and validated here; it is pinned on the run and immutable within a run.
-- [ ] **Step 7:** Define AgentRunEventV1 as a discriminated union: run.accepted, stage.changed, observation.added, decision.recorded, action.started, action.completed, clarification.required, approval.required, artifact.updated, usage.updated, run.completed, run.failed. Every event has schema_version, event_id, run_id, sequence, occurred_at, and safe payload. stage.changed is derived UI bookkeeping (thinking, acting, waiting_user, finalizing), not graph phase state.
-- [ ] **Step 8:** Define AgentRunOutputV1 with schema_version, run_id, status, answer, decision_summary, citations, artifacts, quality_dimensions, warnings, usage_summary, started_at, and completed_at. Decision summary is facts considered, evidence references, selected action rationale, validation results, and uncertainty; it excludes hidden reasoning tokens. quality_dimensions carries groundedness, evidence coverage, source quality/freshness, contradiction state, deterministic validation rate, completeness, and risk severity; it never exposes an arbitrary single confidence number.
-- [ ] **Step 9:** Define DecisionRecordV1 as a derived audit record of each agent turn: iteration, kind(tool|clarify|finalize), tool_name nullable, arguments_hash, safe rationale summary (max 600 chars), and occurred_at. The model is never asked to emit this schema; it is computed from the native tool call.
-- [ ] **Step 10:** Define RunErrorV1 with stable code, safe_message, retryable, correlation_id, and nullable partial_output. Keep provider error bodies, stack traces, prompts, evidence content, and secrets in redacted internal diagnostics only.
-- [ ] **Step 11:** Define AgentLoopState using Annotation.Root with replace channels for pending_action/output/error and reducer channels for observations/action_results/decision_log/events/warnings. Include run_id, thread_id, tenant_id, actor_profile_id, context_pack, pinned versions, iteration, started_at, deadline_at, and budget counters; include no provider credentials or raw Clerk token. There is no phase channel.
-- [ ] **Step 12:** Create a StateGraph shell with the exact nodes and edges from Step 2. Stub nodes return typed partial state only for the failing graph-shape test.
-- [ ] **Step 13:** Run npm test -- tests/orchestration/contracts.test.ts tests/orchestration/graph-shape.test.ts.
-- [ ] **Step 14:** Expected: PASS.
-- [ ] **Step 15:** Commit: git add packages/shared-types packages/ai-orchestration tests/orchestration && git commit -m "feat: define agentic loop contracts and state"
+- [x] **Step 1:** Write contract tests rejecting unknown fields, missing schema version, unsupported agent key, empty message, client identity/security fields, oversized attachment metadata, and unsupported output/event versions.
+- [x] **Step 2:** Write a graph-shape test asserting exactly the nodes ingress, agent, gate, act, request_clarification, request_approval, finalize, and fail, with agent as the only model-facing node, plus only the allowed edges (START->ingress, ingress->agent, agent->{gate, request_clarification, finalize, fail}, gate->{act, request_approval, agent}, act->agent, request_clarification->agent, request_approval->gate, finalize->END, fail->END).
+- [x] **Step 3:** Run npm test -- tests/orchestration/contracts.test.ts tests/orchestration/graph-shape.test.ts.
+- [x] **Step 4:** Expected: FAIL.
+- [x] **Step 5:** Define strict AgentRunInputV1: schema_version="1", thread_id, agent_key, message, attachment_source_ids, response_preferences(language,detail), and idempotency_key. It contains no tenant/user/role/policy/model/tool/provider fields.
+- [x] **Step 6:** Define ContextPackV1: schema_version, orchestrator_card, agent_card, policy_digest, tool_cards (name -> {version, sha256, markdown}), and pack_hash. The pack is assembled outside this package (Task 3) and validated here; it is pinned on the run and immutable within a run.
+- [x] **Step 7:** Define AgentRunEventV1 as a discriminated union: run.accepted, stage.changed, observation.added, decision.recorded, action.started, action.completed, clarification.required, approval.required, artifact.updated, usage.updated, run.completed, run.failed. Every event has schema_version, event_id, run_id, sequence, occurred_at, and safe payload. stage.changed is derived UI bookkeeping (thinking, acting, waiting_user, finalizing), not graph phase state.
+- [x] **Step 8:** Define AgentRunOutputV1 with schema_version, run_id, status, answer, decision_summary, citations, artifacts, quality_dimensions, warnings, usage_summary, started_at, and completed_at. Decision summary is facts considered, evidence references, selected action rationale, validation results, and uncertainty; it excludes hidden reasoning tokens. quality_dimensions carries groundedness, evidence coverage, source quality/freshness, contradiction state, deterministic validation rate, completeness, and risk severity; it never exposes an arbitrary single confidence number.
+- [x] **Step 9:** Define DecisionRecordV1 as a derived audit record of each agent turn: iteration, kind(tool|clarify|finalize), tool_name nullable, arguments_hash, safe rationale summary (max 600 chars), and occurred_at. The model is never asked to emit this schema; it is computed from the native tool call.
+- [x] **Step 10:** Define RunErrorV1 with stable code, safe_message, retryable, correlation_id, and nullable partial_output. Keep provider error bodies, stack traces, prompts, evidence content, and secrets in redacted internal diagnostics only.
+- [x] **Step 11:** Define AgentLoopState using Annotation.Root with replace channels for pending_action/output/error and reducer channels for observations/action_results/decision_log/events/warnings. Include run_id, thread_id, tenant_id, actor_profile_id, context_pack, pinned versions, iteration, started_at, deadline_at, and budget counters; include no provider credentials or raw Clerk token. There is no phase channel.
+- [x] **Step 12:** Create a StateGraph shell with the exact nodes and edges from Step 2. Stub nodes return typed partial state only for the failing graph-shape test.
+- [x] **Step 13:** Run npm test -- tests/orchestration/contracts.test.ts tests/orchestration/graph-shape.test.ts.
+- [x] **Step 14:** Expected: PASS.
+- [x] **Step 15:** Commit: git add packages/shared-types packages/ai-orchestration tests/orchestration && git commit -m "feat: define agentic loop contracts and state"
 
 ### Task 3: Build capability cards and the context assembler
 
@@ -221,7 +221,7 @@ export interface ToolDefinition<I, O> {
 - [ ] **Step 7:** Write one agent card per agent_key: persona, domain scope, working style, quality bar, output contract, and escalation guidance. Keep tenant- and deployment-specific overrides in PromptVersion records, not in the repo cards.
 - [ ] **Step 8:** Implement card-loader.ts with gray-matter frontmatter parsing, Zod frontmatter schema, SHA-256 hashing, and an in-process cache keyed by content hash.
 - [ ] **Step 9:** Implement context-assembler.ts: load orchestrator card, resolve the agent card via AgentDeployment/PromptVersion pins, filter the tool catalogue by effective policy and load only allowed tools' cards, render the policy digest, compute pack_hash over all card hashes, and return ContextPackV1. Record card names, versions, and hashes on the AIRun.
-- [ ] **Step 10:** Validate ContextPackV1 in packages/ai-orchestration/src/context/context-pack.ts so the orchestration package never trusts an unvalidated pack.
+- [x] **Step 10:** Validate ContextPackV1 in packages/ai-orchestration/src/context/context-pack.ts so the orchestration package never trusts an unvalidated pack.
 - [ ] **Step 11:** Run npm test -- tests/ai-control/capability-cards.test.ts tests/ai-control/context-assembler.test.ts.
 - [ ] **Step 12:** Expected: PASS.
 - [ ] **Step 13:** Commit: git add apps/ai/server/services/ai-control packages/ai-orchestration tests/ai-control && git commit -m "feat: add capability cards and context assembler"
@@ -271,16 +271,16 @@ export async function agent(
 }
 ~~~
 
-- [ ] **Step 1:** Write deterministic scripted-model tests: fresh request proposes a retrieval tool; follow-up reuses conversation context; missing required input proposes request_clarification with bounded questions; a finalize turn routes to finalize; an unknown tool name is retried once then routes fail with MODEL_OUTPUT_INVALID; a malformed provider tool call is retried once; prompt injection inside retrieved text never becomes an instruction; iteration/token/cost/deadline budget exhaustion routes fail with the correct LIMIT_* code before the model is called.
-- [ ] **Step 2:** Run npm test -- tests/orchestration/agent-node.test.ts.
-- [ ] **Step 3:** Expected: FAIL.
-- [ ] **Step 4:** In ingress, verify input version and the run/deployment/policy/prompt/context-pack pins supplied by the gateway, initialize counters/deadline, seed initial observations (thread summary, attachment references) through trusted ports, and emit run.accepted. Do not load authorization from input.
-- [ ] **Step 5:** Implement message-builder.ts: render the system context from ContextPackV1 (orchestrator card + agent card + policy digest + tool cards), then the conversation, then observations as trust-labeled tool results with source type, source ID, content hash, retrieved_at, and scope. Untrusted content is fenced and labeled; it is never concatenated into the system section.
-- [ ] **Step 6:** Implement the agent node: exactly one ModelGateway turn per iteration with the declared tool list from the context pack (including request_clarification and finalize as declared tools); increment iteration; record DecisionRecordV1; set pending_action for gate routing. No structured-output schema is imposed beyond native tool calling.
-- [ ] **Step 7:** Route: tool call -> gate; request_clarification -> request_clarification node; finalize -> finalize node; budget exhaustion -> fail with LIMIT_MAX_ITERATIONS, LIMIT_DEADLINE, LIMIT_TOKENS, or LIMIT_COST and a partial safe result rather than any fallback executor.
-- [ ] **Step 8:** Run npm test -- tests/orchestration/agent-node.test.ts.
-- [ ] **Step 9:** Expected: PASS.
-- [ ] **Step 10:** Commit: git add packages/ai-orchestration tests/orchestration && git commit -m "feat: implement agentic reasoning node and ingress"
+- [x] **Step 1:** Write deterministic scripted-model tests: fresh request proposes a retrieval tool; follow-up reuses conversation context; missing required input proposes request_clarification with bounded questions; a finalize turn routes to finalize; an unknown tool name is retried once then routes fail with MODEL_OUTPUT_INVALID; a malformed provider tool call is retried once; prompt injection inside retrieved text never becomes an instruction; iteration/token/cost/deadline budget exhaustion routes fail with the correct LIMIT_* code before the model is called.
+- [x] **Step 2:** Run npm test -- tests/orchestration/agent-node.test.ts.
+- [x] **Step 3:** Expected: FAIL.
+- [x] **Step 4:** In ingress, verify input version and the run/deployment/policy/prompt/context-pack pins supplied by the gateway, initialize counters/deadline, seed initial observations (thread summary, attachment references) through trusted ports, and emit run.accepted. Do not load authorization from input.
+- [x] **Step 5:** Implement message-builder.ts: render the system context from ContextPackV1 (orchestrator card + agent card + policy digest + tool cards), then the conversation, then observations as trust-labeled tool results with source type, source ID, content hash, retrieved_at, and scope. Untrusted content is fenced and labeled; it is never concatenated into the system section.
+- [x] **Step 6:** Implement the agent node: exactly one ModelGateway turn per iteration with the declared tool list from the context pack (including request_clarification and finalize as declared tools); increment iteration; record DecisionRecordV1; set pending_action for gate routing. No structured-output schema is imposed beyond native tool calling.
+- [x] **Step 7:** Route: tool call -> gate; request_clarification -> request_clarification node; finalize -> finalize node; budget exhaustion -> fail with LIMIT_MAX_ITERATIONS, LIMIT_DEADLINE, LIMIT_TOKENS, or LIMIT_COST and a partial safe result rather than any fallback executor.
+- [x] **Step 8:** Run npm test -- tests/orchestration/agent-node.test.ts.
+- [x] **Step 9:** Expected: PASS.
+- [x] **Step 10:** Commit: git add packages/ai-orchestration tests/orchestration && git commit -m "feat: implement agentic reasoning node and ingress"
 
 ### Task 5: Implement the deterministic governor: gate, act, validators, and loop detection
 
@@ -331,16 +331,16 @@ export async function gate(
 }
 ~~~
 
-- [ ] **Step 1:** Write tests for disallowed tool, missing permission, emergency disable, revoked deployment pin, budget reservation failure, approval-class action, repeated normalized identical actions (loop detection threshold), successful read action, failed retryable action, non-retryable action, output-schema violation from a tool, and blocking artifact validation returning to agent as an observation.
-- [ ] **Step 2:** Run npm test -- tests/orchestration/governor.test.ts.
-- [ ] **Step 3:** Expected: FAIL.
-- [ ] **Step 4:** Gate rechecks current emergency disable, pinned policy/deployment status, tool allowlist, permission, budget reservation, and approval class per action. It never executes a tool. A denial produces a typed, safe policy_denied observation routed back to agent so the model can re-plan within the run; identical normalized denials or identical normalized actions beyond the configured threshold route to fail with LOOP_DETECTED.
-- [ ] **Step 5:** Act calls ToolExecutor exactly once per action idempotency key (run/iteration/tool/arguments hash), validates output against the tool's output schema, and appends a normalized ObservationV1 with trust label, evidence references, cost, and latency. It does not catch policy/authorization failures as model-retryable errors.
-- [ ] **Step 6:** Run deterministic evaluators inside act on every result: schema/domain checks, evidence bookkeeping (which requirements are now satisfied), contradiction flags, and freshness. Evaluators write observation metadata; they do not call models. Any optional model-assisted evaluation happens only in finalize under policy.
-- [ ] **Step 7:** Wire routing.ts and graph.ts to the final topology from Task 2 Step 2 and remove stubs.
-- [ ] **Step 8:** Run npm test -- tests/orchestration/governor.test.ts and npm test -- tests/orchestration/graph-shape.test.ts.
-- [ ] **Step 9:** Expected: PASS.
-- [ ] **Step 10:** Commit: git add packages/ai-orchestration tests/orchestration && git commit -m "feat: implement deterministic governor for agentic loop"
+- [x] **Step 1:** Write tests for disallowed tool, missing permission, emergency disable, revoked deployment pin, budget reservation failure, approval-class action, repeated normalized identical actions (loop detection threshold), successful read action, failed retryable action, non-retryable action, output-schema violation from a tool, and blocking artifact validation returning to agent as an observation.
+- [x] **Step 2:** Run npm test -- tests/orchestration/governor.test.ts.
+- [x] **Step 3:** Expected: FAIL.
+- [x] **Step 4:** Gate rechecks current emergency disable, pinned policy/deployment status, tool allowlist, permission, budget reservation, and approval class per action. It never executes a tool. A denial produces a typed, safe policy_denied observation routed back to agent so the model can re-plan within the run; identical normalized denials or identical normalized actions beyond the configured threshold route to fail with LOOP_DETECTED.
+- [x] **Step 5:** Act calls ToolExecutor exactly once per action idempotency key (run/iteration/tool/arguments hash), validates output against the tool's output schema, and appends a normalized ObservationV1 with trust label, evidence references, cost, and latency. It does not catch policy/authorization failures as model-retryable errors.
+- [x] **Step 6:** Run deterministic evaluators inside act on every result: schema/domain checks, evidence bookkeeping (which requirements are now satisfied), contradiction flags, and freshness. Evaluators write observation metadata; they do not call models. Any optional model-assisted evaluation happens only in finalize under policy.
+- [x] **Step 7:** Wire routing.ts and graph.ts to the final topology from Task 2 Step 2 and remove stubs.
+- [x] **Step 8:** Run npm test -- tests/orchestration/governor.test.ts and npm test -- tests/orchestration/graph-shape.test.ts.
+- [x] **Step 9:** Expected: PASS.
+- [x] **Step 10:** Commit: git add packages/ai-orchestration tests/orchestration && git commit -m "feat: implement deterministic governor for agentic loop"
 
 ### Task 6: Add specialist delegation tools running the same loop
 

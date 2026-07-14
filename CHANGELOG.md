@@ -1,5 +1,68 @@
 # Changelog
 
+## [2026-07-15] feat: Implement deterministic governor for agentic loop (G4 Task 5)
+
+### Summary
+
+- Implemented the gate node: per-action re-check via the injected policy engine (emergency disable, pinned policy/deployment status, tool allowlist, permission, budget reservation, approval class); non-fatal denials return to the agent as typed, safe policy_denied observations (trusted_system, reason-coded) so the model re-plans within the run; fatal denials (POLICY_EMERGENCY_DISABLED, POLICY_DEPLOYMENT_REVOKED) end the run; approval-class actions route to request_approval. The gate never executes a tool.
+- Implemented normalized-action loop detection (tool name + canonical arguments hash) counting both denied and executed proposals in the decision log; at the configured threshold the run fails with LOOP_DETECTED — the gate routes directly to fail so a stuck model cannot burn another reasoning turn.
+- Implemented the act node: exactly one ToolExecutor invocation per deterministic idempotency key (run:iteration:tool:arguments-hash), retries only executor-reported retryable failures within the definition's retry budget, validates output against the tool's output schema (violations become TOOL_OUTPUT_INVALID observations, not run failures), trust-labels results from the tool definition, and runs deterministic evaluators on every result: evidence bookkeeping, contradiction flags for identical arguments with diverging content, and freshness. Blocking artifact validation returns to the agent as a validation_finding observation; warnings surface on the run.
+- Implemented the fail node: safe partial output (evidence references, action rationales, usage — never hidden reasoning), usage reconciliation, run.failed persistence and event. No path anywhere falls back to a legacy executor.
+- Wired routing.ts + graph.ts to the final topology and replaced the reasoning/governor stubs; finalize is an interim deterministic minimal implementation (schema-validated output, completion persistence) until Task 8 adds artifact validators; interrupt nodes remain typed stubs until Task 7.
+
+### Verification approach
+
+- RED first (modules missing), then GREEN: 28 governor + graph-shape tests, including gate denial observations, loop-detection trips (denials and allowed repeats), idempotency-key stability, retry budgets, output-schema violations, blocking artifact findings, contradiction flagging, fail-node partial output, and four full end-to-end loop runs on the compiled graph (complete, deny-and-replan, LOOP_DETECTED, LIMIT_MAX_ITERATIONS). Full repository suite 97/97 with orchestration typecheck clean.
+
+---
+
+## [2026-07-15] feat: Implement agentic reasoning node and ingress (G4 Task 4)
+
+### Summary
+
+- Implemented the deterministic ingress node: re-validates AgentRunInputV1, fail-closed context-pack validation, orchestrator-version and context-pack-hash pin verification, trusted observation seeding (user message + optional thread summary through injected ports), and typed run.accepted / stage.changed / observation.added events. Ingress never loads authorization from input; on verification failure it sets a typed error that the agent node routes to fail before any model call.
+- Implemented the agent reasoning node — the only model-facing node: deterministic LIMIT_MAX_ITERATIONS / LIMIT_DEADLINE / LIMIT_TOKENS / LIMIT_COST budget checks BEFORE the model call (decimal-safe cost comparison), exactly one native tool-calling turn per iteration, a single bounded retry with a system-authored correction for malformed/unknown/no-tool turns, then MODEL_OUTPUT_INVALID — never a fallback executor.
+- DecisionRecordV1 is derived from the model's native tool call (kind tool/clarify/finalize, arguments hash, ≤600-char safe rationale); pending_action routes to gate / request_clarification / finalize via Command.
+- Implemented message-builder: system prompt rendered only from the hash-pinned context pack; observations rendered as provenance-labeled data blocks (type, source, IDs, content hash, trust, retrieved_at, scope); untrusted content is fenced, labeled, and framed as data never instructions — it is never concatenated into the system section.
+
+### Verification approach
+
+- RED first (module missing), then GREEN: 19 tests covering fresh-request tool proposal, conversation reuse, bounded clarification, finalize routing, unknown-tool retry-then-fail, malformed-turn recovery, prompt-injection containment (injected directives stay fenced; an injected tool name never becomes a pending action), and all four LIMIT_* pre-model failures with zero model calls. Full orchestration suite 59/59 with package typecheck clean.
+
+---
+
+## [2026-07-15] feat: Define agentic loop contracts and state (G4 Task 2)
+
+### Summary
+
+- Added versioned public AI contracts in packages/shared-types/src/ai/contracts.ts: strict AgentRunInputV1 (no tenant/user/role/policy/model/tool/provider fields), the 12-type AgentRunEventV1 discriminated union (stage.changed is derived UI bookkeeping, not graph phase state), AgentRunOutputV1 with named quality dimensions (strict — a lone scalar confidence cannot be attached), DecisionRecordV1 as a derived audit record of the model's native tool call (max 600-char safe rationale), and RunErrorV1 with stable codes (LIMIT_*, LOOP_DETECTED, MODEL_OUTPUT_INVALID, POLICY_*, CONTEXT_PACK_INVALID...).
+- Added loop-internal contracts (ProposedActionV1 tool/clarification/finalize union, ActionResultV1, RunBudgetV1, RunPinsV1, LoopUsageV1) and the trust-labeled ObservationV1 schema.
+- Added ContextPackV1 with fail-closed validation in packages/ai-orchestration/src/context/context-pack.ts: structural schema, per-card SHA-256 integrity, and a binding pack hash (covers the orchestration-package half of plan Task 3 Step 10).
+- Added AgentLoopState (Annotation.Root) with reducer channels for observations/action_results/decision_log/events/warnings and replace channels for pending_action/output/error; deliberately no phase channel.
+- Added the StateGraph shell with exactly ingress, agent, gate, act, request_clarification, request_approval, finalize, fail and only the governed edges; gate additionally routes to fail so LOOP_DETECTED terminates without another model hop.
+
+### Verification approach
+
+- RED first (2 files failed: modules missing), then GREEN: 37 tests across contracts and graph shape, including a static scan asserting agent is the only model-facing node, plus a clean package typecheck.
+
+---
+
+## [2026-07-15] feat: Scaffold isolated agentic orchestration package (G4 Task 1)
+
+### Summary
+
+- Created the private `@rnd-ai/ai-orchestration` workspace (type=commonjs, src entrypoint) with exactly the pinned governed-loop dependencies: @langchain/langgraph 1.4.7, @langchain/core 1.2.2, @langchain/langgraph-checkpoint-mongodb 1.4.0, mongodb 6.21.0, zod 3.25.76, decimal.js 10.6.0, @rnd-ai/shared-types 1.0.0. The apps/ai legacy graph keeps its own 0.2.x LangGraph via nested workspace resolution, so the two never share an instance.
+- Defined the injected port contracts (ModelGateway with one native tool-calling turn per call, KnowledgeGateway, ToolExecutor, ArtifactService, RunRepository, ApprovalService, UsageService, PolicyEngine, Clock, IdGenerator, LoopLogger) — every method receives TrustedRuntimeContext outside model input.
+- Exported ORCHESTRATOR_VERSION="agentic-1.0.0" with a supported-version assertion that rejects resuming a run pinned to an unknown orchestrator version instead of falling back to any legacy executor.
+- Added a boundary test that walks the workspace's import specifiers (static, dynamic, export-from, require) and rejects apps/ai/agents, apps/ai/services, apps/web, @langchain/langgraph/prebuilt, and provider SDKs; a missing workspace is itself a violation so the contract cannot silently pass.
+- Added root scripts typecheck:orchestration and chained it into root typecheck.
+
+### Verification approach
+
+- Captured the RED run (3 failed: workspace missing) before creating the package, then GREEN (3 passed) plus a clean `tsc --noEmit` for the package after implementation.
+
+---
+
 ## [2026-07-15] feat: Tenant-scoped domain repositories (G2.4)
 
 ### Summary
