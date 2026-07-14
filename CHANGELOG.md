@@ -1,5 +1,23 @@
 # Changelog
 
+## [2026-07-15] feat: Clerk authentication surface (G1.1)
+
+### Summary
+
+- Pinned `@clerk/nextjs@7.5.18` (apps/web) and `@clerk/backend@3.11.5` (apps/ai). Route code will use `@clerk/nextjs/server`; framework-neutral provisioning code (G1.4+) uses `@clerk/backend`.
+- `apps/web/proxy.ts` now runs `clerkMiddleware` with `createRouteMatcher`, `frontendApiProxy` enabled, and `await auth.protect()` for application, API, and tRPC paths — gated by two runtime switches in `apps/web/lib/server/clerk-config.ts`: the Clerk surface activates only when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is configured, and enforcement applies only when `CLERK_CUTOVER=true`. Before cutover the legacy cookie flow keeps guarding pages (documented G1 rollback lever); `/sign-in`, `/sign-up`, `/onboarding`, `/api/webhooks/clerk`, `/api/health` are public, and legacy `/login`/`/signup` stay public until G1.7.
+- `ClerkProvider` renders inside the body element (conditional on configuration, so builds succeed without Clerk credentials). Clerk `SignIn`/`SignUp` catch-all pages added; sign-up is invitation-only and no `OrganizationSwitcher`/`CreateOrganization` is rendered anywhere (pinned by test).
+- `/onboarding` shows three explicit states from the server-side Clerk principal only (invitation pending, membership synchronization pending, contact support) and never queries tenant business data.
+- `.env.example` documents the Clerk names without secrets, including `CLERK_CUTOVER=false` and `CLERK_ORG_ROLE_MODE=custom`.
+- PENDING_EXTERNAL_DASHBOARD: Clerk Dashboard settings (disable end-user org creation, invitation-required production sign-up, `org:manager`/`org:user` custom roles, MFA for platform admins) are an external deployment gate; the non-secret settings snapshot goes into G1 release evidence at cutover.
+
+### Verification approach
+
+- TDD RED first (6 of 7 surface tests failing before installation/wiring), then GREEN; full suite 101/101, `npm run typecheck` 0 errors, `npm run security:scan` 0 violations, `npm run build:web` succeeds without Clerk credentials.
+- Legacy behavior pinned: the G0.2 regression tests still pass against the legacy guidance path (public `/login`/`/signup`, anonymous protected pages redirect to `/login`).
+
+---
+
 ## [2026-07-15] ci: Private server boundaries enforced by scanner (G0.7 — G0 complete)
 
 ### Summary

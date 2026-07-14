@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import type { NextFetchEvent, NextRequest } from "next/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+
+import { is_clerk_cutover, is_clerk_enabled } from "./lib/server/clerk-config";
 
 const PUBLIC_PATHS = ["/login", "/signup"];
 
@@ -29,7 +32,7 @@ function log_proxy_event(
 }
 
 /**
- * Check whether a pathname is intentionally public.
+ * Check whether a pathname is intentionally public in the legacy flow.
  *
  * @param pathname - Request pathname to classify.
  * @returns True when the path is a public G0 login or signup route.
@@ -41,18 +44,18 @@ function is_public_path(pathname: string): boolean {
 }
 
 /**
- * Redirect anonymous page requests to the G0 login route.
- *
- * This is traffic guidance only. Server handlers remain responsible for
- * authenticating and authorizing every protected operation.
+ * Legacy request guidance (pre-Clerk): redirect anonymous protected pages to
+ * the G0 login route; pass API traffic through because server handlers
+ * authorize every operation themselves (G0.5/G0.6).
  *
  * @param request - Incoming Next.js request.
- * @returns A redirect for anonymous protected-page requests, otherwise pass-through.
+ * @returns Redirect for anonymous protected pages, otherwise pass-through.
  */
-export async function proxy(request: NextRequest): Promise<NextResponse> {
-  const classification: ProxyClassification = is_public_path(request.nextUrl.pathname)
-    ? "public"
-    : "protected";
+async function legacy_guidance(request: NextRequest): Promise<NextResponse> {
+  const pathname = request.nextUrl.pathname;
+  const is_api_path = pathname.startsWith("/api") || pathname.startsWith("/trpc");
+  const classification: ProxyClassification =
+    is_public_path(pathname) || is_api_path ? "public" : "protected";
   log_proxy_event("entry", "evaluate", classification);
 
   const token = request.cookies.get("auth_token")?.value;
@@ -69,6 +72,67 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   return response;
 }
 
+/**
+ * Public routes under the Clerk surface. The legacy /login and /signup pages
+ * stay public until the G1.7 cutover deletes them.
+ */
+const is_public = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/onboarding",
+  "/api/webhooks/clerk",
+  "/api/health",
+  "/login(.*)",
+  "/signup(.*)",
+]);
+
+/**
+ * Clerk-enabled guidance. After cutover, auth.protect() enforces a Clerk
+ * session for every application, API, and tRPC path (redirecting browsers to
+ * /sign-in). Before cutover, Clerk observes the request while the legacy
+ * cookie flow keeps guarding pages — CLERK_CUTOVER=false is the documented
+ * rollback lever.
+ */
+const clerk_proxy = clerkMiddleware(
+  async (auth, request) => {
+    if (is_public(request)) {
+      log_proxy_event("decision", "allow", "public");
+      return;
+    }
+    if (is_clerk_cutover()) {
+      await auth.protect();
+      log_proxy_event("decision", "allow", "protected");
+      return;
+    }
+    return legacy_guidance(request);
+  },
+  { frontendApiProxy: { enabled: true } },
+);
+
+/**
+ * Request-guidance entry point. Selects the Clerk surface when configured,
+ * otherwise the legacy G0 flow. This is traffic guidance only: server
+ * handlers remain responsible for authenticating and authorizing every
+ * protected operation.
+ *
+ * @param request - Incoming Next.js request.
+ * @param event - Next fetch event (required by Clerk's middleware).
+ * @returns Routing decision response.
+ */
+export async function proxy(
+  request: NextRequest,
+  event?: NextFetchEvent,
+): Promise<Response> {
+  if (is_clerk_enabled()) {
+    const response = await clerk_proxy(request, event as NextFetchEvent);
+    return response instanceof Response ? response : NextResponse.next();
+  }
+  return legacy_guidance(request);
+}
+
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+    "/(api|trpc)(.*)",
+  ],
 };

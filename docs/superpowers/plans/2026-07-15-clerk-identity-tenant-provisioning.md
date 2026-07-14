@@ -74,19 +74,19 @@ export default clerkMiddleware(
 );
 ~~~
 
-- [ ] **Step 1:** Write an architecture test asserting ClerkProvider appears inside body in app/layout.tsx, proxy.ts matches /api and /trpc, and the custom /login page is not used as a protected-route destination.
-- [ ] **Step 2:** Run npm test -- tests/auth/clerk-surface.test.ts.
-- [ ] **Step 3:** Expected: FAIL because Clerk is not installed.
-- [ ] **Step 4:** Pin @clerk/nextjs=7.5.18 in apps/web/package.json and @clerk/backend=3.11.5 in apps/ai/package.json; run npm install. Next route code uses @clerk/nextjs/server, while framework-neutral provisioning code uses @clerk/backend.
-- [ ] **Step 5:** Put ClerkProvider inside the body element. This is compatible with Next cache components and avoids forcing the whole document dynamic.
-- [ ] **Step 6:** Implement proxy.ts with clerkMiddleware, createRouteMatcher, frontendApiProxy enabled, and await auth.protect() for application, API, and tRPC paths. Leave /sign-in, /sign-up, /api/webhooks/clerk, and health public.
-- [ ] **Step 7:** Create Clerk SignIn and SignUp catch-all pages. Configure SignUp to support invited users but do not render an OrganizationSwitcher or CreateOrganization component anywhere.
-- [ ] **Step 8:** Make /onboarding show three explicit states from a server-side principal lookup: invitation pending, membership synchronization pending, or contact support. It must not query tenant business data.
-- [ ] **Step 9:** Add these names to .env.example without secret values: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, CLERK_WEBHOOK_SIGNING_SECRET, NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in, NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up, CLERK_CUTOVER=false, CLERK_ORG_ROLE_MODE=custom.
-- [ ] **Step 10:** In the Clerk Dashboard disable end-user organization creation, require invitations for production sign-up, configure org:manager and org:user when CLERK_ORG_ROLE_MODE=custom, and require MFA for platform-admin accounts. Export the non-secret settings snapshot into G1 release evidence.
-- [ ] **Step 11:** Run npm test -- tests/auth/clerk-surface.test.ts and npm run build:web.
-- [ ] **Step 12:** Expected: both PASS; build succeeds because Clerk initialization reads runtime configuration only inside request/provider boundaries.
-- [ ] **Step 13:** Commit: git add apps/web .env.example package-lock.json && git commit -m "feat: add Clerk authentication surface"
+- [x] **Step 1:** Write an architecture test asserting ClerkProvider appears inside body in app/layout.tsx, proxy.ts matches /api and /trpc, and the custom /login page is not used as a protected-route destination.
+- [x] **Step 2:** Run npm test -- tests/auth/clerk-surface.test.ts.
+- [x] **Step 3:** Expected: FAIL because Clerk is not installed.
+- [x] **Step 4:** Pin @clerk/nextjs=7.5.18 in apps/web/package.json and @clerk/backend=3.11.5 in apps/ai/package.json; run npm install. Next route code uses @clerk/nextjs/server, while framework-neutral provisioning code uses @clerk/backend.
+- [x] **Step 5:** Put ClerkProvider inside the body element. This is compatible with Next cache components and avoids forcing the whole document dynamic.
+- [x] **Step 6:** Implement proxy.ts with clerkMiddleware, createRouteMatcher, frontendApiProxy enabled, and await auth.protect() for application, API, and tRPC paths. Leave /sign-in, /sign-up, /api/webhooks/clerk, and health public.
+- [x] **Step 7:** Create Clerk SignIn and SignUp catch-all pages. Configure SignUp to support invited users but do not render an OrganizationSwitcher or CreateOrganization component anywhere.
+- [x] **Step 8:** Make /onboarding show three explicit states from a server-side principal lookup: invitation pending, membership synchronization pending, or contact support. It must not query tenant business data.
+- [x] **Step 9:** Add these names to .env.example without secret values: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, CLERK_WEBHOOK_SIGNING_SECRET, NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in, NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up, CLERK_CUTOVER=false, CLERK_ORG_ROLE_MODE=custom.
+- [~] **Step 10 (PENDING_EXTERNAL_DASHBOARD):** In the Clerk Dashboard disable end-user organization creation, require invitations for production sign-up, configure org:manager and org:user when CLERK_ORG_ROLE_MODE=custom, and require MFA for platform-admin accounts. Export the non-secret settings snapshot into G1 release evidence.
+- [x] **Step 11:** Run npm test -- tests/auth/clerk-surface.test.ts and npm run build:web.
+- [x] **Step 12:** Expected: both PASS; build succeeds because Clerk initialization reads runtime configuration only inside request/provider boundaries.
+- [x] **Step 13:** Commit: git add apps/web .env.example package-lock.json && git commit -m "feat: add Clerk authentication surface"
 
 ### Task 2: Add internal identity, tenant, and membership models
 
