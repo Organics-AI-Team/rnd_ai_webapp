@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026-07-15] feat: Tenant-scoped domain repositories (G2.4)
+
+### Summary
+
+- Added the tenant repository layer — the only allowed data-access surface for tenant collections from G2.7 on: `tenant-repository-base.ts` (`tenant_scope(context)` accepting only a TenantExecutionContext; typed `ResourceNotFoundError` with identical shape for cross-tenant, missing, and malformed IDs; `PermissionDeniedError`; security-field rejection before any DB access) plus product/stock/order/formula/calculation/conversation/feedback/audit-log repositories.
+- Every read/write filter is `{_id, tenantId}`; nested resources (formula comments/version logs, chat messages) also require the tenant-scoped parent; creates overwrite tenant/actor/owner fields from context and reject inputs carrying security fields; owner rules (own-draft/own-thread updates) and manager gates (`formula:confirm`, review queue) live in the repositories; formula confirm uses an idempotency key with a compensating writeState (documented: standalone Mongo has no transactions) so partial writes are visible and repairable.
+- Documented deviation: tenantId is filtered as a string (matching the G2.3 backfill and G1.2 projections), not the plan anchor's ObjectId.
+
+### Verification approach
+
+- TDD RED (module missing) → GREEN 46/46 table-driven tests against mongodb-memory-server (tenant A/B sharing secondary keys; identical not-found shapes; nested scoping; owner/manager rules; security-field rejection; audit scoping); suite 245/245; verify:commercial exit 0. Implemented by a delegated subagent; independently re-verified.
+
+---
+
 ## [2026-07-15] feat: Verified tenant ownership backfill (G2.3)
 
 ### Summary

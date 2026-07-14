@@ -247,18 +247,18 @@ export async function get_formula(
 }
 ~~~
 
-- [ ] **Step 1:** Write table-driven repository tests with tenant A and tenant B records sharing every predictable secondary key. Test get/list/update/delete, nested formula comments/version logs, chat messages, and user-owned thread access.
-- [ ] **Step 2:** Assert cross-tenant get/update/delete always returns the same ResourceNotFound shape as a missing ID.
-- [ ] **Step 3:** Run npm test -- tests/repositories/tenant-repositories.test.ts.
-- [ ] **Step 4:** Expected: FAIL.
-- [ ] **Step 5:** Implement a base scope helper that accepts only TenantExecutionContext and returns { tenantId: new ObjectId(context.tenant_id) }. Do not accept tenantId as a method argument.
-- [ ] **Step 6:** Implement each get filter as {_id: object_id, ...tenant_scope(context)}. Implement nested filters with both tenantId and parent ID; do not trust a parent relation alone.
-- [ ] **Step 7:** Implement create methods that overwrite any tenant/actor fields with context values. Reject inputs containing security fields before database access.
-- [ ] **Step 8:** Implement owner rules in repositories: users may update their own drafts/threads; managers with named permissions may view tenant review queues and confirm formulas.
-- [ ] **Step 9:** Use transactions where supported for formula plus version/comment audit writes; otherwise use idempotency keys and compensating status so partial writes are visible and repairable.
-- [ ] **Step 10:** Run npm test -- tests/repositories/tenant-repositories.test.ts.
-- [ ] **Step 11:** Expected: PASS.
-- [ ] **Step 12:** Commit: git add apps/ai/server/repositories tests/repositories && git commit -m "feat: add tenant-scoped domain repositories"
+- [x] **Step 1:** Write table-driven repository tests with tenant A and tenant B records sharing every predictable secondary key. Test get/list/update/delete, nested formula comments/version logs, chat messages, and user-owned thread access.
+- [x] **Step 2:** Assert cross-tenant get/update/delete always returns the same ResourceNotFound shape as a missing ID.
+- [x] **Step 3:** Run npm test -- tests/repositories/tenant-repositories.test.ts.
+- [x] **Step 4:** Expected: FAIL.
+- [x] **Step 5:** Implement a base scope helper that accepts only TenantExecutionContext and returns { tenantId: new ObjectId(context.tenant_id) }. Do not accept tenantId as a method argument.
+- [x] **Step 6:** Implement each get filter as {_id: object_id, ...tenant_scope(context)}. Implement nested filters with both tenantId and parent ID; do not trust a parent relation alone.
+- [x] **Step 7:** Implement create methods that overwrite any tenant/actor fields with context values. Reject inputs containing security fields before database access.
+- [x] **Step 8:** Implement owner rules in repositories: users may update their own drafts/threads; managers with named permissions may view tenant review queues and confirm formulas.
+- [x] **Step 9:** Use transactions where supported for formula plus version/comment audit writes; otherwise use idempotency keys and compensating status so partial writes are visible and repairable.
+- [x] **Step 10:** Run npm test -- tests/repositories/tenant-repositories.test.ts.
+- [x] **Step 11:** Expected: PASS.
+- [x] **Step 12:** Commit: git add apps/ai/server/repositories tests/repositories && git commit -m "feat: add tenant-scoped domain repositories"
 
 ### Task 5: Convert tRPC routers to named permissions and repositories
 
