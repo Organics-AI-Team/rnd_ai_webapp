@@ -34,6 +34,21 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+
+/**
+ * Read the auth_token cookie value in the browser.
+ *
+ * The cookie is the single client-side token store (G0.7): tokens are never
+ * persisted to browser storage APIs, which the G0 security scanner rejects.
+ *
+ * @returns The token value, or null when the cookie is absent.
+ */
+function read_auth_token_cookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)auth_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
@@ -54,14 +69,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   );
 
-  // Load token from localStorage on mount and sync with cookie
+  // Load the token from the auth cookie on mount (single client-side store)
   useEffect(() => {
     let is_active = true;
-    const storedToken = localStorage.getItem("auth_token");
-    if (storedToken) {
-      // Ensure cookie is set
-      document.cookie = `auth_token=${storedToken}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
-    }
+    const storedToken = read_auth_token_cookie();
 
     queueMicrotask(() => {
       if (!is_active) return;
@@ -90,7 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setOrganization(null);
         setToken(null);
-        localStorage.removeItem("auth_token");
         document.cookie = "auth_token=; path=/; max-age=0";
         setIsLoading(false);
       } else if (!token) {
@@ -112,8 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...result.user,
         id: result.user._id
       });
-      localStorage.setItem("auth_token", result.token);
-      // Set cookie for middleware
+      // The cookie is the single client-side token store.
       document.cookie = `auth_token=${result.token}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
       await refetchMe();
       router.push("/dashboard");
@@ -155,8 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setOrganization(null);
     setToken(null);
-    localStorage.removeItem("auth_token");
-    // Remove cookie
+    // Remove cookie (the single client-side token store)
     document.cookie = "auth_token=; path=/; max-age=0";
     router.push("/login");
   };

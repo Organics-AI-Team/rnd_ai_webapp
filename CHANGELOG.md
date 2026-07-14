@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-07-15] ci: Private server boundaries enforced by scanner (G0.7 — G0 complete)
+
+### Summary
+
+- Added `scripts/security/scan-private-boundaries.ts` (TypeScript-AST based) behind `npm run security:scan` and `npm run verify:commercial`: deterministic findings with file:line for `PUBLIC_BUSINESS_PROCEDURE` (publicProcedure outside auth.ts; client-order ingress outside orders.ts), `UNGUARDED_ROUTE_HANDLER` (direct API handler not behind with_request_principal; tRPC adapter and OPTIONS exempt), `CLIENT_IDENTITY_FIELD` (identity destructured from request JSON or read from query params), `LOCALSTORAGE_AUTH_TOKEN`, `ORG_CREATION_OUTSIDE_PROVISIONING` (reserved for the G1 provisioning service), and `IGNORED_TYPE_ERRORS`.
+- The scanner immediately caught and we fixed: `apps/web/lib/auth-context.tsx` now uses the auth cookie as the single client-side token store (no localStorage writes), and the orphaned duplicate `apps/ai/lib/auth-context.tsx` (zero importers) was deleted.
+- Recorded G0 release evidence in `docs/commercial/evidence/g0-release.md` (commands, UTC timestamps, commit SHAs, exit codes, output). G0 exit criteria are met; external provider-console credential rotation remains a documented deployment gate (`PENDING_EXTERNAL_ROTATION`).
+- Remaining limitation carried to G1: legacy cookie sessions and public auth.login/logout/me stay until the Clerk cutover (G1.7).
+
+### Verification approach
+
+- TDD RED first (missing scanner module), then 9/9 scanner tests including a production-tree zero-findings assertion; the production scan itself found the two real localStorage violations before the fix — evidence the rules bite.
+- `npm run verify:commercial` (typecheck + 94 tests + security scan + production web build) observed exit 0.
+
+---
+
 ## [2026-07-15] fix: Guarded direct API handlers and removed body identity (G0.6)
 
 ### Summary

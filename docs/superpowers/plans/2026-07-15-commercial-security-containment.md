@@ -451,13 +451,13 @@ export function scan_private_boundaries(
 }
 ~~~
 
-- [ ] **Step 1:** Write a failing test fixture containing publicProcedure in a business router, an unwrapped route.ts, and request JSON userId. Assert three findings.
-- [ ] **Step 2:** Implement the scanner with TypeScript AST parsing. Allow publicProcedure only in auth.ts for the bounded G0 login/logout/me set and require every other route handler to call with_request_principal or be the tRPC adapter.
-- [ ] **Step 3:** Reject localStorage auth_token writes, organization creation outside the provisioning service path reserved for G1, and ignoreBuildErrors.
-- [ ] **Step 4:** Run npm run security:scan.
-- [ ] **Step 5:** Expected: PASS with zero findings in production source.
-- [ ] **Step 6:** Run npm run verify:commercial.
-- [ ] **Step 7:** Expected: tests, typecheck, security scan, and web build all exit 0.
-- [ ] **Step 8:** Fill docs/commercial/evidence/g0-release.md with command, UTC timestamp, commit SHA, exit code, and complete output for each G0 gate. Do not write secrets or connection strings.
-- [ ] **Step 9:** Add the G0 containment changes and remaining Clerk cutover limitation to CHANGELOG.md.
-- [ ] **Step 10:** Commit: git add scripts tests/security docs/commercial CHANGELOG.md && git commit -m "ci: enforce private server boundaries"
+- [x] **Step 1:** Write a failing test fixture containing publicProcedure in a business router, an unwrapped route.ts, and request JSON userId. Assert three findings.
+- [x] **Step 2:** Implement the scanner with TypeScript AST parsing. Allow publicProcedure only in auth.ts for the bounded G0 login/logout/me set and require every other route handler to call with_request_principal or be the tRPC adapter.
+- [x] **Step 3:** Reject localStorage auth_token writes, organization creation outside the provisioning service path reserved for G1, and ignoreBuildErrors.
+- [x] **Step 4:** Run npm run security:scan.
+- [x] **Step 5:** Expected: PASS with zero findings in production source.
+- [x] **Step 6:** Run npm run verify:commercial.
+- [x] **Step 7:** Expected: tests, typecheck, security scan, and web build all exit 0.
+- [x] **Step 8:** Fill docs/commercial/evidence/g0-release.md with command, UTC timestamp, commit SHA, exit code, and complete output for each G0 gate. Do not write secrets or connection strings.
+- [x] **Step 9:** Add the G0 containment changes and remaining Clerk cutover limitation to CHANGELOG.md.
+- [x] **Step 10:** Commit: git add scripts tests/security docs/commercial CHANGELOG.md && git commit -m "ci: enforce private server boundaries"
