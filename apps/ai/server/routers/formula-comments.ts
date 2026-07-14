@@ -1,19 +1,28 @@
 /**
- * Formula Comments tRPC Router
- * CRUD operations for comments/feedback on formulas.
- * Supports threaded replies, typed comments (feedback, suggestion, approval, rejection, revision_note).
+ * Formula Comments tRPC Router (G2.5).
+ * CRUD operations for comments/feedback on formulas, running entirely through
+ * ctx.repositories.formulas scoped by ctx.tenant_context. Reads require
+ * formula:read; writes require formula:comment:create, and update/delete are
+ * additionally author-bound inside the repository.
+ * Supports threaded replies, typed comments (feedback, suggestion, approval,
+ * rejection, revision_note, version_update).
  *
  * @author AI Management System
  * @date 2026-03-30
  */
 
 import { z } from "zod";
-import { router, tenantProcedure } from "../trpc";
-import client_promise from "@rnd-ai/shared-database";
-import { ObjectId } from "mongodb";
+import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 
 /** Valid comment types matching Prisma CommentType enum */
-const COMMENT_TYPES = ["feedback", "suggestion", "approval", "rejection", "revision_note", "version_update"] as const;
+const COMMENT_TYPES = [
+  "feedback",
+  "suggestion",
+  "approval",
+  "rejection",
+  "revision_note",
+  "version_update",
+] as const;
 
 export const formulaCommentsRouter = router({
   /**
@@ -25,34 +34,43 @@ export const formulaCommentsRouter = router({
    * @param version   - Optional version number to filter by
    * @returns Array of FormulaComment documents sorted newest-first
    */
-  list: tenantProcedure("formula:draft")
-    .input(z.object({
-      formulaId: z.string(),
-      version: z.number().int().optional(),
-    }))
-    .query(async ({ input }) => {
-      console.log(`[formulaComments.list] start — formulaId=${input.formulaId}, version=${input.version ?? 'all'}`);
+  list: tenantProcedure("formula:read")
+    .input(
+      z.object({
+        formulaId: z.string(),
+        version: z.number().int().optional(),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      console.log(
+        `[formulaComments.list] start — formulaId=${input.formulaId}, version=${input.version ?? "all"}, correlationId=${ctx.tenant_context.correlation_id}`,
+      );
 
-      const client = await client_promise;
-      const db = client.db();
+      try {
+        const comments = await ctx.repositories.formulas.list_comments(
+          ctx.tenant_context,
+          input.formulaId,
+        );
+        const filtered =
+          input.version !== undefined
+            ? comments.filter((comment) => comment.version === input.version)
+            : comments;
+        const sorted = filtered.sort(
+          (a, b) =>
+            new Date(b.createdAt ?? 0).getTime() -
+            new Date(a.createdAt ?? 0).getTime(),
+        );
 
-      const filter: Record<string, any> = { formulaId: input.formulaId };
-      if (input.version !== undefined) {
-        filter.version = input.version;
+        console.log(`[formulaComments.list] done — count=${sorted.length}`);
+        return sorted;
+      } catch (error) {
+        throw_from_repository_error(error);
       }
-
-      const comments = await db
-        .collection("formula_comments")
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .toArray();
-
-      console.log(`[formulaComments.list] done — count=${comments.length}`);
-      return comments;
     }),
 
   /**
    * Create a new comment on a formula, scoped to a specific version.
+   * Tenant and author identity are stamped from the tenant execution context.
    *
    * @param formulaId       - Target formula
    * @param version         - Formula version this comment applies to (default: current)
@@ -61,7 +79,7 @@ export const formulaCommentsRouter = router({
    * @param parentCommentId - Optional parent for threaded replies
    * @param metadata        - Optional JSON metadata (e.g. AI revision references)
    */
-  create: tenantProcedure("formula:draft")
+  create: tenantProcedure("formula:comment:create")
     .input(
       z.object({
         formulaId: z.string(),
@@ -70,80 +88,77 @@ export const formulaCommentsRouter = router({
         commentType: z.enum(COMMENT_TYPES).default("feedback"),
         parentCommentId: z.string().optional(),
         metadata: z.record(z.unknown()).optional(),
-      })
+      }),
     )
     .mutation(async ({ input, ctx }) => {
-      console.log(`[formulaComments.create] start — formulaId=${input.formulaId}, version=${input.version ?? 'auto'}, type=${input.commentType}`);
+      console.log(
+        `[formulaComments.create] start — formulaId=${input.formulaId}, version=${input.version ?? "auto"}, type=${input.commentType}, correlationId=${ctx.tenant_context.correlation_id}`,
+      );
 
-      const client = await client_promise;
-      const db = client.db();
-
-      // If version not provided, look up the current formula version
-      let comment_version = input.version ?? 0;
-      if (input.version === undefined) {
-        try {
-          const formula = await db.collection("formulas").findOne(
-            { _id: new ObjectId(input.formulaId) },
-            { projection: { version: 1 } }
+      try {
+        // If version not provided, look up the current tenant-scoped formula
+        // version; add_comment re-validates the parent on write.
+        let comment_version = input.version ?? 0;
+        if (input.version === undefined) {
+          const formula = await ctx.repositories.formulas.get_formula(
+            ctx.tenant_context,
+            input.formulaId,
           );
-          if (formula) {
-            comment_version = formula.version || 0;
-          }
-        } catch (err) {
-          console.warn("[formulaComments.create] failed to lookup formula version, defaulting to 0");
+          comment_version = formula.version || 0;
         }
+
+        const created = await ctx.repositories.formulas.add_comment(
+          ctx.tenant_context,
+          input.formulaId,
+          {
+            version: comment_version,
+            userName: ctx.user.name || ctx.user.email,
+            content: input.content,
+            commentType: input.commentType,
+            parentCommentId: input.parentCommentId || null,
+            metadata: input.metadata || null,
+          },
+        );
+
+        console.log(
+          `[formulaComments.create] done — id=${created._id}, version=${comment_version}`,
+        );
+        return created;
+      } catch (error) {
+        throw_from_repository_error(error);
       }
-
-      const comment = {
-        formulaId: input.formulaId,
-        version: comment_version,
-        userId: ctx.user.id,
-        userName: ctx.user.name || ctx.user.email,
-        content: input.content,
-        commentType: input.commentType,
-        parentCommentId: input.parentCommentId || null,
-        metadata: input.metadata || null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const result = await db.collection("formula_comments").insertOne(comment);
-
-      console.log(`[formulaComments.create] done — id=${result.insertedId}, version=${comment_version}`);
-      return { ...comment, _id: result.insertedId };
     }),
 
   /**
-   * Update an existing comment's content.
+   * Update an existing comment's content (only the author can update).
    *
    * @param commentId - The comment to update
    * @param content   - New comment text
    */
-  update: tenantProcedure("formula:draft")
+  update: tenantProcedure("formula:comment:create")
     .input(
       z.object({
         commentId: z.string(),
         content: z.string().min(1, "Comment cannot be empty"),
-      })
+      }),
     )
     .mutation(async ({ input, ctx }) => {
-      console.log(`[formulaComments.update] start — commentId=${input.commentId}`);
-
-      const client = await client_promise;
-      const db = client.db();
-
-      const result = await db.collection("formula_comments").updateOne(
-        { _id: new ObjectId(input.commentId), userId: ctx.user.id },
-        {
-          $set: {
-            content: input.content,
-            updatedAt: new Date(),
-          },
-        }
+      console.log(
+        `[formulaComments.update] start — commentId=${input.commentId}, correlationId=${ctx.tenant_context.correlation_id}`,
       );
 
-      console.log(`[formulaComments.update] done — modified=${result.modifiedCount}`);
-      return { success: result.modifiedCount > 0 };
+      try {
+        await ctx.repositories.formulas.update_own_comment(
+          ctx.tenant_context,
+          input.commentId,
+          { content: input.content },
+        );
+      } catch (error) {
+        throw_from_repository_error(error);
+      }
+
+      console.log(`[formulaComments.update] done — commentId=${input.commentId}`);
+      return { success: true };
     }),
 
   /**
@@ -151,21 +166,24 @@ export const formulaCommentsRouter = router({
    *
    * @param commentId - The comment to delete
    */
-  delete: tenantProcedure("formula:draft")
+  delete: tenantProcedure("formula:comment:create")
     .input(z.object({ commentId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      console.log(`[formulaComments.delete] start — commentId=${input.commentId}`);
+      console.log(
+        `[formulaComments.delete] start — commentId=${input.commentId}, correlationId=${ctx.tenant_context.correlation_id}`,
+      );
 
-      const client = await client_promise;
-      const db = client.db();
+      try {
+        await ctx.repositories.formulas.delete_own_comment(
+          ctx.tenant_context,
+          input.commentId,
+        );
+      } catch (error) {
+        throw_from_repository_error(error);
+      }
 
-      const result = await db.collection("formula_comments").deleteOne({
-        _id: new ObjectId(input.commentId),
-        userId: ctx.user.id,
-      });
-
-      console.log(`[formulaComments.delete] done — deleted=${result.deletedCount}`);
-      return { success: result.deletedCount > 0 };
+      console.log(`[formulaComments.delete] done — commentId=${input.commentId}`);
+      return { success: true };
     }),
 
   /**
@@ -175,41 +193,34 @@ export const formulaCommentsRouter = router({
    * @param version   - Optional version to scope count to
    * @returns Object with total count and breakdown by type
    */
-  count: tenantProcedure("formula:draft")
-    .input(z.object({
-      formulaId: z.string(),
-      version: z.number().int().optional(),
-    }))
-    .query(async ({ input }) => {
-      console.log(`[formulaComments.count] start — formulaId=${input.formulaId}, version=${input.version ?? 'all'}`);
+  count: tenantProcedure("formula:read")
+    .input(
+      z.object({
+        formulaId: z.string(),
+        version: z.number().int().optional(),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      console.log(
+        `[formulaComments.count] start — formulaId=${input.formulaId}, version=${input.version ?? "all"}, correlationId=${ctx.tenant_context.correlation_id}`,
+      );
 
-      const client = await client_promise;
-      const db = client.db();
+      try {
+        const type_counts = await ctx.repositories.formulas.count_comments_by_type(
+          ctx.tenant_context,
+          input.formulaId,
+          input.version,
+        );
 
-      const match_filter: Record<string, any> = { formulaId: input.formulaId };
-      if (input.version !== undefined) {
-        match_filter.version = input.version;
+        const total = type_counts.reduce((sum, tc) => sum + tc.count, 0);
+        const by_type = Object.fromEntries(
+          type_counts.map((tc) => [tc.commentType, tc.count]),
+        );
+
+        console.log(`[formulaComments.count] done — total=${total}`);
+        return { total, by_type };
+      } catch (error) {
+        throw_from_repository_error(error);
       }
-
-      const pipeline = [
-        { $match: match_filter },
-        {
-          $group: {
-            _id: "$commentType",
-            count: { $sum: 1 },
-          },
-        },
-      ];
-
-      const type_counts = await db
-        .collection("formula_comments")
-        .aggregate(pipeline)
-        .toArray();
-
-      const total = type_counts.reduce((sum, tc) => sum + tc.count, 0);
-      const by_type = Object.fromEntries(type_counts.map((tc) => [tc._id, tc.count]));
-
-      console.log(`[formulaComments.count] done — total=${total}`);
-      return { total, by_type };
     }),
 });

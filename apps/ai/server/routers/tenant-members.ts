@@ -104,6 +104,7 @@ function production_member_ports(db: Db): TenantMemberPorts {
     tenants: {
       async clerk_organization_id_for(tenant_id) {
         if (!ObjectId.isValid(tenant_id)) return null;
+        // TODO(G2.6): move into a tenant repository
         const tenant = await db
           .collection("tenants")
           .findOne({ _id: new ObjectId(tenant_id) });
@@ -130,9 +131,10 @@ export const tenantMembersRouter = router({
   list: tenantProcedure("tenant:members:read").query(async ({ ctx }) => {
     const client = await client_promise;
     const db = client.db();
+    // Identity-domain projection read, scoped by the verified tenant context.
     const memberships = await db
       .collection("tenant_membership_projections")
-      .find({ tenantId: ctx.organizationId })
+      .find({ tenantId: ctx.tenant_context.tenant_id })
       .sort({ createdAt: -1 })
       .toArray();
     const profile_ids = memberships

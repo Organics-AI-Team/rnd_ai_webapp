@@ -1,20 +1,23 @@
 /**
  * Stock Management Router
- * Handles CRUD operations for stock entries and inventory tracking
+ * Handles CRUD operations for stock entries and inventory tracking.
+ *
+ * G2.5 conversion note: every stock_entries access now goes through the
+ * tenant-scoped StockRepository (ctx.repositories.stock); the repository
+ * stamps tenantId/actorProfileId from the execution context.
  */
 
 import { z } from "zod";
-import { router, tenantProcedure } from "../trpc";
+import type { Document, WithId } from "mongodb";
+import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
-import { StockEntrySchema } from "@/lib/types";
-import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
 
 export const stockRouter = router({
   /**
    * List all stock entries with filtering and pagination
    */
-  list: tenantProcedure("tenant:read")
+  list: tenantProcedure("tenant:knowledge:read")
     .input(
       z.object({
         limit: z.number().min(1).max(1000).default(50),
@@ -28,58 +31,34 @@ export const stockRouter = router({
     .query(async ({ ctx, input }) => {
       console.log('🔍 [stock.list] Starting stock list query', { input });
 
-      const client = await client_promise;
-      const db = client.db();
-
       const limit = input?.limit || 50;
       const offset = input?.offset || 0;
-      const sortField = input?.sortField || "createdAt";
-      const sortDirection = input?.sortDirection || "desc";
       const status = input?.status || "all";
 
-      // Build filter
-      const filter: any = {
-        organizationId: ctx.user.organizationId,
-      };
+      const { documents, total_count } =
+        await ctx.repositories.stock.search_stock_entries(ctx.tenant_context, {
+          material_id: input?.materialId,
+          status: status === "all" ? undefined : status,
+          sort_field: input?.sortField || "createdAt",
+          sort_direction: input?.sortDirection || "desc",
+          skip: offset,
+          limit,
+        });
 
-      if (input?.materialId) {
-        filter.materialId = input.materialId;
-      }
+      const totalPages = Math.ceil(total_count / limit);
+      const hasMore = offset + limit < total_count;
 
-      if (status !== "all") {
-        filter.status = status;
-      }
-
-      // Get total count
-      const totalCount = await db.collection("stock_entries").countDocuments(filter);
-
-      // Build sort
-      const sortObj: any = {};
-      sortObj[sortField] = sortDirection === "asc" ? 1 : -1;
-
-      // Get stock entries
-      const entries = await db
-        .collection("stock_entries")
-        .find(filter)
-        .sort(sortObj)
-        .skip(offset)
-        .limit(limit)
-        .toArray();
-
-      const totalPages = Math.ceil(totalCount / limit);
-      const hasMore = offset + limit < totalCount;
-
-      console.log(`✅ [stock.list] Found ${entries.length} entries (total: ${totalCount})`);
+      console.log(`✅ [stock.list] Found ${documents.length} entries (total: ${total_count})`);
 
       return {
-        entries: entries.map((entry: any) => ({
+        entries: documents.map((entry: any) => ({
           ...entry,
           _id: entry._id.toString(),
           expirationDate: entry.expirationDate,
           createdAt: entry.createdAt,
           updatedAt: entry.updatedAt,
         })),
-        totalCount,
+        totalCount: total_count,
         totalPages,
         hasMore,
       };
@@ -88,7 +67,7 @@ export const stockRouter = router({
   /**
    * Get stock summary for all materials or specific material
    */
-  summary: tenantProcedure("tenant:read")
+  summary: tenantProcedure("tenant:knowledge:read")
     .input(
       z.object({
         materialId: z.string().optional(),
@@ -97,39 +76,10 @@ export const stockRouter = router({
     .query(async ({ ctx, input }) => {
       console.log('📊 [stock.summary] Calculating stock summary', { input });
 
-      const client = await client_promise;
-      const db = client.db();
-
-      const matchStage: any = {
-        organizationId: ctx.user.organizationId,
-        status: "active", // Only count active stock
-      };
-
-      if (input?.materialId) {
-        matchStage.materialId = input.materialId;
-      }
-
-      // Aggregate stock data grouped by material
-      const summary = await db
-        .collection("stock_entries")
-        .aggregate([
-          { $match: matchStage },
-          {
-            $group: {
-              _id: "$materialId",
-              materialCode: { $first: "$materialCode" },
-              materialName: { $first: "$materialName" },
-              totalQuantityKg: { $sum: "$quantityKg" },
-              totalValue: { $sum: "$totalCost" },
-              batchCount: { $sum: 1 },
-              nearestExpiration: { $min: "$expirationDate" },
-              oldestBatch: { $min: "$createdAt" },
-              avgPrice: { $avg: "$unitPrice" },
-            },
-          },
-          { $sort: { materialName: 1 } },
-        ])
-        .toArray();
+      const summary = await ctx.repositories.stock.summarize_stock(
+        ctx.tenant_context,
+        input?.materialId,
+      );
 
       console.log(`✅ [stock.summary] Calculated summary for ${summary.length} materials`);
 
@@ -149,7 +99,7 @@ export const stockRouter = router({
   /**
    * Create new stock entry
    */
-  create: tenantProcedure("tenant:read")
+  create: tenantProcedure("tenant:knowledge:manage")
     .input(
       z.object({
         materialId: z.string(),
@@ -170,42 +120,40 @@ export const stockRouter = router({
       const db = client.db();
 
       const totalCost = input.quantityKg * input.unitPrice;
-      const now = new Date();
 
-      const stockEntry = {
-        organizationId: ctx.user.organizationId,
-        materialId: input.materialId,
-        materialCode: input.materialCode,
-        materialName: input.materialName,
-        quantityKg: input.quantityKg,
-        unitPrice: input.unitPrice,
-        totalCost: totalCost,
-        expirationDate: new Date(input.expirationDate),
-        batchNumber: input.batchNumber || "",
-        supplier: input.supplier || "",
-        notes: input.notes || "",
-        status: "active" as const,
-        createdBy: ctx.userId,
-        createdAt: now,
-        updatedAt: now,
-      };
+      // tenantId/actorProfileId/createdAt/updatedAt are stamped by the
+      // repository from the execution context — never from the input.
+      const created = await ctx.repositories.stock.create_stock_entry(
+        ctx.tenant_context,
+        {
+          materialId: input.materialId,
+          materialCode: input.materialCode,
+          materialName: input.materialName,
+          quantityKg: input.quantityKg,
+          unitPrice: input.unitPrice,
+          totalCost,
+          expirationDate: new Date(input.expirationDate),
+          batchNumber: input.batchNumber || "",
+          supplier: input.supplier || "",
+          notes: input.notes || "",
+          status: "active" as const,
+        },
+      );
 
-      const result = await db.collection("stock_entries").insertOne(stockEntry);
-
-      // Log activity
+      // Display-only activity log; identity fields are for audit text only.
       await logActivity({
         db,
         userId: ctx.userId,
         userName: ctx.user.name,
         activity: `เพิ่มสต็อก: ${input.materialName} (${input.quantityKg} kg)`,
-        refId: result.insertedId.toString(),
-        organizationId: ctx.user.organizationId,
+        refId: created._id.toString(),
+        organizationId: ctx.tenant_context.tenant_id,
       });
 
-      console.log(`✅ [stock.create] Stock entry created: ${result.insertedId}`);
+      console.log(`✅ [stock.create] Stock entry created: ${created._id}`);
 
       return {
-        _id: result.insertedId.toString(),
+        _id: created._id.toString(),
         success: true,
       };
     }),
@@ -213,7 +161,7 @@ export const stockRouter = router({
   /**
    * Update stock entry
    */
-  update: tenantProcedure("tenant:read")
+  update: tenantProcedure("tenant:knowledge:manage")
     .input(
       z.object({
         id: z.string(),
@@ -232,60 +180,47 @@ export const stockRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      const updateData: any = {
-        updatedAt: new Date(),
-      };
+      const patch: Record<string, unknown> = {};
+      if (input.quantityKg !== undefined) patch.quantityKg = input.quantityKg;
+      if (input.unitPrice !== undefined) patch.unitPrice = input.unitPrice;
+      if (input.expirationDate) patch.expirationDate = new Date(input.expirationDate);
+      if (input.batchNumber !== undefined) patch.batchNumber = input.batchNumber;
+      if (input.supplier !== undefined) patch.supplier = input.supplier;
+      if (input.notes !== undefined) patch.notes = input.notes;
+      if (input.status) patch.status = input.status;
 
-      if (input.quantityKg !== undefined) updateData.quantityKg = input.quantityKg;
-      if (input.unitPrice !== undefined) updateData.unitPrice = input.unitPrice;
-      if (input.expirationDate) updateData.expirationDate = new Date(input.expirationDate);
-      if (input.batchNumber !== undefined) updateData.batchNumber = input.batchNumber;
-      if (input.supplier !== undefined) updateData.supplier = input.supplier;
-      if (input.notes !== undefined) updateData.notes = input.notes;
-      if (input.status) updateData.status = input.status;
-
-      // Recalculate totalCost if quantity or price changed
-      if (input.quantityKg !== undefined || input.unitPrice !== undefined) {
-        const currentEntry = await db
-          .collection("stock_entries")
-          .findOne({ _id: new ObjectId(input.id) });
-
-        if (currentEntry) {
-          const qty = input.quantityKg !== undefined ? input.quantityKg : currentEntry.quantityKg;
-          const price = input.unitPrice !== undefined ? input.unitPrice : currentEntry.unitPrice;
-          updateData.totalCost = qty * price;
+      let updated: WithId<Document>;
+      try {
+        // Recalculate totalCost if quantity or price changed.
+        if (input.quantityKg !== undefined || input.unitPrice !== undefined) {
+          const current = await ctx.repositories.stock.get_stock_entry(
+            ctx.tenant_context,
+            input.id,
+          );
+          const qty =
+            input.quantityKg !== undefined ? input.quantityKg : (current as any).quantityKg;
+          const price =
+            input.unitPrice !== undefined ? input.unitPrice : (current as any).unitPrice;
+          patch.totalCost = qty * price;
         }
-      }
 
-      const result = await db
-        .collection("stock_entries")
-        .updateOne(
-          {
-            _id: new ObjectId(input.id),
-            organizationId: ctx.user.organizationId,
-          },
-          { $set: updateData }
+        updated = await ctx.repositories.stock.update_stock_entry(
+          ctx.tenant_context,
+          input.id,
+          patch,
         );
-
-      if (result.matchedCount === 0) {
-        throw new Error("Stock entry not found or access denied");
+      } catch (error) {
+        throw_from_repository_error(error);
       }
 
-      // Log activity
-      const entry = await db
-        .collection("stock_entries")
-        .findOne({ _id: new ObjectId(input.id) });
-
-      if (entry) {
-        await logActivity({
-          db,
-          userId: ctx.userId,
-          userName: ctx.user.name,
-          activity: `แก้ไขสต็อก: ${entry.materialName}`,
-          refId: input.id,
-          organizationId: ctx.user.organizationId,
-        });
-      }
+      await logActivity({
+        db,
+        userId: ctx.userId,
+        userName: ctx.user.name,
+        activity: `แก้ไขสต็อก: ${(updated as any).materialName}`,
+        refId: input.id,
+        organizationId: ctx.tenant_context.tenant_id,
+      });
 
       console.log(`✅ [stock.update] Stock entry updated: ${input.id}`);
 
@@ -295,7 +230,7 @@ export const stockRouter = router({
   /**
    * Delete stock entry
    */
-  delete: tenantProcedure("tenant:read")
+  delete: tenantProcedure("tenant:knowledge:manage")
     .input(
       z.object({
         id: z.string(),
@@ -307,34 +242,25 @@ export const stockRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      // Get entry details before deleting
-      const entry = await db
-        .collection("stock_entries")
-        .findOne({ _id: new ObjectId(input.id) });
-
-      if (!entry) {
-        throw new Error("Stock entry not found");
+      // Read before delete: the activity log needs the entry details.
+      let entry: WithId<Document>;
+      try {
+        entry = await ctx.repositories.stock.get_stock_entry(
+          ctx.tenant_context,
+          input.id,
+        );
+        await ctx.repositories.stock.delete_stock_entry(ctx.tenant_context, input.id);
+      } catch (error) {
+        throw_from_repository_error(error);
       }
 
-      const result = await db
-        .collection("stock_entries")
-        .deleteOne({
-          _id: new ObjectId(input.id),
-          organizationId: ctx.user.organizationId,
-        });
-
-      if (result.deletedCount === 0) {
-        throw new Error("Stock entry not found or access denied");
-      }
-
-      // Log activity
       await logActivity({
         db,
         userId: ctx.userId,
         userName: ctx.user.name,
-        activity: `ลบสต็อก: ${entry.materialName} (${entry.quantityKg} kg)`,
+        activity: `ลบสต็อก: ${(entry as any).materialName} (${(entry as any).quantityKg} kg)`,
         refId: input.id,
-        organizationId: ctx.user.organizationId,
+        organizationId: ctx.tenant_context.tenant_id,
       });
 
       console.log(`✅ [stock.delete] Stock entry deleted: ${input.id}`);
@@ -345,7 +271,7 @@ export const stockRouter = router({
   /**
    * Get materials for dropdown selection
    */
-  getMaterials: tenantProcedure("tenant:read")
+  getMaterials: tenantProcedure("tenant:knowledge:read")
     .input(
       z.object({
         searchTerm: z.string().optional(),
@@ -372,6 +298,9 @@ export const stockRouter = router({
         ];
       }
 
+      // raw_materials_console is platform-global raw-material reference data
+      // (not tenant-owned), so this read carries no tenant filter.
+      // TODO(G2.6): move into a reference-data repository.
       const materials = await db
         .collection("raw_materials_console")
         .find(searchFilter)

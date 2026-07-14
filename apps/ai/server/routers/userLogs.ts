@@ -1,10 +1,19 @@
 import { z } from "zod";
-import { router, tenantProcedure } from "../trpc";
+import { router, tenantProcedure, managerProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
+import { legacy_organization_filter } from "./users";
 
+/**
+ * User activity log router. Log reads are analytics surfaces gated by
+ * tenant:analytics:read; retention cleanup is manager-only. Every query is
+ * scoped by ctx.tenant_context.tenant_id — never by client input or ctx.user.
+ */
 export const userLogsRouter = router({
-  // Get all logs for organization
-  list: tenantProcedure("tenant:read")
+  /**
+   * List activity logs for the caller's tenant with optional user/activity/
+   * date-range filters. `userId` is a resource filter within the tenant.
+   */
+  list: tenantProcedure("tenant:analytics:read")
     .input(
       z.object({
         limit: z.number().int().positive().optional().default(100),
@@ -20,7 +29,7 @@ export const userLogsRouter = router({
       const db = client.db();
 
       const filter: any = {
-        organizationId: ctx.user.organizationId,
+        organizationId: legacy_organization_filter(ctx.tenant_context.tenant_id),
       };
 
       // Apply filters
@@ -42,6 +51,7 @@ export const userLogsRouter = router({
         }
       }
 
+      // TODO(G2.6): move into a tenant repository
       const logs = await db
         .collection("user_logs")
         .find(filter)
@@ -50,6 +60,7 @@ export const userLogsRouter = router({
         .limit(input?.limit || 100)
         .toArray();
 
+      // TODO(G2.6): move into a tenant repository
       const total = await db.collection("user_logs").countDocuments(filter);
 
       return {
@@ -62,8 +73,11 @@ export const userLogsRouter = router({
       };
     }),
 
-  // Get logs for current user
-  myLogs: tenantProcedure("tenant:read")
+  /**
+   * Logs of the calling member only, scoped to the caller's tenant and the
+   * verified actor profile from the tenant execution context.
+   */
+  myLogs: tenantProcedure("tenant:analytics:read")
     .input(
       z.object({
         limit: z.number().int().positive().optional().default(50),
@@ -73,9 +87,13 @@ export const userLogsRouter = router({
       const client = await client_promise;
       const db = client.db();
 
+      // TODO(G2.6): move into a tenant repository
       const logs = await db
         .collection("user_logs")
-        .find({ userId: ctx.userId })
+        .find({
+          organizationId: legacy_organization_filter(ctx.tenant_context.tenant_id),
+          userId: ctx.tenant_context.actor_profile_id,
+        })
         .sort({ createdAt: -1 })
         .limit(input?.limit || 50)
         .toArray();
@@ -86,8 +104,11 @@ export const userLogsRouter = router({
       }));
     }),
 
-  // Get activity summary
-  summary: tenantProcedure("tenant:read")
+  /**
+   * Activity summary (counts per activity and per user) for the caller's
+   * tenant within an optional DD/MM/YYYY date range.
+   */
+  summary: tenantProcedure("tenant:analytics:read")
     .input(
       z.object({
         startDate: z.string().optional(), // DD/MM/YYYY
@@ -99,7 +120,7 @@ export const userLogsRouter = router({
       const db = client.db();
 
       const filter: any = {
-        organizationId: ctx.user.organizationId,
+        organizationId: legacy_organization_filter(ctx.tenant_context.tenant_id),
       };
 
       if (input?.startDate || input?.endDate) {
@@ -112,6 +133,7 @@ export const userLogsRouter = router({
         }
       }
 
+      // TODO(G2.6): move into a tenant repository
       const logs = await db.collection("user_logs").find(filter).toArray();
 
       // Group by activity
@@ -137,8 +159,12 @@ export const userLogsRouter = router({
       };
     }),
 
-  // Clear old logs (admin only)
-  clearOldLogs: tenantProcedure("tenant:read")
+  /**
+   * Delete logs older than the given retention window in the caller's
+   * tenant. Manager only; the role gate lives in the procedure, not in the
+   * handler body.
+   */
+  clearOldLogs: managerProcedure
     .input(
       z.object({
         daysOld: z.number().int().positive().default(90),
@@ -148,16 +174,12 @@ export const userLogsRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      // Only allow admin role
-      if (ctx.user.role !== "admin") {
-        throw new Error("Only admins can clear logs");
-      }
-
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - input.daysOld);
 
+      // TODO(G2.6): move into a tenant repository
       const result = await db.collection("user_logs").deleteMany({
-        organizationId: ctx.user.organizationId,
+        organizationId: legacy_organization_filter(ctx.tenant_context.tenant_id),
         createdAt: { $lt: cutoffDate },
       });
 

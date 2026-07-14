@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { router, tenantProcedure } from "../trpc";
+import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
-import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
 import { Logger } from "@rnd-ai/shared-utils";
 
@@ -109,7 +108,7 @@ export const calculationsRouter = router({
    * @param {number} laborCostPerBatch - Fixed labor cost per batch
    * @returns {CalculationResult} Complete calculation breakdown
    */
-  calculateManual: tenantProcedure("tenant:read")
+  calculateManual: tenantProcedure("ai:run")
     .input(ManualCalculationParamsSchema)
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
@@ -221,7 +220,7 @@ export const calculationsRouter = router({
    * @param {CalculationResult} calculation - The calculation to save
    * @returns {object} Saved calculation with ID
    */
-  saveCalculation: tenantProcedure("tenant:read")
+  saveCalculation: tenantProcedure("ai:run")
     .input(CalculationResultSchema.omit({ calculatedAt: true }))
     .mutation(async ({ ctx, input }) => {
       logger.info("Saving calculation", {
@@ -231,27 +230,21 @@ export const calculationsRouter = router({
       });
 
       try {
-        const client = await client_promise;
-        const db = client.db();
-
-        const calculation = {
-          ...input,
-          organizationId: ctx.user.organizationId,
-          createdBy: ctx.user._id,
-          createdAt: new Date(),
-          calculatedAt: new Date(),
-        };
-
-        const result = await db.collection("price_calculations").insertOne(calculation);
+        // tenantId/actorProfileId/createdAt/updatedAt are stamped by the
+        // repository from the execution context — never from the input.
+        const saved = await ctx.repositories.calculations.create_calculation(
+          ctx.tenant_context,
+          { ...input, calculatedAt: new Date() },
+        );
 
         logger.info("Calculation saved successfully", {
-          calculationId: result.insertedId.toString(),
+          calculationId: saved._id.toString(),
           formulaId: input.formulaId,
         });
 
         return {
-          _id: result.insertedId.toString(),
-          ...calculation,
+          ...saved,
+          _id: saved._id.toString(),
         };
       } catch (error: unknown) {
         const caught_error = to_error(error);
@@ -267,33 +260,24 @@ export const calculationsRouter = router({
    *
    * @returns {array} List of saved calculations
    */
-  listCalculations: tenantProcedure("tenant:read")
+  listCalculations: tenantProcedure("tenant:analytics:read")
     .query(async ({ ctx }) => {
       logger.info("Listing calculations", {
         userId: ctx.user._id,
-        organizationId: ctx.user.organizationId,
+        tenantId: ctx.tenant_context.tenant_id,
       });
 
       try {
-        const client = await client_promise;
+        const calculations = await ctx.repositories.calculations.list_calculations(
+          ctx.tenant_context,
+        );
 
-        if (!client) {
-          logger.error("MongoDB client is undefined");
-          throw new Error("Database connection failed - client is undefined");
-        }
-
-        const db = client.db();
-
-        if (!db) {
-          logger.error("MongoDB db() returned undefined");
-          throw new Error("Database connection failed - db is undefined");
-        }
-
-        const calculations = await db
-          .collection("price_calculations")
-          .find({ organizationId: ctx.user.organizationId })
-          .sort({ createdAt: -1 })
-          .toArray();
+        // Preserve the legacy newest-first ordering.
+        calculations.sort(
+          (a, b) =>
+            new Date((b as any).createdAt ?? 0).getTime() -
+            new Date((a as any).createdAt ?? 0).getTime(),
+        );
 
         logger.info("Calculations retrieved", {
           count: calculations.length,
@@ -315,7 +299,7 @@ export const calculationsRouter = router({
    * @param {string} id - Calculation ID
    * @returns {object} The calculation details
    */
-  getById: tenantProcedure("tenant:read")
+  getById: tenantProcedure("tenant:analytics:read")
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       logger.info("Getting calculation by ID", {
@@ -324,19 +308,10 @@ export const calculationsRouter = router({
       });
 
       try {
-        const client = await client_promise;
-        const db = client.db();
-
-        const calculation = await db.collection("price_calculations").findOne({
-          _id: new ObjectId(input.id),
-          organizationId: ctx.user.organizationId,
-        });
-
-        if (!calculation) {
-          const not_found_error = new Error("Calculation not found");
-          logger.error("Calculation not found", not_found_error, { calculationId: input.id });
-          throw not_found_error;
-        }
+        const calculation = await ctx.repositories.calculations.get_calculation(
+          ctx.tenant_context,
+          input.id,
+        );
 
         logger.info("Calculation retrieved successfully", {
           calculationId: input.id,
@@ -344,11 +319,11 @@ export const calculationsRouter = router({
 
         return calculation;
       } catch (error: unknown) {
-        const caught_error = to_error(error);
-        logger.error("Failed to get calculation", caught_error, {
+        logger.error("Failed to get calculation", to_error(error), {
           calculationId: input.id,
         });
-        throw caught_error;
+        // Cross-tenant, missing, and malformed IDs all surface as NOT_FOUND.
+        throw_from_repository_error(error);
       }
     }),
 
@@ -358,7 +333,7 @@ export const calculationsRouter = router({
    * @param {string} id - Calculation ID to delete
    * @returns {object} Success confirmation
    */
-  deleteCalculation: tenantProcedure("tenant:read")
+  deleteCalculation: tenantProcedure("ai:run")
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       logger.info("Deleting calculation", {
@@ -367,21 +342,10 @@ export const calculationsRouter = router({
       });
 
       try {
-        const client = await client_promise;
-        const db = client.db();
-
-        const result = await db.collection("price_calculations").deleteOne({
-          _id: new ObjectId(input.id),
-          organizationId: ctx.user.organizationId,
-        });
-
-        if (result.deletedCount === 0) {
-          const not_found_error = new Error("Calculation not found");
-          logger.error("Calculation not found for deletion", not_found_error, {
-            calculationId: input.id,
-          });
-          throw not_found_error;
-        }
+        await ctx.repositories.calculations.delete_calculation(
+          ctx.tenant_context,
+          input.id,
+        );
 
         logger.info("Calculation deleted successfully", {
           calculationId: input.id,
@@ -389,11 +353,11 @@ export const calculationsRouter = router({
 
         return { success: true };
       } catch (error: unknown) {
-        const caught_error = to_error(error);
-        logger.error("Failed to delete calculation", caught_error, {
+        logger.error("Failed to delete calculation", to_error(error), {
           calculationId: input.id,
         });
-        throw caught_error;
+        // Cross-tenant, missing, and malformed IDs all surface as NOT_FOUND.
+        throw_from_repository_error(error);
       }
     }),
 });

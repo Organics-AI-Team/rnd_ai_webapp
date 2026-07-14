@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026-07-15] feat: Routers on tenant repositories + AI control-plane models (G2.5, G3.1)
+
+### Summary
+
+- G2.5 (delegated agent, independently verified): tenant-scoped procedures now build a frozen TenantExecutionContext and a per-request repositories bundle on ctx; business routers converted to fine-grained named permissions (formula:read/draft:create/draft:update_own/confirm, tenant:members:*, tenant:analytics:read, ai:run, ai:feedback:create, ...) and repository access (raw collection reads remaining only with TODO(G2.6) markers and tenant_context scoping, incl. dual-encoding legacy organizationId filters); integration isolation suite added (tests/integration/tenant-router-isolation.test.ts).
+- G3.1 (delegated agent, independently verified): tenant AI control-plane Prisma models + enums (TenantAIProfile, AgentDeployment, PromptVersion, KnowledgeSource, AIRun with all eight immutable pins, append-only AIUsageLedger, AIArtifact, AIApproval; BigInt micro-USD budgets) and shared EffectiveAIPolicy contracts (packages/shared-types/src/ai/).
+- Two cross-cutting typecheck fixes: BigInt literal → BigInt() for the sub-ES2020 web target; Mongo UpdateFilter cast in feedback-repository.
+
+### Verification approach
+
+- Full suite 412/412; typecheck 0; security scan 0; production web build exit 0; prisma validate/generate clean; G3.1 architecture tests 19/19 RED→GREEN.
+
+---
+
 ## [2026-07-15] feat: Add capability cards and context assembler (G4 Task 3)
 
 ### Summary

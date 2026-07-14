@@ -6,6 +6,7 @@ import {
   get_scoped_document,
   insert_scoped_document,
   list_scoped_documents,
+  tenant_scope,
   update_scoped_document,
 } from "./tenant-repository-base";
 
@@ -28,6 +29,7 @@ export interface OrderRepository {
     patch: Record<string, unknown>,
   ): Promise<WithId<Document>>;
   delete_order(context: TenantExecutionContext, order_id: string): Promise<void>;
+  list_actor_orders(context: TenantExecutionContext): Promise<WithId<Document>[]>;
 }
 
 /**
@@ -53,6 +55,21 @@ export function create_order_repository(db: Db): OrderRepository {
     },
     async delete_order(context, order_id) {
       return delete_scoped_document(orders, context, order_id, NOT_FOUND);
+    },
+
+    /**
+     * List the tenant orders created by the acting profile, newest first.
+     * Both the tenant scope and the actor come from the execution context,
+     * so a caller can never widen the listing to another user's orders.
+     *
+     * @param context - Verified tenant execution context.
+     * @returns The actor's orders sorted by createdAt descending.
+     */
+    async list_actor_orders(context) {
+      return orders
+        .find({ ...tenant_scope(context), actorProfileId: context.actor_profile_id })
+        .sort({ createdAt: -1 })
+        .toArray();
     },
   };
 }

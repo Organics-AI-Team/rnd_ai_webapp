@@ -1,20 +1,30 @@
 import { z } from "zod";
-import { router, tenantProcedure } from "../trpc";
+import { TRPCError } from "@trpc/server";
+import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 import client_promise, { parseArrayField } from "@rnd-ai/shared-database";
-import { ProductSchema } from "@/lib/types";
-import { ObjectId } from "mongodb";
+import { ObjectId, type Document, type WithId } from "mongodb";
+import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 import { logActivity } from "@/lib/userLog";
-import { logProductActivity } from "@/lib/productLog";
 import { auto_index_material, auto_delete_material } from "../services/auto-index-service";
+import type { ProductRepository } from "../repositories/product-repository";
+
+/**
+ * G2.5 conversion note: this router now reads and writes the canonical
+ * tenant-scoped `products` collection through ctx.repositories.products
+ * (previously it operated on the legacy shared `raw_materials_console`
+ * collection with no tenant boundary). Legacy raw-material field aliases
+ * (rm_code/trade_name/rm_cost/...) are still read for migrated rows.
+ */
 
 /**
  * Batch-lookup CAS numbers from raw_materials_myskin by inci_name.
- * Collects unique inci_names from the given materials, queries myskin
- * collection once, and returns a Map<lowercase_inci_name, cas_no>.
+ * raw_materials_myskin is platform-global chemical reference data (not
+ * tenant-owned), so the raw read below carries no tenant filter.
+ * // TODO(G2.6): move into a reference-data repository.
  *
- * @param db - MongoDB Db instance
- * @param materials - Array of raw_materials_console documents
- * @returns Map from lowercase inci_name to cas_no string
+ * @param db - MongoDB Db instance.
+ * @param materials - Product/raw-material documents to resolve.
+ * @returns Map from lowercase inci_name to cas_no string.
  */
 async function build_cas_no_map(
   db: any,
@@ -65,9 +75,121 @@ async function build_cas_no_map(
   return cas_map;
 }
 
+/**
+ * Compute the next auto-generated tenant product code (RM######) from the
+ * tenant's product count and the highest number embedded in the latest
+ * product's code.
+ *
+ * @param products_repository - Tenant-scoped product repository.
+ * @param tenant_context - Verified tenant execution context.
+ * @returns Next code string plus the numeric base it was derived from.
+ */
+async function compute_next_product_code(
+  products_repository: ProductRepository,
+  tenant_context: TenantExecutionContext,
+): Promise<{ next_code: string; max_number: number }> {
+  const [total_count, latest_product] = await Promise.all([
+    products_repository.count_products(tenant_context),
+    products_repository.find_latest_product(tenant_context),
+  ]);
+
+  let max_number = total_count;
+  const latest_code = latest_product?.productCode || latest_product?.rm_code;
+  if (latest_code) {
+    const match = latest_code.toString().match(/(\d+)/);
+    if (match) {
+      max_number = Math.max(max_number, parseInt(match[1], 10));
+    }
+  }
+
+  return { next_code: `RM${String(max_number + 1).padStart(6, "0")}`, max_number };
+}
+
+/**
+ * Map a canonical product document (tolerating legacy raw-material aliases
+ * on migrated rows) to the frontend product response shape.
+ *
+ * @param product - Tenant-scoped product document.
+ * @param cas_no_map - inci_name → cas_no lookup from reference data.
+ * @param favorites - Organization favorite ingredient IDs.
+ * @param fallback_code - Code used when the document carries none.
+ * @returns Frontend-shaped product record.
+ */
+function map_product_response(
+  product: WithId<Document>,
+  cas_no_map: Map<string, string>,
+  favorites: string[],
+  fallback_code: string,
+) {
+  const doc = product as any;
+  const trade_name = doc.productName || doc.name || doc.trade_name || "";
+  const inci_name = doc.INCI_name || doc.inci_name || "";
+  const cas_no =
+    doc.cas_no || (inci_name ? cas_no_map.get(inci_name.toLowerCase().trim()) : "") || "";
+
+  return {
+    _id: product._id.toString(),
+    productCode: doc.productCode || doc.rm_code || fallback_code,
+    productName: trade_name || inci_name,
+    inci_name,
+    cas_no,
+    description:
+      doc.description || doc.Chem_IUPAC_Name_Description || doc.Function || "",
+    price: doc.price ?? doc.rm_cost ?? 0,
+    supplier: doc.supplier || "",
+    benefits: parseArrayField(doc.benefits || doc.benefits_cached),
+    usecase: parseArrayField(doc.usecase || doc.usecase_cached),
+    stockQuantity: doc.stockQuantity ?? 0,
+    lowStockThreshold: doc.lowStockThreshold ?? 10,
+    isActive: doc.isActive ?? true,
+    isFavorited: favorites.includes(product._id.toString()),
+    company_name: "",
+    companies_id: 1,
+  };
+}
+
+/**
+ * Read the tenant organization's favorite ingredient IDs for display.
+ * // TODO(G2.6): move into a tenant repository (organizations projection).
+ *
+ * @param db - MongoDB Db instance.
+ * @param tenant_id - Verified tenant ID from the execution context.
+ * @returns Favorite ingredient ID strings (empty when unavailable).
+ */
+async function read_favorite_ingredients(db: any, tenant_id: string): Promise<string[]> {
+  if (!ObjectId.isValid(tenant_id)) return [];
+  const organization = await db
+    .collection("organizations")
+    .findOne({ _id: new ObjectId(tenant_id) });
+  return organization?.favoriteIngredients || [];
+}
+
+/**
+ * Build the legacy raw-material-shaped view of a product document consumed by
+ * the Qdrant auto-index side call, which still expects rm_code/trade_name.
+ *
+ * @param product - Canonical product document (with _id).
+ * @returns Legacy-shaped material record for indexing.
+ */
+function to_indexable_material(product: WithId<Document>): any {
+  const doc = product as any;
+  return {
+    _id: product._id,
+    rm_code: doc.productCode || doc.rm_code || "",
+    trade_name: doc.productName || doc.name || doc.trade_name || "",
+    inci_name: doc.inci_name || doc.INCI_name || "",
+    supplier: doc.supplier || "",
+    rm_cost: doc.price ?? doc.rm_cost ?? 0,
+    benefits: doc.benefits || "",
+    usecase: doc.usecase || "",
+    benefits_cached: doc.benefits || "",
+    usecase_cached: doc.usecase || "",
+  };
+}
+
 export const productsRouter = router({
-  // Get all products for organization (from raw_materials_console collection)
-  list: tenantProcedure("tenant:read")
+  // Get all products for the tenant (canonical `products` collection)
+  list: tenantProcedure("tenant:knowledge:read")
     .input(
       z.object({
         limit: z.number().min(1).max(1000).default(50),
@@ -87,185 +209,85 @@ export const productsRouter = router({
     const sortDirection = input?.sortDirection || "asc";
     const searchTerm = input?.searchTerm || "";
 
-    // Build search filter (includes cas_no for CAS number search)
-    const searchFilter: any = {};
-    if (searchTerm) {
-      searchFilter.$or = [
-        { rm_code: { $regex: searchTerm, $options: "i" } },
-        { trade_name: { $regex: searchTerm, $options: "i" } },
-        { INCI_name: { $regex: searchTerm, $options: "i" } },
-        { inci_name: { $regex: searchTerm, $options: "i" } },
-        { cas_no: { $regex: searchTerm, $options: "i" } },
-        { supplier: { $regex: searchTerm, $options: "i" } },
-        { benefits: { $regex: searchTerm, $options: "i" } },
-        { benefits_cached: { $regex: searchTerm, $options: "i" } },
-        { usecase: { $regex: searchTerm, $options: "i" } },
-        { usecase_cached: { $regex: searchTerm, $options: "i" } },
-      ];
-    }
-
-    // Get total count with filter
-    const totalCount = await db
-      .collection("raw_materials_console")
-      .countDocuments(searchFilter);
-
-    // Build sort object with secondary sort by _id for consistency
-    const sortObj: any = {};
-    const dbSortField = sortField === "productCode" ? "rm_code" :
-                        sortField === "productName" ? "trade_name" :
-                        sortField === "price" ? "rm_cost" :
+    // Map frontend sort keys onto canonical document fields.
+    const dbSortField = sortField === "productCode" ? "productCode" :
+                        sortField === "productName" ? "productName" :
+                        sortField === "price" ? "price" :
                         sortField === "supplier" ? "supplier" : "_id";
-    sortObj[dbSortField] = sortDirection === "asc" ? 1 : -1;
 
-    // Add secondary sort by _id to ensure consistent ordering for duplicates/nulls
-    if (dbSortField !== "_id") {
-      sortObj["_id"] = 1; // Always secondary sort by _id ascending
-    }
+    const { documents, total_count } = await ctx.repositories.products.search_products(
+      ctx.tenant_context,
+      {
+        search_term: searchTerm,
+        sort_field: dbSortField,
+        sort_direction: sortDirection,
+        skip: offset,
+        limit,
+      },
+    );
 
-    // Apply collation only for text fields (not for numeric fields like price)
-    const isNumericField = dbSortField === "rm_cost";
-    const queryBuilder = db
-      .collection("raw_materials_console")
-      .find(searchFilter);
+    const favorites = await read_favorite_ingredients(db, ctx.tenant_context.tenant_id);
 
-    // Use collation for case-insensitive sorting on text fields
-    const rawMaterials = await (isNumericField
-      ? queryBuilder
-      : queryBuilder.collation({ locale: "en", strength: 2 })
-    )
-      .sort(sortObj)
-      .skip(offset)
-      .limit(limit)
-      .toArray();
+    // Batch-lookup CAS numbers from platform reference data by inci_name.
+    const cas_no_map = await build_cas_no_map(db, documents);
 
-    // Get organization's favorites
-    const organization = await db.collection("organizations").findOne({
-      _id: new ObjectId(ctx.user.organizationId),
-    });
-    const favorites = organization?.favoriteIngredients || [];
-
-    // Batch-lookup CAS numbers from raw_materials_myskin by inci_name
-    const cas_no_map = await build_cas_no_map(db, rawMaterials);
-
-    // Map raw_materials_console fields to product fields for frontend compatibility
-    const products = rawMaterials.map((material: any, index: number) => {
-
-      // Prioritize trade_name, fallback to INCI_name
-      const tradeName = material.trade_name || "";
-      const inciName = material.INCI_name || material.inci_name || "";
-      const productName = tradeName || inciName;
-
-      // Lookup CAS number: prefer direct field, then myskin lookup by inci_name
-      const cas_no = material.cas_no
-        || (inciName ? cas_no_map.get(inciName.toLowerCase().trim()) : "")
-        || "";
-
-      return {
-        _id: material._id.toString(),
-        productCode: material.rm_code || `RM${String(offset + index + 1).padStart(6, '0')}`,
-        productName: productName,
-        inci_name: inciName,
-        cas_no,
-        description: material.Chem_IUPAC_Name_Description || material.Function || "",
-        price: material.rm_cost || 0,
-        supplier: material.supplier || "",
-        benefits: parseArrayField(material.benefits || material.benefits_cached),
-        usecase: parseArrayField(material.usecase || material.usecase_cached),
-        stockQuantity: 0,
-        lowStockThreshold: 10,
-        isActive: true,
-        isFavorited: favorites.includes(material._id.toString()),
-        company_name: "",
-        companies_id: 1,
-      };
-    });
+    const products = documents.map((product, index) =>
+      map_product_response(
+        product,
+        cas_no_map,
+        favorites,
+        `RM${String(offset + index + 1).padStart(6, "0")}`,
+      ),
+    );
 
     return {
       products,
-      totalCount,
-      hasMore: offset + limit < totalCount,
+      totalCount: total_count,
+      hasMore: offset + limit < total_count,
       currentPage: Math.floor(offset / limit) + 1,
-      totalPages: Math.ceil(totalCount / limit),
+      totalPages: Math.ceil(total_count / limit),
     };
   }),
 
-  // Get single product (from raw_materials_console collection)
-  getById: tenantProcedure("tenant:read")
+  // Get single tenant product
+  getById: tenantProcedure("tenant:knowledge:read")
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
       const client = await client_promise;
       const db = client.db();
 
-      const material: any = await db.collection("raw_materials_console").findOne({
-        _id: new ObjectId(input.id),
-      });
-
-      if (!material) {
-        throw new Error("Material not found");
+      let product: WithId<Document>;
+      try {
+        product = await ctx.repositories.products.get_product(
+          ctx.tenant_context,
+          input.id,
+        );
+      } catch (error) {
+        throw_from_repository_error(error);
       }
 
-      const tradeName = material.trade_name || "";
-      const inciName = material.INCI_name || material.inci_name || "";
-      const productName = tradeName || inciName;
-
-      // Lookup CAS number from myskin collection
-      const cas_no_map = await build_cas_no_map(db, [material]);
-      const cas_no = material.cas_no
-        || (inciName ? cas_no_map.get(inciName.toLowerCase().trim()) : "")
-        || "";
-
-      return {
-        _id: material._id.toString(),
-        productCode: material.rm_code || "",
-        productName: productName,
-        inci_name: inciName,
-        cas_no,
-        description: material.Chem_IUPAC_Name_Description || material.Function || "",
-        price: material.rm_cost || 0,
-        supplier: material.supplier || "",
-        benefits: parseArrayField(material.benefits || material.benefits_cached),
-        usecase: parseArrayField(material.usecase || material.usecase_cached),
-        stockQuantity: 0,
-        lowStockThreshold: 10,
-        isActive: true,
-        company_name: "",
-        companies_id: 1,
-      };
+      const cas_no_map = await build_cas_no_map(db, [product]);
+      const { isFavorited: _ignored, ...mapped } = map_product_response(
+        product,
+        cas_no_map,
+        [],
+        "",
+      );
+      return mapped;
     }),
 
   // Get next auto-generated product code
-  getNextCode: tenantProcedure("tenant:read")
+  getNextCode: tenantProcedure("tenant:knowledge:read")
     .query(async ({ ctx }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      // Get total count of materials
-      const totalCount = await db.collection("raw_materials_console").countDocuments();
-
-      // Try to get the latest rm_code to check if there's a higher number
-      const latestMaterial = await db.collection("raw_materials_console")
-        .find({})
-        .sort({ _id: -1 })
-        .limit(1)
-        .toArray();
-
-      let maxNumber = totalCount;
-
-      if (latestMaterial.length > 0 && latestMaterial[0].rm_code) {
-        const match = latestMaterial[0].rm_code.toString().match(/(\d+)/);
-        if (match) {
-          const codeNumber = parseInt(match[1], 10);
-          maxNumber = Math.max(maxNumber, codeNumber);
-        }
-      }
-
-      const nextCode = `RM${String(maxNumber + 1).padStart(6, '0')}`;
-
-      return { nextCode, maxNumber };
+      const { next_code, max_number } = await compute_next_product_code(
+        ctx.repositories.products,
+        ctx.tenant_context,
+      );
+      return { nextCode: next_code, maxNumber: max_number };
     }),
 
   // Create new material (เพิ่มสาร - Add Material)
-  create: tenantProcedure("tenant:read")
+  create: tenantProcedure("tenant:knowledge:manage")
     .input(
       z.object({
         productName: z.string().min(1, "Trade name is required"),
@@ -283,78 +305,61 @@ export const productsRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      // Always auto-generate rm_code: Get total count and use as next number
-      const totalCount = await db.collection("raw_materials_console").countDocuments();
+      const { next_code } = await compute_next_product_code(
+        ctx.repositories.products,
+        ctx.tenant_context,
+      );
 
-      // Try to get the latest rm_code to check if there's a higher number
-      const latestMaterial = await db.collection("raw_materials_console")
-        .find({})
-        .sort({ _id: -1 })
-        .limit(1)
-        .toArray();
+      // tenantId/actorProfileId/createdAt/updatedAt are stamped by the
+      // repository from the execution context — never from the input.
+      const created = await ctx.repositories.products.create_product(
+        ctx.tenant_context,
+        {
+          productCode: next_code,
+          productName: input.productName,
+          name: input.productName,
+          inci_name: input.inciName || "",
+          description: input.description || "",
+          supplier: input.supplier || "",
+          price: input.price || 0,
+          benefits: input.benefits || "",
+          usecase: input.details || "",
+          stockQuantity: input.stockQuantity ?? 0,
+          lowStockThreshold: input.lowStockThreshold ?? 10,
+          isActive: true,
+        },
+      );
 
-      let maxNumber = totalCount;
-
-      if (latestMaterial.length > 0 && latestMaterial[0].rm_code) {
-        const match = latestMaterial[0].rm_code.toString().match(/(\d+)/);
-        if (match) {
-          const codeNumber = parseInt(match[1], 10);
-          maxNumber = Math.max(maxNumber, codeNumber);
-        }
-      }
-
-      const rmCode = `RM${String(maxNumber + 1).padStart(6, '0')}`;
-
-      const now = new Date();
-      const newMaterial = {
-        rm_code: rmCode,
-        trade_name: input.productName,
-        inci_name: input.inciName || "",
-        supplier: input.supplier || "",
-        createdAt: now,
-        updatedAt: now,
-        rm_cost: input.price || 0,
-        benefits: input.benefits || "",
-        usecase: input.details || "",
-        benefits_cached: input.benefits || "",
-        usecase_cached: input.details || "",
-      };
-
-      const result = await db.collection("raw_materials_console").insertOne(newMaterial);
-
-      // Log create material activity
+      // Display-only activity log; identity fields are for audit text only.
       await logActivity({
         db,
         userId: ctx.userId,
         userName: ctx.user.name,
         activity: "create material",
-        refId: result.insertedId.toString(),
-        organizationId: ctx.user.organizationId,
+        refId: created._id.toString(),
+        organizationId: ctx.tenant_context.tenant_id,
       });
 
       // 🔄 AUTO-SYNC: Index new material to Qdrant for AI search
       // This runs asynchronously without blocking the response
-      auto_index_material({
-        _id: result.insertedId,
-        ...newMaterial
-      }).then(success => {
+      auto_index_material(to_indexable_material(created)).then(success => {
         if (success) {
-          console.log(`✅ [ProductsRouter] Auto-indexed material ${rmCode} to Qdrant`);
+          console.log(`✅ [ProductsRouter] Auto-indexed material ${next_code} to Qdrant`);
         } else {
-          console.warn(`⚠️  [ProductsRouter] Failed to auto-index material ${rmCode} to Qdrant`);
+          console.warn(`⚠️  [ProductsRouter] Failed to auto-index material ${next_code} to Qdrant`);
         }
       }).catch(error => {
-        console.error(`❌ [ProductsRouter] Error auto-indexing material ${rmCode}:`, error);
+        console.error(`❌ [ProductsRouter] Error auto-indexing material ${next_code}:`, error);
       });
 
       return {
-        _id: result.insertedId.toString(),
+        _id: created._id.toString(),
         success: true,
       };
     }),
 
   // Update material
-  update: tenantProcedure("tenant:read")
+  update: tenantProcedure("tenant:knowledge:manage")
     .input(
       z.object({
         id: z.string(),
@@ -377,87 +382,76 @@ export const productsRouter = router({
 
       const { id, ...updateData } = input;
 
-      // Get current material data before update
-      const currentMaterial = await db.collection("raw_materials_console").findOne({
-        _id: new ObjectId(id),
-      });
-
-      if (!currentMaterial) {
-        throw new Error("Material not found");
-      }
-
-      // If updating material code, check it doesn't conflict
+      // If updating material code, check it doesn't conflict within the tenant.
       if (updateData.productCode) {
-        const existingMaterial = await db.collection("raw_materials_console").findOne({
-          rm_code: updateData.productCode,
-          _id: { $ne: new ObjectId(id) },
-        });
-
-        if (existingMaterial) {
-          throw new Error("Material code already exists");
+        const existing = await ctx.repositories.products.find_product_by_code(
+          ctx.tenant_context,
+          updateData.productCode,
+          id,
+        );
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Material code already exists",
+          });
         }
       }
 
-      // Build update object with raw_materials_console field names
-      const rawMaterialUpdate: any = {
-        updatedAt: new Date(), // Always update timestamp
-      };
-      if (updateData.productCode) rawMaterialUpdate.rm_code = updateData.productCode;
-      if (updateData.productName) rawMaterialUpdate.trade_name = updateData.productName;
-      if (updateData.inciName !== undefined) rawMaterialUpdate.inci_name = updateData.inciName;
-      if (updateData.price !== undefined) rawMaterialUpdate.rm_cost = updateData.price;
-      if (updateData.supplier !== undefined) rawMaterialUpdate.supplier = updateData.supplier;
-      if (updateData.benefits !== undefined) {
-        rawMaterialUpdate.benefits = updateData.benefits;
-        rawMaterialUpdate.benefits_cached = updateData.benefits;
+      // Build the canonical patch (updatedAt is stamped by the repository).
+      const patch: Record<string, unknown> = {};
+      if (updateData.productCode) patch.productCode = updateData.productCode;
+      if (updateData.productName) {
+        patch.productName = updateData.productName;
+        patch.name = updateData.productName;
       }
-      if (updateData.details !== undefined) {
-        rawMaterialUpdate.usecase = updateData.details;
-        rawMaterialUpdate.usecase_cached = updateData.details;
+      if (updateData.inciName !== undefined) patch.inci_name = updateData.inciName;
+      if (updateData.description !== undefined) patch.description = updateData.description;
+      if (updateData.price !== undefined) patch.price = updateData.price;
+      if (updateData.supplier !== undefined) patch.supplier = updateData.supplier;
+      if (updateData.benefits !== undefined) patch.benefits = updateData.benefits;
+      if (updateData.details !== undefined) patch.usecase = updateData.details;
+      if (updateData.stockQuantity !== undefined) patch.stockQuantity = updateData.stockQuantity;
+      if (updateData.lowStockThreshold !== undefined) {
+        patch.lowStockThreshold = updateData.lowStockThreshold;
+      }
+      if (updateData.isActive !== undefined) patch.isActive = updateData.isActive;
+
+      let updated: WithId<Document>;
+      try {
+        updated = await ctx.repositories.products.update_product(
+          ctx.tenant_context,
+          id,
+          patch,
+        );
+      } catch (error) {
+        throw_from_repository_error(error);
       }
 
-      const result = await db.collection("raw_materials_console").updateOne(
-        {
-          _id: new ObjectId(id),
-        },
-        {
-          $set: rawMaterialUpdate,
-        }
-      );
-
-      // Log update material activity
       await logActivity({
         db,
         userId: ctx.userId,
         userName: ctx.user.name,
         activity: "update material",
         refId: id,
-        organizationId: ctx.user.organizationId,
+        organizationId: ctx.tenant_context.tenant_id,
       });
 
       // 🔄 AUTO-SYNC: Re-index updated material to Qdrant
-      // Get the full updated document
-      const updatedMaterial = await db.collection("raw_materials_console").findOne({
-        _id: new ObjectId(id),
+      auto_index_material(to_indexable_material(updated)).then(success => {
+        if (success) {
+          console.log(`✅ [ProductsRouter] Auto-updated material in Qdrant`);
+        } else {
+          console.warn(`⚠️  [ProductsRouter] Failed to auto-update material in Qdrant`);
+        }
+      }).catch(error => {
+        console.error(`❌ [ProductsRouter] Error auto-updating material:`, error);
       });
-
-      if (updatedMaterial) {
-        auto_index_material(updatedMaterial as any).then(success => {
-          if (success) {
-            console.log(`✅ [ProductsRouter] Auto-updated material ${updatedMaterial.rm_code} in Qdrant`);
-          } else {
-            console.warn(`⚠️  [ProductsRouter] Failed to auto-update material ${updatedMaterial.rm_code} in Qdrant`);
-          }
-        }).catch(error => {
-          console.error(`❌ [ProductsRouter] Error auto-updating material:`, error);
-        });
-      }
 
       return { success: true };
     }),
 
   // Add stock (เพิ่มสต๊อก)
-  addStock: tenantProcedure("tenant:read")
+  addStock: tenantProcedure("tenant:knowledge:manage")
     .input(
       z.object({
         id: z.string(),
@@ -468,80 +462,68 @@ export const productsRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      const result = await db.collection("products").updateOne(
-        {
-          _id: new ObjectId(input.id),
-          organizationId: ctx.user.organizationId,
-        },
-        {
-          $inc: { stockQuantity: input.quantity },
-          $set: { updatedAt: new Date() },
-        }
-      );
-
-      if (result.matchedCount === 0) {
-        throw new Error("Product not found");
+      try {
+        await ctx.repositories.products.adjust_stock_quantity(
+          ctx.tenant_context,
+          input.id,
+          input.quantity,
+        );
+      } catch (error) {
+        throw_from_repository_error(error);
       }
 
-      // Log add stock activity
       await logActivity({
         db,
         userId: ctx.userId,
         userName: ctx.user.name,
         activity: "add stock",
         refId: input.id,
-        organizationId: ctx.user.organizationId,
+        organizationId: ctx.tenant_context.tenant_id,
       });
 
       return { success: true };
     }),
 
   // Delete material
-  delete: tenantProcedure("tenant:read")
+  delete: tenantProcedure("tenant:knowledge:manage")
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
       const db = client.db();
 
-      // Get material before deleting (need rm_code for Qdrant deletion)
-      const material = await db.collection("raw_materials_console").findOne({
-        _id: new ObjectId(input.id),
-      });
-
-      if (!material) {
-        throw new Error("Material not found");
+      // Read before delete: the Qdrant cleanup needs the product code.
+      let product: WithId<Document>;
+      try {
+        product = await ctx.repositories.products.get_product(
+          ctx.tenant_context,
+          input.id,
+        );
+        await ctx.repositories.products.delete_product(ctx.tenant_context, input.id);
+      } catch (error) {
+        throw_from_repository_error(error);
       }
 
-      const rm_code = material.rm_code;
+      const product_code = (product as any).productCode || (product as any).rm_code;
 
-      const result = await db.collection("raw_materials_console").deleteOne({
-        _id: new ObjectId(input.id),
-      });
-
-      if (result.deletedCount === 0) {
-        throw new Error("Material not found");
-      }
-
-      // Log delete material activity
       await logActivity({
         db,
         userId: ctx.userId,
         userName: ctx.user.name,
         activity: "delete material",
         refId: input.id,
-        organizationId: ctx.user.organizationId,
+        organizationId: ctx.tenant_context.tenant_id,
       });
 
       // 🔄 AUTO-SYNC: Delete material from Qdrant
-      if (rm_code) {
-        auto_delete_material(rm_code).then(success => {
+      if (product_code) {
+        auto_delete_material(product_code).then(success => {
           if (success) {
-            console.log(`✅ [ProductsRouter] Auto-deleted material ${rm_code} from Qdrant`);
+            console.log(`✅ [ProductsRouter] Auto-deleted material ${product_code} from Qdrant`);
           } else {
-            console.warn(`⚠️  [ProductsRouter] Failed to auto-delete material ${rm_code} from Qdrant`);
+            console.warn(`⚠️  [ProductsRouter] Failed to auto-delete material ${product_code} from Qdrant`);
           }
         }).catch(error => {
-          console.error(`❌ [ProductsRouter] Error auto-deleting material ${rm_code}:`, error);
+          console.error(`❌ [ProductsRouter] Error auto-deleting material ${product_code}:`, error);
         });
       }
 
@@ -549,19 +531,10 @@ export const productsRouter = router({
     }),
 
   // Get low stock products
-  lowStock: tenantProcedure("tenant:read").query(async ({ ctx }) => {
-    const client = await client_promise;
-    const db = client.db();
-
-    const products = await db
-      .collection("products")
-      .find({
-        organizationId: ctx.user.organizationId,
-        isActive: true,
-        $expr: { $lte: ["$stockQuantity", "$lowStockThreshold"] },
-      })
-      .sort({ stockQuantity: 1 })
-      .toArray();
+  lowStock: tenantProcedure("tenant:knowledge:read").query(async ({ ctx }) => {
+    const products = await ctx.repositories.products.list_low_stock_products(
+      ctx.tenant_context,
+    );
 
     return products.map((product) => ({
       ...product,
@@ -570,105 +543,87 @@ export const productsRouter = router({
   }),
 
   // Toggle favorite ingredient
-  toggleFavorite: tenantProcedure("tenant:read")
+  toggleFavorite: tenantProcedure("tenant:knowledge:manage")
     .input(z.object({ ingredientId: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
       const db = client.db();
 
-      // Get organization's current favorites
+      // Favorites live on the tenant organization record, always addressed by
+      // the verified tenant ID — never a caller-supplied one.
+      // TODO(G2.6): move into a tenant repository (organizations projection).
+      const tenant_org_id = new ObjectId(ctx.tenant_context.tenant_id);
       const organization = await db.collection("organizations").findOne({
-        _id: new ObjectId(ctx.user.organizationId),
+        _id: tenant_org_id,
       });
 
       if (!organization) {
-        throw new Error("Organization not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
       }
 
       const favorites = organization.favoriteIngredients || [];
       const isFavorited = favorites.includes(input.ingredientId);
 
-      // Toggle favorite
       if (isFavorited) {
-        // Remove from favorites
         await db.collection("organizations").updateOne(
-          { _id: new ObjectId(ctx.user.organizationId) },
+          { _id: tenant_org_id },
           { $pull: { favoriteIngredients: input.ingredientId } } as any
         );
       } else {
-        // Add to favorites
         await db.collection("organizations").updateOne(
-          { _id: new ObjectId(ctx.user.organizationId) },
+          { _id: tenant_org_id },
           { $addToSet: { favoriteIngredients: input.ingredientId } } as any
         );
       }
 
-      // Log favorite activity
       await logActivity({
         db,
         userId: ctx.userId,
         userName: ctx.user.name,
         activity: isFavorited ? "remove favorite ingredient" : "add favorite ingredient",
         refId: input.ingredientId,
-        organizationId: ctx.user.organizationId,
+        organizationId: ctx.tenant_context.tenant_id,
       });
 
       return { success: true, isFavorited: !isFavorited };
     }),
 
   // Duplicate ingredient (creates copy with new auto-generated code)
-  duplicate: tenantProcedure("tenant:read")
+  duplicate: tenantProcedure("tenant:knowledge:manage")
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      // Get original material
-      const originalMaterial: any = await db.collection("raw_materials_console").findOne({
-        _id: new ObjectId(input.id),
-      });
-
-      if (!originalMaterial) {
-        throw new Error("Material not found");
+      let original: WithId<Document>;
+      try {
+        original = await ctx.repositories.products.get_product(
+          ctx.tenant_context,
+          input.id,
+        );
+      } catch (error) {
+        throw_from_repository_error(error);
       }
 
-      // Generate new rm_code: Get total count and use as next number
-      const totalCount = await db.collection("raw_materials_console").countDocuments();
+      const { next_code } = await compute_next_product_code(
+        ctx.repositories.products,
+        ctx.tenant_context,
+      );
 
-      // Try to get the latest rm_code to check if there's a higher number
-      const latestMaterial = await db.collection("raw_materials_console")
-        .find({})
-        .sort({ _id: -1 })
-        .limit(1)
-        .toArray();
-
-      let maxNumber = totalCount;
-
-      if (latestMaterial.length > 0 && latestMaterial[0].rm_code) {
-        const match = latestMaterial[0].rm_code.toString().match(/(\d+)/);
-        if (match) {
-          const codeNumber = parseInt(match[1], 10);
-          maxNumber = Math.max(maxNumber, codeNumber);
-        }
-      }
-
-      const newRmCode = `RM${String(maxNumber + 1).padStart(6, '0')}`;
-
-      const tradeName = originalMaterial.trade_name || "";
-      const inciName = originalMaterial.INCI_name || originalMaterial.inci_name || "";
-      const productName = tradeName || inciName;
+      const doc = original as any;
+      const trade_name = doc.productName || doc.name || doc.trade_name || "";
+      const inci_name = doc.INCI_name || doc.inci_name || "";
+      const product_name = trade_name || inci_name;
 
       // Return duplicated data for editing (not saved yet)
       return {
         _id: "", // Empty ID indicates this is new
-        productCode: newRmCode,
-        productName: `${productName} (Copy)`,
-        inci_name: inciName,
-        description: originalMaterial.Chem_IUPAC_Name_Description || originalMaterial.Function || "",
-        price: originalMaterial.rm_cost || 0,
-        supplier: originalMaterial.supplier || "",
-        benefits: parseArrayField(originalMaterial.benefits || originalMaterial.benefits_cached),
-        usecase: parseArrayField(originalMaterial.usecase || originalMaterial.usecase_cached),
+        productCode: next_code,
+        productName: `${product_name} (Copy)`,
+        inci_name,
+        description:
+          doc.description || doc.Chem_IUPAC_Name_Description || doc.Function || "",
+        price: doc.price ?? doc.rm_cost ?? 0,
+        supplier: doc.supplier || "",
+        benefits: parseArrayField(doc.benefits || doc.benefits_cached),
+        usecase: parseArrayField(doc.usecase || doc.usecase_cached),
         isDuplicate: true,
       };
     }),

@@ -1,10 +1,8 @@
 import { z } from "zod";
-import { router, tenantProcedure } from "../trpc";
-import { raw_materials_client_promise } from "@rnd-ai/shared-database";
-import { ObjectId } from "mongodb";
+import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 
 export const rawMaterialsConversationRouter = router({
-  // Save a message to raw materials conversation
+  // Save a message to the acting profile's raw materials conversation log
   saveMessage: tenantProcedure("ai:run")
     .input(
       z.object({
@@ -17,32 +15,25 @@ export const rawMaterialsConversationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
-
-      const message = {
-        ...input,
-        userId: ctx.user.id,
-        _id: new ObjectId()
-      };
-
-      // Insert message into raw_materials_conversations collection
-      await db.collection("raw_materials_conversations").insertOne(message);
-
-      // Update user's last activity
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(ctx.user.id) },
-        {
-          $set: { lastActivityAt: new Date() },
-          $inc: { totalRawMaterialsMessages: 1 }
-        },
-        { upsert: true }
-      );
-
-      return { success: true, messageId: message._id.toString() };
+      console.info('[rawMaterialsConversations] saveMessage — start', {
+        tenantId: ctx.tenant_context.tenant_id,
+        actorProfileId: ctx.tenant_context.actor_profile_id,
+      });
+      try {
+        const message = await ctx.repositories.conversations.save_raw_material_message(
+          ctx.tenant_context,
+          input,
+        );
+        console.info('[rawMaterialsConversations] saveMessage — done', {
+          messageId: message._id.toString(),
+        });
+        return { success: true, messageId: message._id.toString() };
+      } catch (error) {
+        throw_from_repository_error(error);
+      }
     }),
 
-  // Get raw materials conversation history for a user
+  // Get raw materials conversation history for the acting profile
   getHistory: tenantProcedure("ai:run")
     .input(
       z.object({
@@ -51,15 +42,10 @@ export const rawMaterialsConversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
-
-      const messages = await db.collection("raw_materials_conversations")
-        .find({ userId: ctx.user.id })
-        .sort({ timestamp: -1 })
-        .skip(input.offset)
-        .limit(input.limit)
-        .toArray();
+      const messages = await ctx.repositories.conversations.list_own_raw_material_messages(
+        ctx.tenant_context,
+        { limit: input.limit, offset: input.offset },
+      );
 
       // Return in chronological order (oldest first)
       return messages.reverse().map(msg => ({
@@ -81,14 +67,10 @@ export const rawMaterialsConversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
-
-      const messages = await db.collection("raw_materials_conversations")
-        .find({ userId: ctx.user.id })
-        .sort({ timestamp: -1 })
-        .limit(input.limit)
-        .toArray();
+      const messages = await ctx.repositories.conversations.list_own_raw_material_messages(
+        ctx.tenant_context,
+        { limit: input.limit, offset: 0 },
+      );
 
       // Return in chronological order and formatted for AI
       return messages.reverse().map(msg => ({
@@ -97,61 +79,33 @@ export const rawMaterialsConversationRouter = router({
       }));
     }),
 
-  // Clear raw materials conversation history for a user
+  // Clear raw materials conversation history for the acting profile
   clearHistory: tenantProcedure("ai:run")
     .mutation(async ({ ctx }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
-
-      const result = await db.collection("raw_materials_conversations")
-        .deleteMany({ userId: ctx.user.id });
-
-      // Reset user's raw materials message count
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(ctx.user.id) },
-        {
-          $set: { totalRawMaterialsMessages: 0, lastRawMaterialsClearedAt: new Date() }
-        },
-        { upsert: true }
+      console.info('[rawMaterialsConversations] clearHistory — start', {
+        tenantId: ctx.tenant_context.tenant_id,
+        actorProfileId: ctx.tenant_context.actor_profile_id,
+      });
+      const deletedCount = await ctx.repositories.conversations.clear_own_raw_material_messages(
+        ctx.tenant_context,
       );
-
-      return { success: true, deletedCount: result.deletedCount };
+      console.info('[rawMaterialsConversations] clearHistory — done', { deletedCount });
+      return { success: true, deletedCount };
     }),
 
-  // Get raw materials conversation statistics
+  // Get raw materials conversation statistics for the acting profile
   getStats: tenantProcedure("ai:run")
     .query(async ({ ctx }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
-
-      const totalMessages = await db.collection("raw_materials_conversations")
-        .countDocuments({ userId: ctx.user.id });
-
-      const userMessages = await db.collection("raw_materials_conversations")
-        .countDocuments({ userId: ctx.user.id, role: 'user' });
-
-      const assistantMessages = await db.collection("raw_materials_conversations")
-        .countDocuments({ userId: ctx.user.id, role: 'assistant' });
-
-      // Get oldest and newest message dates
-      const oldestMessage = await db.collection("raw_materials_conversations")
-        .find({ userId: ctx.user.id })
-        .sort({ timestamp: 1 })
-        .limit(1)
-        .toArray();
-
-      const newestMessage = await db.collection("raw_materials_conversations")
-        .find({ userId: ctx.user.id })
-        .sort({ timestamp: -1 })
-        .limit(1)
-        .toArray();
+      const stats = await ctx.repositories.conversations.get_own_raw_material_message_stats(
+        ctx.tenant_context,
+      );
 
       return {
-        totalMessages,
-        userMessages,
-        assistantMessages,
-        firstMessageAt: oldestMessage[0]?.timestamp || null,
-        lastMessageAt: newestMessage[0]?.timestamp || null
+        totalMessages: stats.total_messages,
+        userMessages: stats.user_messages,
+        assistantMessages: stats.assistant_messages,
+        firstMessageAt: stats.first_message_at,
+        lastMessageAt: stats.last_message_at
       };
     }),
 
@@ -163,38 +117,9 @@ export const rawMaterialsConversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
-
-      const conversations = await db.collection("raw_materials_conversations")
-        .aggregate([
-          { $match: { userId: ctx.user.id, role: 'assistant', responseId: { $exists: true } } },
-          {
-            $lookup: {
-              from: 'raw_materials_feedback',
-              localField: 'responseId',
-              foreignField: 'responseId',
-              as: 'feedback'
-            }
-          },
-          { $sort: { timestamp: -1 } },
-          { $limit: input.limit },
-          {
-            $project: {
-              id: 1,
-              content: 1,
-              role: 1,
-              timestamp: 1,
-              responseId: 1,
-              feedbackSubmitted: 1,
-              feedbackCount: { $size: '$feedback' },
-              averageScore: { $avg: '$feedback.score' }
-            }
-          }
-        ])
-        .toArray();
-
-      return conversations;
+      return ctx.repositories.conversations.list_own_raw_material_messages_with_feedback(
+        ctx.tenant_context,
+        input.limit,
+      );
     }),
-
-  });
+});

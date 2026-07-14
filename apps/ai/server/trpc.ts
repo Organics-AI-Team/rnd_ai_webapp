@@ -4,9 +4,25 @@ import { cookies } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
 import { ObjectId } from "mongodb";
 import client_promise from "@rnd-ai/shared-database";
-import type { Permission, RequestPrincipal } from "@rnd-ai/shared-types";
+import type {
+  Permission,
+  RequestPrincipal,
+  TenantExecutionContext,
+} from "@rnd-ai/shared-types";
 
 import { AuthorizationError } from "./auth/errors";
+import {
+  TenantContextError,
+  build_tenant_execution_context,
+} from "./auth/tenant-execution-context";
+import {
+  create_tenant_repositories,
+  type TenantRepositories,
+} from "./repositories/tenant-repositories";
+import {
+  PermissionDeniedError,
+  ResourceNotFoundError,
+} from "./repositories/tenant-repository-base";
 import {
   require_active_tenant,
   require_permission,
@@ -252,6 +268,61 @@ function build_legacy_compat_user(
  */
 export const authenticatedProcedure = t.procedure.use(authenticated_middleware);
 
+/** Tenant scope attached to every tenant-scoped procedure context (G2.5). */
+export interface TenantScopedContext {
+  readonly tenant_context: TenantExecutionContext;
+  readonly repositories: TenantRepositories;
+}
+
+/**
+ * Build the frozen per-request TenantExecutionContext plus the repository
+ * bundle for an already-authorized principal. RequestPrincipal carries no
+ * provider organization ID, so clerk_organization_id is recorded as "" until
+ * the Clerk membership projection exposes it.
+ *
+ * @param principal - Verified principal with an active tenant membership.
+ * @returns Tenant execution context and tenant-scoped repositories.
+ * @throws TRPCError FORBIDDEN when the membership cannot scope a tenant.
+ */
+async function attach_tenant_scope(
+  principal: RequestPrincipal,
+): Promise<TenantScopedContext> {
+  let tenant_context: TenantExecutionContext;
+  try {
+    tenant_context = build_tenant_execution_context(principal, null, {
+      clerk_organization_id: "",
+      membership_id: null,
+    });
+  } catch (error) {
+    if (error instanceof TenantContextError) {
+      throw new TRPCError({ code: "FORBIDDEN", message: error.message });
+    }
+    throw error;
+  }
+  const client = await client_promise;
+  return { tenant_context, repositories: create_tenant_repositories(client.db()) };
+}
+
+/**
+ * Translate a typed repository failure into the equivalent transport error.
+ * Cross-tenant and missing IDs both surface as the same generic NOT_FOUND;
+ * ownership/permission rejections surface as FORBIDDEN. Unknown errors are
+ * rethrown untouched.
+ *
+ * @param error - Error thrown by a tenant repository call.
+ * @returns Never returns; always throws.
+ * @throws TRPCError for typed domain failures, otherwise the original error.
+ */
+export function throw_from_repository_error(error: unknown): never {
+  if (error instanceof ResourceNotFoundError) {
+    throw new TRPCError({ code: "NOT_FOUND", message: error.message });
+  }
+  if (error instanceof PermissionDeniedError) {
+    throw new TRPCError({ code: "FORBIDDEN", message: error.message });
+  }
+  throw error;
+}
+
 /**
  * Procedure requiring an active tenant membership plus one named permission.
  *
@@ -259,7 +330,7 @@ export const authenticatedProcedure = t.procedure.use(authenticated_middleware);
  * @returns Procedure whose context carries a non-null tenant scope.
  */
 export const tenantProcedure = (permission: Permission) =>
-  authenticatedProcedure.use(({ ctx, next }) => {
+  authenticatedProcedure.use(async ({ ctx, next }) => {
     try {
       require_active_tenant(ctx.principal);
       require_permission(ctx.principal, permission);
@@ -267,8 +338,13 @@ export const tenantProcedure = (permission: Permission) =>
       if (error instanceof AuthorizationError) throw to_trpc_error(error);
       throw error;
     }
+    const scope = await attach_tenant_scope(ctx.principal);
     return next({
-      ctx: { ...ctx, organizationId: ctx.principal.active_tenant_id as string },
+      ctx: {
+        ...ctx,
+        ...scope,
+        organizationId: ctx.principal.active_tenant_id as string,
+      },
     });
   });
 
@@ -277,7 +353,7 @@ export const tenantProcedure = (permission: Permission) =>
  * administration surfaces (member management, credits) until platform
  * roles arrive with Clerk in G1.
  */
-export const managerProcedure = authenticatedProcedure.use(({ ctx, next }) => {
+export const managerProcedure = authenticatedProcedure.use(async ({ ctx, next }) => {
   try {
     require_active_tenant(ctx.principal);
   } catch (error) {
@@ -290,8 +366,13 @@ export const managerProcedure = authenticatedProcedure.use(({ ctx, next }) => {
       message: "Manager role is required.",
     });
   }
+  const scope = await attach_tenant_scope(ctx.principal);
   return next({
-    ctx: { ...ctx, organizationId: ctx.principal.active_tenant_id as string },
+    ctx: {
+      ...ctx,
+      ...scope,
+      organizationId: ctx.principal.active_tenant_id as string,
+    },
   });
 });
 
@@ -299,17 +380,24 @@ export const managerProcedure = authenticatedProcedure.use(({ ctx, next }) => {
  * Procedure requiring an active tenant membership without a specific named
  * permission — membership presence is the assertion.
  */
-export const tenantMemberProcedure = authenticatedProcedure.use(({ ctx, next }) => {
-  try {
-    require_active_tenant(ctx.principal);
-  } catch (error) {
-    if (error instanceof AuthorizationError) throw to_trpc_error(error);
-    throw error;
-  }
-  return next({
-    ctx: { ...ctx, organizationId: ctx.principal.active_tenant_id as string },
-  });
-});
+export const tenantMemberProcedure = authenticatedProcedure.use(
+  async ({ ctx, next }) => {
+    try {
+      require_active_tenant(ctx.principal);
+    } catch (error) {
+      if (error instanceof AuthorizationError) throw to_trpc_error(error);
+      throw error;
+    }
+    const scope = await attach_tenant_scope(ctx.principal);
+    return next({
+      ctx: {
+        ...ctx,
+        ...scope,
+        organizationId: ctx.principal.active_tenant_id as string,
+      },
+    });
+  },
+);
 
 /**
  * Procedure requiring an active tenant membership plus one named permission.
