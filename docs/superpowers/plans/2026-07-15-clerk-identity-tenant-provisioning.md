@@ -451,17 +451,17 @@ await user_profiles.link_legacy_identity({
 });
 ~~~
 
-- [ ] **Step 1:** Write failing tests for valid bcrypt import, duplicate email, invalid digest, missing user, ambiguous organization, replay, and partial Clerk creation.
-- [ ] **Step 2:** Run npm test -- tests/provisioning/legacy-import.test.ts.
-- [ ] **Step 3:** Expected: FAIL.
-- [ ] **Step 4:** Implement dry-run as the default. Require --apply and --report=<path> for writes.
-- [ ] **Step 5:** For each reconciled account call Clerk createUser with emailAddress, passwordDigest, passwordHasher="bcrypt", and externalId equal to the legacy Account ObjectId. Persist clerkUserId and legacyAccountId in UserProfile.
-- [ ] **Step 6:** Do not create a university from each legacy organization automatically. Produce legacy_org_resolution with matched_tenant_id or unresolved_reason. A platform admin must approve unresolved mappings.
-- [ ] **Step 7:** Never print passwordDigest. Report counts and stable record IDs only.
-- [ ] **Step 8:** Add migrate:clerk=tsx scripts/migrate-legacy-users-to-clerk.ts and document snapshot, dry-run, sampled sign-in, reconciliation, cutover, and rollback commands.
-- [ ] **Step 9:** Run npm test -- tests/provisioning/legacy-import.test.ts.
-- [ ] **Step 10:** Expected: PASS.
-- [ ] **Step 11:** Commit: git add apps/ai scripts tests/provisioning docs/commercial/runbooks && git commit -m "feat: import legacy bcrypt identities into Clerk"
+- [x] **Step 1:** Write failing tests for valid bcrypt import, duplicate email, invalid digest, missing user, ambiguous organization, replay, and partial Clerk creation.
+- [x] **Step 2:** Run npm test -- tests/provisioning/legacy-import.test.ts.
+- [x] **Step 3:** Expected: FAIL.
+- [x] **Step 4:** Implement dry-run as the default. Require --apply and --report=<path> for writes.
+- [x] **Step 5:** For each reconciled account call Clerk createUser with emailAddress, passwordDigest, passwordHasher="bcrypt", and externalId equal to the legacy Account ObjectId. Persist clerkUserId and legacyAccountId in UserProfile.
+- [x] **Step 6:** Do not create a university from each legacy organization automatically. Produce legacy_org_resolution with matched_tenant_id or unresolved_reason. A platform admin must approve unresolved mappings.
+- [x] **Step 7:** Never print passwordDigest. Report counts and stable record IDs only.
+- [x] **Step 8:** Add migrate:clerk=tsx scripts/migrate-legacy-users-to-clerk.ts and document snapshot, dry-run, sampled sign-in, reconciliation, cutover, and rollback commands.
+- [x] **Step 9:** Run npm test -- tests/provisioning/legacy-import.test.ts.
+- [x] **Step 10:** Expected: PASS.
+- [x] **Step 11:** Commit: git add apps/ai scripts tests/provisioning docs/commercial/runbooks && git commit -m "feat: import legacy bcrypt identities into Clerk"
 
 ### Task 7: Cut over and remove custom client authentication
 

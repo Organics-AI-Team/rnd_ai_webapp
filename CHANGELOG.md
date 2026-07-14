@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-07-15] feat: Legacy bcrypt identities imported into Clerk (G1.6)
+
+### Summary
+
+- Added `legacy-import.ts` service + `migrate:clerk` CLI: imports active legacy accounts as Clerk users with `passwordDigest`/`passwordHasher="bcrypt"` and `externalId` = the legacy Account ObjectId, then links `clerkUserId`+`legacyAccountId` on the UserProfile — valid users keep their passwords (Clerk verifies the bcrypt digest and upgrades transparently on first sign-in).
+- Replay safety at every step: already-linked profiles count as `replayed`; a partially created Clerk user (found by externalId) is linked without a second `createUser`; duplicate emails are reported as `failed/duplicate_email`; invalid digests, missing user profiles, and inactive accounts are skipped with stable reasons.
+- Dry-run is the default; writes require BOTH `--apply` and `--report=<path>`. Reports and results carry counts and stable record IDs only — a test pins that no password digest ever appears in any result.
+- No university is created from a legacy organization: `legacy_org_resolution` reports `matched_tenant_id` (via `Tenant.legacyOrganizationId`) or `unresolved_reason: no_tenant_mapping` for explicit platform-admin approval.
+- Added `docs/commercial/runbooks/clerk-migration.md`: snapshot, dry run, apply, sampled sign-in verification, reconciliation, cutover (`CLERK_CUTOVER=true`), and rollback commands.
+
+### Verification approach
+
+- TDD RED first, then 9/9 tests: bcrypt import + replay (single createUser, hasher pinned), partial-creation linking, duplicate email, invalid digest, missing user, digest-free results, org resolution matched/unresolved, dry-run-versus-apply write behavior.
+- Full suite 154/154; `npm run verify:commercial` exit 0.
+
+---
+
 ## [2026-07-15] feat: Clerk membership lifecycle synchronization (G1.5)
 
 ### Summary
