@@ -14,6 +14,7 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -65,12 +66,9 @@ let genai_client: GoogleGenAI | null = null;
 function get_genai_client(): GoogleGenAI {
   if (genai_client) return genai_client;
 
-  const api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!api_key) {
-    throw new Error('GEMINI_API_KEY not configured — required for web search');
-  }
+  const credentials = require_server_ai_credentials(process.env);
 
-  genai_client = new GoogleGenAI({ apiKey: api_key });
+  genai_client = new GoogleGenAI({ apiKey: credentials.gemini_api_key });
   console.log('[web-search-handler] GoogleGenAI client initialised');
   return genai_client;
 }
@@ -198,8 +196,9 @@ export async function handle_web_search(params: WebSearchParams): Promise<string
   }
 
   // --- Check Gemini API key ---
-  const api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!api_key) {
+  try {
+    require_server_ai_credentials(process.env);
+  } catch {
     const elapsed = Date.now() - start_ts;
     console.log('[web-search-handler] handle_web_search — no GEMINI_API_KEY, fallback', { elapsed_ms: elapsed });
 

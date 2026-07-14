@@ -4,10 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { createLangGraphRawMaterialsAgent } from '@/ai/agents/raw-materials-ai/langgraph-agent';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
 // Initialize LangGraph agent once on server
 let langGraphAgent: any = null;
@@ -16,15 +15,13 @@ let mlService: PreferenceLearningService | null = null;
 function initializeLangGraphServices() {
   if (langGraphAgent) return { langGraphAgent, mlService };
 
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY not configured');
-  }
+  const credentials = require_server_ai_credentials(process.env);
 
   console.log('🚀 [LangGraphRoute] Initializing LangGraph-powered services');
 
   try {
     // Initialize LangGraph agent
-    langGraphAgent = createLangGraphRawMaterialsAgent(GEMINI_API_KEY);
+    langGraphAgent = createLangGraphRawMaterialsAgent(credentials.gemini_api_key);
     console.log('✅ [LangGraphRoute] LangGraph agent initialized');
 
     // Initialize ML service for preference learning

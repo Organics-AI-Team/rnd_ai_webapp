@@ -15,10 +15,7 @@ import { useChat } from '../../hooks/use-chat';
 import { useFeedback } from '../../hooks/use-feedback';
 import { useEnhancedChat } from '../../hooks/enhanced/use-enhanced-chat';
 import { FeedbackCollector } from '../feedback/feedback-collector';
-import { QdrantRAGService as PineconeClientService } from '../../services/rag/qdrant-rag-service';
-import { HybridSearchClient } from '../../services/rag/hybrid-search-client';
 import { UnifiedSearchClient } from '../../services/rag/unified-search-client';
-import { EnhancedHybridSearchService } from '../../services/rag/enhanced-hybrid-search-service';
 import { ResponseReranker } from '../../services/response/response-reranker';
 import { classify_query } from '../../utils/query-classifier';
 import { ConversationMessage } from '../../types/conversation-types';
@@ -81,29 +78,11 @@ export function RawMaterialsChat({
   // Track if tools are enabled (via API route)
   const [toolsEnabled] = useState(true);
 
-  // Enhanced RAG service with semantic reranking
+  // Browser-safe RAG client. Provider credentials remain behind the API route.
   const [ragService] = useState(() => {
     if (!enableRAG) return null;
 
     try {
-      // Use enhanced service with semantic reranking when optimizations enabled
-      if (enableEnhancements) {
-        console.log('🚀 [RawMaterialsChat] Initializing Enhanced Hybrid Search Service');
-        const enhancedService = new EnhancedHybridSearchService(
-          process.env.NEXT_PUBLIC_PINECONE_API_KEY!,
-          process.env.MONGODB_URI!,
-          'rnd_ai',
-          'raw_materials_console',
-          'raw-materials-stock'
-        );
-        // Initialize async (don't block render)
-        enhancedService.initialize().catch(error => {
-          console.warn('⚠️ Enhanced RAG service initialization failed, falling back to legacy:', error);
-        });
-        return enhancedService;
-      }
-
-      // Use legacy service when optimizations disabled
       const serviceToUse = (serviceName as any) || 'rawMaterialsAI';
       console.log('🚀 [RawMaterialsChat] Initializing UnifiedSearchClient with multi-collection support');
       return new UnifiedSearchClient(serviceToUse, ragConfig);
@@ -116,7 +95,7 @@ export function RawMaterialsChat({
   // Response reranking service
   const [responseReranker] = useState(() => {
     if (enableEnhancements && enableResponseReranking) {
-      return new ResponseReranker(process.env.NEXT_PUBLIC_PINECONE_API_KEY!);
+      return new ResponseReranker();
     }
     return null;
   });
@@ -199,53 +178,28 @@ export function RawMaterialsChat({
     try {
       console.log('🔍 [RawMaterialsChat] Performing enhanced RAG search for:', query);
 
-      let results;
+      const formatted = await ragService.search_and_format(query, {
+        ...ragConfig,
+        topK: 10,
+        similarityThreshold: 0.5,
+        enable_exact_match: true,
+        enable_fuzzy_match: true,
+        enable_semantic_search: true,
+        enable_metadata_filter: true,
+        max_results: 10,
+        min_score: 0.5,
+        include_availability_context: true,
+      });
 
-      if (enableEnhancements && ragService instanceof EnhancedHybridSearchService) {
-        // Use enhanced search with semantic reranking and personalization
-        results = await ragService.enhancedSearch({
-          query,
-          userId,
-          topK: 10,
-          rerank: true,
-          semanticWeight: 0.7,
-          keywordWeight: 0.3,
-          userPreferences: (chat as any).userPreferences,
-        });
-
-        // Format enhanced results with confidence scores
-        const formattedResults = results.map((result, index) =>
-          `**${index + 1}.** ${result.content}\n*Confidence: ${(result.score * 100).toFixed(1)}%*\n`
-        ).join('\n');
-
-        console.log(`✅ [RawMaterialsChat] Enhanced search completed with semantic reranking`);
-        setLastRAGResults(formattedResults);
-      } else {
-        // Use legacy unified search
-        const unifiedClient = ragService as UnifiedSearchClient;
-        const formatted = await unifiedClient.search_and_format(query, {
-          ...ragConfig,
-          topK: 10,
-          similarityThreshold: 0.5,
-          enable_exact_match: true,
-          enable_fuzzy_match: true,
-          enable_semantic_search: true,
-          enable_metadata_filter: true,
-          max_results: 10,
-          min_score: 0.5,
-          include_availability_context: true,
-        });
-
-        console.log(`✅ [RawMaterialsChat] Legacy unified search completed`);
-        setLastRAGResults(formatted);
-      }
+      console.log(`✅ [RawMaterialsChat] Server-backed unified search completed`);
+      setLastRAGResults(formatted);
     } catch (error) {
       console.error('❌ [RawMaterialsChat] RAG search failed:', error);
       setLastRAGResults('\n\n⚠️ Database search temporarily unavailable. Providing response based on general knowledge.');
     } finally {
       setIsSearchingRAG(false);
     }
-  }, [ragService, ragConfig, enableEnhancements, userId, (chat as any).userPreferences]);
+  }, [ragService, ragConfig]);
 
   const handleSendMessage = async (message: string) => {
     console.log('🎯 [RawMaterialsChat] Sending message:', message);

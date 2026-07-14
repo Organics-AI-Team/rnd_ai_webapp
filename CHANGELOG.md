@@ -1,5 +1,27 @@
 # Changelog
 
+## [2026-07-15] fix: Remove public AI credential fallbacks
+
+### Summary
+
+- Added a private, runtime-neutral `@rnd-ai/server-config` workspace contract that loads Gemini, OpenAI, Qdrant, and Google web-search credentials only from explicit server environment input, performs no import-time environment reads, and never accepts a public credential fallback.
+- Removed public provider-key build arguments, container variables, deployment-script forwarding, duplicated environment-example names, and the tracked production environment file; tightened environment-file ignore rules while retaining committed examples.
+- Routed server provider construction through the canonical credential loader, preserved lazy request-time initialization, and moved client chat retrieval to the existing server-backed unified-search API client.
+- Added a repository scanner that rejects public credential-shaped names, client provider construction/imports, client imports of the private credential package, and tracked non-example environment files while allowing the Clerk publishable key and public API URLs.
+- Recorded the required provider/environment rotation and revocation ledger as `PENDING_EXTERNAL_ROTATION`; local source containment does not claim provider-console rotation.
+
+### Root cause
+
+- Historical provider integrations reused browser-prefixed variables as server fallbacks and passed those names through Docker build layers, runtime configuration, deployment automation, examples, and client-side service construction.
+- Credential loading was duplicated across web routes and AI agents, so later integrations could silently preserve the insecure fallback instead of consuming one private server contract.
+
+### Verification approach
+
+- Captured the focused scanner RED result across application source, client components, Docker configuration, environment examples, and deployment automation before production edits, then confirmed the complete focused security suite passes.
+- Confirmed the root TypeScript check, private package TypeScript check, web ESLint command, and Next.js production build pass without provider credentials at build time.
+- Confirmed the AI workspace lint command remains unavailable because that workspace has no ESLint 9 flat configuration; no lint infrastructure was added in this containment change.
+- Deferred the global `npm run security:scan` gate to G0 Task 7 because its planned scanner entry point is not present yet.
+
 ## [2026-07-15] build: Upgrade to patched Next and React baseline
 
 ### Summary

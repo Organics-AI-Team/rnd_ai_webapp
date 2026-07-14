@@ -11,8 +11,6 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
-        - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
-        - NEXT_PUBLIC_OPENAI_API_KEY=${NEXT_PUBLIC_OPENAI_API_KEY}
     container_name: rnd-ai-web
     mem_limit: 1536m
     ports:
@@ -36,9 +34,7 @@ services:
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
       - GOOGLE_SEARCH_CSE_ID=${GOOGLE_SEARCH_CSE_ID:-}
 
-      # Public Variables (inlined at build time)
-      - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
-      - NEXT_PUBLIC_OPENAI_API_KEY=${NEXT_PUBLIC_OPENAI_API_KEY}
+      # Public API URL (inlined at build time)
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
 
       # Admin

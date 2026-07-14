@@ -99,10 +99,8 @@ build() {
     local compose_cmd=$(get_compose_cmd)
     log_info "Building Docker images..."
 
-    # Pass only NEXT_PUBLIC_* vars as build args (no server secrets)
+    # Only the public API URL is a build-time argument; provider keys stay runtime-only.
     $compose_cmd --env-file "$ENV_FILE" build \
-        --build-arg NEXT_PUBLIC_GEMINI_API_KEY="$(grep '^NEXT_PUBLIC_GEMINI_API_KEY=' "$ENV_FILE" | cut -d'=' -f2-)" \
-        --build-arg NEXT_PUBLIC_OPENAI_API_KEY="$(grep '^NEXT_PUBLIC_OPENAI_API_KEY=' "$ENV_FILE" | cut -d'=' -f2-)" \
         --build-arg NEXT_PUBLIC_API_URL="$(grep '^NEXT_PUBLIC_API_URL=' "$ENV_FILE" | cut -d'=' -f2-)"
 
     log_info "Build complete"

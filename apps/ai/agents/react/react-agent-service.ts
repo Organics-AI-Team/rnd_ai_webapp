@@ -12,6 +12,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import {
   get_react_tool_declarations,
   ReactToolName,
@@ -171,27 +172,16 @@ export class ReactAgentService {
   /**
    * Create a new ReactAgentService instance.
    *
-   * @param api_key         - Google AI API key. Falls back to GEMINI_API_KEY
-   *                          or NEXT_PUBLIC_GEMINI_API_KEY env vars if omitted.
+   * @param api_key         - Google AI API key. Falls back to the private
+   *                          GEMINI_API_KEY server credential if omitted.
    * @param config_override - Partial config to merge over defaults.
    * @throws Error if no API key is available from any source.
    */
   constructor(api_key?: string, config_override?: Partial<ReactAgentConfig>) {
     console.log('[ReactAgentService] constructor() - start');
 
-    const resolved_key =
-      api_key ||
-      process.env.GEMINI_API_KEY ||
-      process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
-      '';
-
-    if (!resolved_key) {
-      const error_message =
-        'ReactAgentService requires a Gemini API key. Provide one via constructor, ' +
-        'GEMINI_API_KEY, or NEXT_PUBLIC_GEMINI_API_KEY environment variable.';
-      console.error(`[ReactAgentService] constructor() - ${error_message}`);
-      throw new Error(error_message);
-    }
+    const resolved_key = api_key?.trim() ||
+      require_server_ai_credentials(process.env).gemini_api_key;
 
     this.gen_ai = new GoogleGenerativeAI(resolved_key);
     this.config = { ...DEFAULT_CONFIG, ...config_override };

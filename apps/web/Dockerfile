@@ -20,6 +20,7 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/shared-database/package.json ./packages/shared-database/
+COPY packages/server-config/package.json ./packages/server-config/
 
 # Install all workspace dependencies
 RUN npm ci --legacy-peer-deps
@@ -54,14 +55,10 @@ ENV NODE_ENV=production
 # Disable Next.js telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Only NEXT_PUBLIC_* variables are needed at build time (inlined by Next.js)
-# Server-side secrets are injected at runtime via docker-compose or env vars
-ARG NEXT_PUBLIC_GEMINI_API_KEY
-ARG NEXT_PUBLIC_OPENAI_API_KEY
+# Public URLs are inlined by Next.js at build time.
+# Provider credentials are injected only into the runtime container.
 ARG NEXT_PUBLIC_API_URL
 
-ENV NEXT_PUBLIC_GEMINI_API_KEY=$NEXT_PUBLIC_GEMINI_API_KEY
-ENV NEXT_PUBLIC_OPENAI_API_KEY=$NEXT_PUBLIC_OPENAI_API_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Build the Next.js app from web workspace

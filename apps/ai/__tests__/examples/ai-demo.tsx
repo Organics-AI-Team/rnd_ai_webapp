@@ -14,6 +14,8 @@ import {
   GeminiService
 } from '../index';
 
+const DEMO_API_KEY = 'demo-only-not-a-credential';
+
 /**
  * Example component demonstrating the refactored AI module
  * Shows different use cases and configurations
@@ -23,9 +25,7 @@ export function AIDemo() {
 
   const aiService = useAIService({
     defaultProvider: activeProvider,
-    apiKey: activeProvider === 'openai'
-      ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
-      : process.env.NEXT_PUBLIC_GEMINI_API_KEY,
+    apiKey: DEMO_API_KEY,
     onServiceChange: (service) => {
       console.log('Service changed to:', service?.constructor.name);
     },
@@ -109,9 +109,7 @@ export function AIDemo() {
             <h3 className="font-semibold text-slate-800 mb-4">General AI Chat</h3>
             <AIChat
               userId={userId}
-              apiKey={activeProvider === 'openai'
-                ? process.env.NEXT_PUBLIC_OPENAI_API_KEY
-                : process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+              apiKey={DEMO_API_KEY}
               provider={activeProvider}
               enableFeedback={true}
               showServiceStatus={true}
@@ -132,7 +130,7 @@ export function AIDemo() {
             </h3>
             <RawMaterialsChat
               userId={userId}
-              apiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
+              apiKey={DEMO_API_KEY}
               provider="gemini"
               enableRAG={true}
               ragConfig={{

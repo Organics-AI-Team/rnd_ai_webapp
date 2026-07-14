@@ -4,14 +4,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { RawMaterialsAgent } from '@/ai/agents/raw-materials-ai/agent';
 import { GeminiToolService } from '@/ai/services/providers/gemini-tool-service';
 import { EnhancedHybridSearchService } from '@/ai/services/rag/enhanced-hybrid-search-service';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
 import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const MONGODB_URI = process.env.MONGODB_URI;
 
 // Initialize services once on server
 let toolService: GeminiToolService | null = null;
@@ -46,9 +44,8 @@ function get_react_agent(): ReactAgentService {
 function initialize_services() {
   if (toolService) return { toolService, searchService, mlService };
 
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY not configured');
-  }
+  const credentials = require_server_ai_credentials(process.env);
+  const mongodb_uri = process.env.MONGODB_URI;
 
   console.log('🚀 [RawMaterialsAgentAPI] Initializing services with optimizations');
 
@@ -57,7 +54,7 @@ function initialize_services() {
   const systemPrompt = RawMaterialsAgent.getInstructions();
 
   toolService = new GeminiToolService(
-    GEMINI_API_KEY,
+    credentials.gemini_api_key,
     toolRegistry,
     {
       model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
@@ -69,11 +66,11 @@ function initialize_services() {
   console.log('✅ [RawMaterialsAgentAPI] Gemini tool service initialized');
 
   // Initialize optimized search services (Qdrant-based, no Pinecone needed)
-  if (MONGODB_URI) {
+  if (mongodb_uri) {
     try {
       searchService = new EnhancedHybridSearchService(
         '', // Legacy param — not used by Qdrant-based service
-        MONGODB_URI,
+        mongodb_uri,
         'rnd_ai',
         'raw_materials_console',
         'raw_materials_myskin'

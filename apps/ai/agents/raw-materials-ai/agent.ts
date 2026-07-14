@@ -4,6 +4,7 @@
  */
 
 import { get_tool_registry } from '../core/tool-registry';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { separatedSearchTools } from './tools/separated-search-tools';
 import { myskinSearchTools } from './tools/myskin-search-tools';
 
@@ -231,10 +232,9 @@ export const RawMaterialsAgent = {
   getInstructions: get_agent_instructions,
   // Add LangGraph agent
   LangGraphAgent: () => {
-    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY not found in environment variables');
-    }
-    return require('./langgraph-agent').createLangGraphRawMaterialsAgent(geminiApiKey);
+    const credentials = require_server_ai_credentials(process.env);
+    return require('./langgraph-agent').createLangGraphRawMaterialsAgent(
+      credentials.gemini_api_key,
+    );
   }
 };

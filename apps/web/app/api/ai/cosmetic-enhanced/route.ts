@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { CosmeticKnowledgeService } from '@/ai/services/knowledge/cosmetic-knowledge-sources';
 import { CosmeticQualityScorer } from '@/ai/services/quality/cosmetic-quality-scorer';
 import { CosmeticRegulatoryService } from '@/ai/services/regulatory/cosmetic-regulatory-sources';
@@ -45,18 +46,15 @@ function get_services() {
   console.log('🚀 [CosmeticEnhancedAPI] Initializing cosmetic AI services...');
 
   try {
-    const gemini_api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!gemini_api_key) {
-      throw new Error('Missing GEMINI_API_KEY — required for cosmetic AI services');
-    }
+    const credentials = require_server_ai_credentials(process.env);
 
     // Initialize all services using Gemini + Qdrant (no OpenAI/Pinecone needed)
-    knowledgeService = new CosmeticKnowledgeService(gemini_api_key);
+    knowledgeService = new CosmeticKnowledgeService(credentials.gemini_api_key);
     qualityScorer = new CosmeticQualityScorer();
     regulatoryService = new CosmeticRegulatoryService();
     credibilityService = new CosmeticCredibilityWeightingService();
     thresholdsService = new CosmeticQualityThresholdsService();
-    enhancedAIService = new GeminiService(gemini_api_key, { model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
+    enhancedAIService = new GeminiService(credentials.gemini_api_key, { model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
     responseReranker = new ResponseReranker();
 
     console.log('✅ [CosmeticEnhancedAPI] All services initialized successfully');
@@ -72,7 +70,10 @@ function get_services() {
     };
 
   } catch (error) {
-    console.error('❌ [CosmeticEnhancedAPI] Service initialization failed:', error);
+    console.error('[CosmeticEnhancedAPI] Service initialization failed', {
+      boundary: 'cosmetic-enhanced',
+      phase: 'error',
+    });
     throw error;
   }
 }

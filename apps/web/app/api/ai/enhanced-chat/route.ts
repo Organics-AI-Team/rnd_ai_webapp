@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { GeminiService } from '@/ai/services/providers/gemini-service';
 import { EnhancedHybridSearchService } from '@/ai/services/rag/enhanced-hybrid-search-service';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
@@ -48,15 +49,13 @@ async function initializeServices() {
   if (!servicesInitialized) {
     try {
       // Initialize Gemini service (primary)
-      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (geminiApiKey) {
-        geminiService = new GeminiService(geminiApiKey, {
-          model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
-          temperature: 0.7,
-          maxTokens: 9000
-        }, 'enhanced-chat');
-        console.log('✅ [EnhancedChatAPI] Gemini service initialized');
-      }
+      const credentials = require_server_ai_credentials(process.env);
+      geminiService = new GeminiService(credentials.gemini_api_key, {
+        model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
+        temperature: 0.7,
+        maxTokens: 9000
+      }, 'enhanced-chat');
+      console.log('✅ [EnhancedChatAPI] Gemini service initialized');
 
       // Initialize search service (Qdrant-based, no Pinecone needed)
       if (process.env.MONGODB_URI) {
@@ -79,7 +78,10 @@ async function initializeServices() {
       servicesInitialized = true;
       console.log('✅ [EnhancedChatAPI] All services initialized successfully');
     } catch (error) {
-      console.error('❌ [EnhancedChatAPI] Service initialization failed:', error);
+      console.error('[EnhancedChatAPI] Service initialization failed', {
+        boundary: 'enhanced-chat',
+        phase: 'error',
+      });
       // Don't throw error, allow app to continue with limited functionality
     }
   }

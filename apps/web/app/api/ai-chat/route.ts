@@ -4,6 +4,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { getEmbeddingService } from '@/lib/services/embedding';
 import { NextRequest } from 'next/server';
 
@@ -43,12 +44,7 @@ export async function POST(req: NextRequest) {
       lastMessageLength: messages[messages.length - 1]?.content?.length || 0
     });
 
-    // Check for required API key
-    const geminiApiKey = process.env.GEMINI_API_KEY;
-    if (!geminiApiKey) {
-      console.error('Missing GEMINI_API_KEY');
-      return new Response('Gemini API key not configured', { status: 500 });
-    }
+    const credentials = require_server_ai_credentials(process.env);
 
     // Simple system prompt (no RAG for now)
     const systemPrompt = AGENT_SYSTEM_PROMPTS[agent_type as keyof typeof AGENT_SYSTEM_PROMPTS] || AGENT_SYSTEM_PROMPTS.chemical_compound;
@@ -57,7 +53,7 @@ export async function POST(req: NextRequest) {
     console.log('🤖 Initializing Gemini model...');
 
     // Initialize Gemini - use simple direct generation
-    const genAI = new GoogleGenerativeAI(geminiApiKey);
+    const genAI = new GoogleGenerativeAI(credentials.gemini_api_key);
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash'
     });
@@ -151,9 +147,11 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     const totalTime = Date.now() - startTime;
-    console.error(`❌ Chat API error after ${totalTime}ms:`, error);
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
-    console.log('=== AI CHAT REQUEST FAILED ===');
-    return new Response(`Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 500 });
+    console.error('[AIChatAPI] request failed', {
+      boundary: 'ai-chat',
+      elapsed_ms: totalTime,
+      phase: 'error',
+    });
+    return new Response('Internal server error', { status: 500 });
   }
 }
