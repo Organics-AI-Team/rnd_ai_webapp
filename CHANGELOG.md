@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-07-15] feat: Internal identity, tenant, and membership projections (G1.2)
+
+### Summary
+
+- Added Prisma models `UserProfile`, `Tenant`, `TenantMembershipProjection`, and `TenantInvitationProjection` with lifecycle enums (`UserProfileStatus`, `PlatformRole`, `TenantType`, `TenantStatus`, `TenantRole`, `MembershipStatus`) — internal projections with stable ObjectIds; Clerk remains the identity source.
+- Added `apps/ai/scripts/setup-commercial-indexes.ts` (`setup:commercial-indexes`): idempotent partial unique indexes for nullable external identifiers (`UserProfile.legacyAccountId`, `Tenant.clerkOrganizationId`, `Tenant.legacyOrganizationId`, `TenantMembershipProjection.clerkMembershipId`) using `partialFilterExpression` on the string BSON type — never Prisma `@unique`, because provisioning-phase records hold null — plus the non-null unique indexes (clerkUserId, slug, provisioningKey, tenant+profile membership, clerkInvitationId).
+- Added repositories with explicit active-record lookups only (`find_active_*`; no generic findOne filter reaches routers): `user-profile-repository`, `tenant-repository`, `membership-repository` under `apps/ai/server/repositories/`.
+- Added `apps/ai/scripts/bootstrap-super-admin.ts` (`bootstrap:super-admin`): single-use — requires `--clerk-user-id` and `--email`, succeeds only while no active platform role exists, writes one `super_admin` UserProfile plus one `platform_audit_events` record, and exits non-zero on any later invocation.
+- Test infrastructure: `mongodb-memory-server` (root devDependency) provides a real mongod for index-semantics tests; also reusable for the G4.7 checkpoint integration tests.
+
+### Verification approach
+
+- TDD RED first (models/repositories/scripts missing), then 9/9 tests against a real in-memory MongoDB: duplicate-present/allow-null partial index semantics for every external ID, idempotent re-setup, tenant/profile membership uniqueness, active-only lookups rejecting suspended records, Clerk-org tenant lookup, and single-use bootstrap with audit trail.
+- `npx prisma generate` clean; `npm run verify:commercial` exit 0 (typecheck + 110 tests + security scan + web build).
+
+---
+
 ## [2026-07-15] feat: Clerk authentication surface (G1.1)
 
 ### Summary

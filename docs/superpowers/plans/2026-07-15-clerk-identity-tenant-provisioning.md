@@ -134,11 +134,11 @@ await db.collection("tenants").createIndex(
 );
 ~~~
 
-- [ ] **Step 1:** Add repository tests for unique Clerk IDs, a unique tenant/profile membership, inactive-record rejection, and a tenant lookup by Clerk organization ID.
-- [ ] **Step 2:** Run npm test -- tests/repositories/identity-projections.test.ts.
-- [ ] **Step 3:** Expected: FAIL because the models and repositories do not exist.
-- [ ] **Step 4:** Add Prisma enums UserProfileStatus(active,suspended,deleted), PlatformRole(super_admin,admin), TenantType(university), TenantStatus(provisioning,active,suspended,repair_required,deleted), TenantRole(manager,user), and MembershipStatus(invited,active,suspended,revoked).
-- [ ] **Step 5:** Add these exact model fields:
+- [x] **Step 1:** Add repository tests for unique Clerk IDs, a unique tenant/profile membership, inactive-record rejection, and a tenant lookup by Clerk organization ID.
+- [x] **Step 2:** Run npm test -- tests/repositories/identity-projections.test.ts.
+- [x] **Step 3:** Expected: FAIL because the models and repositories do not exist.
+- [x] **Step 4:** Add Prisma enums UserProfileStatus(active,suspended,deleted), PlatformRole(super_admin,admin), TenantType(university), TenantStatus(provisioning,active,suspended,repair_required,deleted), TenantRole(manager,user), and MembershipStatus(invited,active,suspended,revoked).
+- [x] **Step 5:** Add these exact model fields:
 
 ~~~prisma
 model UserProfile {
@@ -218,14 +218,14 @@ model TenantInvitationProjection {
 }
 ~~~
 
-- [ ] **Step 6:** Generate Prisma client with npx prisma generate.
-- [ ] **Step 7:** Create apps/ai/scripts/setup-commercial-indexes.ts and add setup:commercial-indexes. It must create partial unique MongoDB indexes for non-null UserProfile.legacyAccountId, Tenant.clerkOrganizationId, Tenant.legacyOrganizationId, and TenantMembershipProjection.clerkMembershipId using partialFilterExpression with the correct BSON type. Test repeated setup and duplicate non-null rejection; never use Prisma @unique on these nullable Mongo fields because multiple provisioning records may be null.
-- [ ] **Step 8:** Implement repositories with explicit find_active methods; never expose a generic findOne filter to routers.
-- [ ] **Step 9:** Implement bootstrap-super-admin to succeed only if no active platform role exists, require --clerk-user-id and --email, write one UserProfile with super_admin, and append a platform_audit_events record. A second invocation must exit non-zero.
-- [ ] **Step 10:** Add bootstrap:super-admin=tsx scripts/bootstrap-super-admin.ts to apps/ai/package.json.
-- [ ] **Step 11:** Run npm test -- tests/repositories/identity-projections.test.ts.
-- [ ] **Step 12:** Expected: PASS.
-- [ ] **Step 13:** Commit: git add prisma apps/ai/server/repositories apps/ai/scripts apps/ai/package.json tests/repositories && git commit -m "feat: add Clerk identity and tenant projections"
+- [x] **Step 6:** Generate Prisma client with npx prisma generate.
+- [x] **Step 7:** Create apps/ai/scripts/setup-commercial-indexes.ts and add setup:commercial-indexes. It must create partial unique MongoDB indexes for non-null UserProfile.legacyAccountId, Tenant.clerkOrganizationId, Tenant.legacyOrganizationId, and TenantMembershipProjection.clerkMembershipId using partialFilterExpression with the correct BSON type. Test repeated setup and duplicate non-null rejection; never use Prisma @unique on these nullable Mongo fields because multiple provisioning records may be null.
+- [x] **Step 8:** Implement repositories with explicit find_active methods; never expose a generic findOne filter to routers.
+- [x] **Step 9:** Implement bootstrap-super-admin to succeed only if no active platform role exists, require --clerk-user-id and --email, write one UserProfile with super_admin, and append a platform_audit_events record. A second invocation must exit non-zero.
+- [x] **Step 10:** Add bootstrap:super-admin=tsx scripts/bootstrap-super-admin.ts to apps/ai/package.json.
+- [x] **Step 11:** Run npm test -- tests/repositories/identity-projections.test.ts.
+- [x] **Step 12:** Expected: PASS.
+- [x] **Step 13:** Commit: git add prisma apps/ai/server/repositories apps/ai/scripts apps/ai/package.json tests/repositories && git commit -m "feat: add Clerk identity and tenant projections"
 
 ### Task 3: Replace the legacy resolver with ClerkPrincipalResolver
 

@@ -46,8 +46,9 @@
     "url": "git+https://github.com/your-org/rnd-ai-management.git"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "4.1.10",
     "@types/node": "^24.6.2",
+    "@vitest/coverage-v8": "4.1.10",
+    "mongodb-memory-server": "^11.2.0",
     "tsx": "4.20.6",
     "typescript": "^5.9.3",
     "vitest": "4.1.10"

@@ -15,7 +15,9 @@
     "create-sales-index": "node scripts/create-sales-ai-index.js",
     "index-sales-data": "tsx scripts/index-sales-data.ts",
     "index:qdrant": "tsx scripts/index-qdrant.ts",
-    "check:qdrant": "tsx scripts/check-qdrant.ts"
+    "check:qdrant": "tsx scripts/check-qdrant.ts",
+    "setup:commercial-indexes": "tsx scripts/setup-commercial-indexes.ts",
+    "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts"
   },
   "dependencies": {
     "@clerk/backend": "3.11.5",

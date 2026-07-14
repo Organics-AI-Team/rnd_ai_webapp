@@ -557,3 +557,126 @@ model PriceCalculation {
   @@index([formulaId])
   @@map("price_calculations")
 }
+
+// ============================================
+// COMMERCIAL IDENTITY & TENANCY PROJECTIONS (G1.2)
+// Clerk owns identity/sessions/orgs; these are internal projections with
+// stable ObjectIds and explicit lifecycle status. Nullable external IDs use
+// partial unique MongoDB indexes created by setup-commercial-indexes.ts —
+// never Prisma @unique — because multiple provisioning records may be null.
+// ============================================
+
+enum UserProfileStatus {
+  active
+  suspended
+  deleted
+}
+
+enum PlatformRole {
+  super_admin
+  admin
+}
+
+enum TenantType {
+  university
+}
+
+enum TenantStatus {
+  provisioning
+  active
+  suspended
+  repair_required
+  deleted
+}
+
+enum TenantRole {
+  manager
+  user
+}
+
+enum MembershipStatus {
+  invited
+  active
+  suspended
+  revoked
+}
+
+model UserProfile {
+  id                String            @id @default(auto()) @map("_id") @db.ObjectId
+  clerkUserId       String            @unique
+  legacyAccountId   String?           @db.ObjectId
+  primaryEmail      String
+  displayName       String
+  platformRole      PlatformRole?
+  status            UserProfileStatus @default(active)
+  clerkSyncVersion  Int               @default(0)
+  clerkSyncedAt     DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  memberships       TenantMembershipProjection[]
+  createdTenants    Tenant[]          @relation("TenantCreator")
+
+  @@index([primaryEmail])
+  @@map("user_profiles")
+}
+
+model Tenant {
+  id                    String       @id @default(auto()) @map("_id") @db.ObjectId
+  clerkOrganizationId   String?
+  legacyOrganizationId  String?      @db.ObjectId
+  slug                  String       @unique
+  name                  String
+  type                  TenantType   @default(university)
+  status                TenantStatus @default(provisioning)
+  planKey               String
+  dataResidencyRegion   String
+  provisioningKey       String       @unique
+  createdByProfileId    String       @db.ObjectId
+  activatedAt           DateTime?
+  suspendedAt           DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  createdBy             UserProfile  @relation("TenantCreator", fields: [createdByProfileId], references: [id])
+  memberships           TenantMembershipProjection[]
+  invitations           TenantInvitationProjection[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+model TenantMembershipProjection {
+  id                   String           @id @default(auto()) @map("_id") @db.ObjectId
+  clerkMembershipId    String?
+  tenantId             String           @db.ObjectId
+  userProfileId        String           @db.ObjectId
+  tenantRole           TenantRole
+  status               MembershipStatus @default(invited)
+  clerkSyncVersion     Int              @default(0)
+  clerkSyncedAt        DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  tenant               Tenant           @relation(fields: [tenantId], references: [id])
+  userProfile          UserProfile      @relation(fields: [userProfileId], references: [id])
+
+  @@unique([tenantId, userProfileId])
+  @@index([userProfileId, status])
+  @@map("tenant_membership_projections")
+}
+
+model TenantInvitationProjection {
+  id                 String           @id @default(auto()) @map("_id") @db.ObjectId
+  clerkInvitationId  String           @unique
+  tenantId           String           @db.ObjectId
+  emailNormalized    String
+  tenantRole         TenantRole
+  status             MembershipStatus @default(invited)
+  invitedByProfileId String           @db.ObjectId
+  expiresAt          DateTime?
+  clerkSyncedAt      DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, emailNormalized, status])
+  @@map("tenant_invitation_projections")
+}
