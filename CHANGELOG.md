@@ -1,5 +1,68 @@
 # Changelog
 
+## [2026-07-15] feat: Governed AI run API route handlers (G4.9g, credential-free subset)
+
+### Summary
+
+Assembled the three governed-run HTTP routes on top of the already-tested G4.9
+building blocks, completing the credential-free half of G4.9g. All run-specific
+routing, validation, and error mapping lives in pure, framework-free handlers
+(`run-api-handlers.ts`) that take injected collaborators and return Web
+`Response`s, so they are exercised directly with fakes — no Clerk session,
+MongoDB, or provider credential required. The thin Next.js route files resolve
+the verified principal and tenant context, assemble the production
+collaborators, and delegate.
+
+### Behaviour
+
+- `POST /api/ai/runs` — verified principal + `ai:run`; identity derived from the
+  session (never the body); idempotent 202; invalid input -> 400
+  `AI_RUN_INPUT_INVALID`; disabled tenant -> 403 `AI_DISABLED`; create
+  composition not yet wired -> 503 `RUN_API_NOT_WIRED`.
+- `GET /api/ai/runs/[runId]/events` — authorizes the run tenant-scoped
+  (cross-tenant/missing -> 404), replays ordered SSE frames after `Last-Event-ID`
+  (the event `sequence` is the SSE `id:`), then tails with heartbeats until a
+  terminal event (`run.completed`/`run.failed`) or an aborted request; a
+  disconnected browser ends only the stream, never the run.
+- `POST /api/ai/runs/[runId]/resume` — strict clarification/approval payload only
+  (-> 400 `RESUME_REQUEST_INVALID`); cross-tenant/missing -> 404; otherwise 202,
+  and the private worker resumes the graph (never the HTTP request).
+
+### Scope and pending gate
+
+- The create path fronts run creation with a placeholder gateway that surfaces a
+  retryable 503 `RUN_API_NOT_WIRED` until the concrete policy/context/budget
+  adapters and provider credentials land (PENDING_EXTERNAL_ROTATION) — the same
+  external gate blocking the worker's model execution. Events and resume are
+  fully wired to MongoDB now.
+- The anonymous/suspended-tenant cases remain the reused `with_request_principal`
+  guard's responsibility (G0) and are not re-tested here (DRY).
+- Still credential-gated (unchanged): end-to-end execution cases (completion,
+  provider failure, live clarify/approval resume), live SSE tailing against a
+  running worker, and the Playwright reconnect spec.
+
+### Changes
+
+- Added `apps/ai/server/services/ai-gateway/run-api-handlers.ts` — pure
+  create/events/resume handlers with injected collaborators + `RunApiNotWiredError`.
+- Added `apps/ai/server/services/ai-gateway/run-api-runtime.ts` — production
+  composition seam (Mongo-backed event store/authorize/resume; not-wired create
+  gateway) + `tenant_context_from_principal`.
+- Added `apps/web/lib/server/tenant-context-route.ts` — shared principal ->
+  tenant-context resolution (403 on membership failure), reused by all three routes.
+- Added `apps/web/app/api/ai/runs/route.ts`,
+  `apps/web/app/api/ai/runs/[runId]/events/route.ts`,
+  `apps/web/app/api/ai/runs/[runId]/resume/route.ts`.
+- Added `tests/integration/ai-run-api.test.ts` — 12 handler tests (RED->GREEN).
+
+### Verification
+
+- RED then GREEN on the new suite (12/12); full suite 631/631.
+- `npm run typecheck` 0 errors (web + orchestration); `npm run security:scan` 0
+  violations; `npm run build:web` compiles all three routes as dynamic functions.
+
+---
+
 ## [2026-07-15] feat: Raw-material MaterialEvidenceProvider — both G4.8 adapters done
 
 ### Summary
