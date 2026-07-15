@@ -1,5 +1,44 @@
 # Changelog
 
+## [2026-07-15] feat: Reserve and reconcile tenant AI usage (G3.3)
+
+### Summary
+
+- Added `usage-ledger.ts`: append-only ledger entry shapes (reservation/actual/
+  release/adjustment, all bigint amounts) and the pure `assert_budget_available`
+  decision — per-run token/cost ceilings, tenant + per-user monthly request/
+  token/cost ceilings, and the concurrency ceiling — throwing a typed
+  `UsageBudgetError` carrying the exceeded `dimension`.
+- Added `ai-usage-repository.ts`: Mongo-backed ledger with `with_transaction`,
+  `locked_month_totals` (signed sum; active runs = reservations minus releases,
+  append-only), `insert_reservation` (bumps a shared per-tenant-month counter so
+  concurrent reservations conflict and serialize), and the release/expiry
+  helpers. Amounts persist as integer strings (micro-USD), never float/Decimal.
+- Added `budget-service.ts`: `reserve_usage` (transactional, idempotent replay
+  returns the existing reservation), `reconcile_usage` (appends actual + a
+  release cancelling the reservation, exactly once; flags the run
+  BUDGET_RECONCILIATION_REQUIRED when the actual exceeds the reservation beyond
+  tolerance), `release_usage` (provider-failure path), and
+  `expire_stale_reservations` (releases only terminal/absent runs, per-run job
+  idempotency key).
+- Added `BUDGET_EXCEEDED` / `BUDGET_RECONCILIATION_REQUIRED` governance codes.
+
+### Verification approach
+
+- `tests/ai-control/usage-ledger.test.ts` (13 cases) against an in-memory
+  repository whose `with_transaction` serializes (mirroring the Mongo write-
+  conflict abort): within-limit grant; every rejection dimension (tenant/user
+  request-token-cost, per-run token/cost, max concurrency); three concurrent
+  half-budget reservations → exactly two granted; duplicate-key replay returns
+  the same reservation with one entry; provider-failure release frees budget;
+  reconcile below estimate (no flag, net = actual) and above tolerance (run
+  flagged); replayed completion is exactly-once; stale-expiry releases only
+  terminal runs and is idempotent.
+- Four gates: full suite **468/468** (was 455; +13), typecheck 0, security scan
+  0, production web build pass. New files clean under the stricter apps/ai target.
+
+---
+
 ## [2026-07-15] feat: Compile an effective tenant AI policy (G3.2)
 
 ### Summary

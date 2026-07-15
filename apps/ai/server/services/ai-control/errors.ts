@@ -33,7 +33,10 @@ export type ToolGovernanceErrorCode =
   // Policy compilation (G3.2)
   | "POLICY_INPUT_INVALID"
   | "POLICY_NO_PROVIDER"
-  | "POLICY_UNKNOWN_PLAN";
+  | "POLICY_UNKNOWN_PLAN"
+  // Usage ledger (G3.3)
+  | "BUDGET_EXCEEDED"
+  | "BUDGET_RECONCILIATION_REQUIRED";
 
 /**
  * Error raised by the governed tool catalogue, executor, card loader, and
