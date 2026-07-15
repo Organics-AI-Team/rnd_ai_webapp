@@ -1121,3 +1121,24 @@ model AIRunJob {
   @@index([status, availableAt])
   @@map("ai_run_jobs")
 }
+
+/**
+ * One ordered, versioned server event for a run (G4.9). Appended before being
+ * sent, uniquely keyed by [runId, sequence] so a replay after Last-Event-ID is
+ * exact and a retried append never duplicates. Holds the full AgentRunEventV1
+ * payload for verbatim replay.
+ */
+model AIRunEvent {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId   String   @db.ObjectId
+  runId      String   @db.ObjectId
+  sequence   Int
+  type       String
+  event      Json
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([runId, sequence])
+  @@index([tenantId, runId, sequence])
+  @@map("ai_run_events")
+}

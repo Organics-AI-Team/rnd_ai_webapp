@@ -1,5 +1,28 @@
 # Changelog
 
+## [2026-07-15] feat: Ordered versioned run-event store (G4.9b)
+
+### Summary
+
+- Added the `AIRunEvent` Prisma model (`ai_run_events`) and
+  `apps/ai/server/services/ai-gateway/event-store.ts`. `append` persists every
+  `AgentRunEventV1` uniquely keyed by `[runId, sequence]` via an idempotent
+  `bulkWrite` upsert, so a retried append (or an append of a partly-stored tail)
+  stores only the genuinely new events. `replay(run, after_sequence)` returns the
+  events strictly after a Last-Event-ID in ascending order — the exact,
+  gap-free, duplicate-free stream a reconnecting client resumes from. Reads are
+  tenant-scoped, so a run's events can never be replayed across tenants.
+  `latest_sequence` reports the high-water mark (or -1).
+
+### Verification approach
+
+- `tests/integration/event-store.test.ts` (6) against a real in-memory MongoDB:
+  ordered append + full replay, replay after a Last-Event-ID, idempotent
+  re-append, appending only the new tail, cross-tenant read isolation, and the
+  latest-sequence high-water mark.
+- Four gates: full suite **583/583** (was 577; +6), typecheck 0 (new file clean),
+  security scan 0, production web build pass; Prisma schema valid.
+
 ## [2026-07-15] feat: Durable run-job queue with compare-and-set leases (G4.9a)
 
 ### Summary
