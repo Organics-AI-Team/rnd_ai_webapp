@@ -1,5 +1,53 @@
 # Changelog
 
+## [2026-07-15] feat: Isolate platform and tenant AI knowledge (G3.5, core)
+
+### Summary
+
+- Added the knowledge isolation core under `apps/ai/server/services/knowledge/`:
+  - `qdrant-collections.ts`: versioned collection names
+    (`platform_knowledge_v<v>` / `tenant_knowledge_v<v>`), the server-authored
+    `tenant_filter`/`PLATFORM_FILTER`, the payload-index list, and
+    `payload_is_tenant_owned`/`payload_is_platform` validators.
+  - `knowledge-gateway.ts`: the single retrieval path. Callers choose only a
+    scope (platform | tenant | both) — never a collection or raw filter. The
+    gateway embeds the query, searches the platform and tenant collections
+    separately with enforced filters, and **re-validates every returned point**
+    against the enforced scope, so a mislabeled point in the store can never
+    cross a tenant boundary. Results merge with provenance retained and no
+    cross-embedding-version score comparison.
+  - `citation-builder.ts`: builds auditable citations (source id/name, content
+    hash, locator, capped excerpt, retrieved_at, scope, score) and rejects
+    fail-closed (`CARD_INVALID`) any evidence not traceable to a ready/active
+    source or whose source tenant does not match.
+  - `knowledge-source-repository.ts`: tenant-scoped `knowledge_sources` lookup
+    powering citation traceability; tenant lookups pin to the caller's tenant,
+    platform lookups never leak a tenant source.
+
+### Verification approach
+
+- `tests/knowledge/knowledge-isolation.test.ts` (6) drives the gateway through a
+  **deliberately leaky** vector port that ignores the filter and returns every
+  seeded point (platform, tenant A, tenant B, and two mislabeled points): a
+  tenant-A caller never receives tenant-B or mislabeled evidence in any scope;
+  plus the source repository's tenant scoping against in-memory MongoDB.
+- `tests/knowledge/citation-builder.test.ts` (4): ready-source citation with a
+  capped excerpt; orphaned, non-ready, and tenant-mismatch results all rejected.
+- Four gates: full suite **485/485** (was 475; +10), typecheck 0, security scan
+  0, production web build pass.
+
+### Remaining (G3.5, tracked)
+
+- Ingestion write-path: `ingestion-service.ts` (MIME/size/hash/malware/parser/
+  chunker/embedding verification, quarantine-until-ready, partial-point
+  cleanup), `upload-authorization.ts` (short-lived tenant/actor/source/object-key
+  scoped grant), `apps/web/app/api/knowledge/uploads/route.ts`, the
+  `qdrant-service.ts` public collection/filter parameter removal, and the
+  `@qdrant/js-client-rest` pin. These unblock wiring the G3.4
+  `knowledge.search` tool port to the gateway.
+
+---
+
 ## [2026-07-15] feat: Wire repository-backed governed tool ports (G3.4, partial)
 
 ### Summary
