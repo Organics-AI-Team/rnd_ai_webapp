@@ -1,5 +1,29 @@
 # Changelog
 
+## [2026-07-15] test: Real MongoDBSaver durability (G4.9d — closes G4.7)
+
+### Summary
+
+- Added `tests/integration/mongodb-checkpoint.test.ts`: drives a governed run to
+  an approval interrupt with one `MongoDBSaver`, then resumes it with a **second,
+  independently-constructed** `MongoDBSaver` over the same MongoDB — proving the
+  durable checkpoint state came from Mongo, not process memory. The approval
+  resolves exactly once and the commit tool runs once, exactly as the MemorySaver
+  case does. This closes the G4.7 remainder: real checkpoint durability now works
+  because the orchestration package resolves langgraph 1.4.x +
+  `langgraph-checkpoint-mongodb` 1.4.0 (the old 0.2.74 pin caused the
+  `pending_sends` incompatibility that forced the earlier deferral).
+- The test uses `MongoMemoryReplSet` (the saver uses transactions), and the stale
+  "deferred" note in `interrupt-resume.test.ts` now points at this test.
+
+### Verification approach
+
+- `tests/integration/mongodb-checkpoint.test.ts` (1): approval resume across a
+  fresh saver + graph instance (simulated restart) against a real in-memory Mongo
+  replica set — exactly-once approval, one commit.
+- Four gates: full suite **589/589** (was 588; +1), typecheck 0, security scan 0,
+  production web build pass.
+
 ## [2026-07-15] feat: Run executor selection with rollback precedence (G4.9c)
 
 ### Summary

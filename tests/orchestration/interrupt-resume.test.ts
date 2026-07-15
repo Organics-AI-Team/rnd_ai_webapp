@@ -209,10 +209,8 @@ describe("resume_run authorization", () => {
   });
 });
 
-// NOTE: The MongoDBSaver durability case is deferred: the only published
-// @langchain/langgraph-checkpoint-mongodb bumps @langchain/langgraph-checkpoint
-// to a version incompatible with the pinned @langchain/langgraph@0.2.74 (a
-// `pending_sends` runtime skew). The MemorySaver cases above prove the same
-// durable resume + exactly-once semantics through the identical checkpointer
-// interface; production Mongo wiring is exercised by the setup script and lands
-// with the run API (G4.9). Tracked in .loop/tasks.md.
+// NOTE: The MemorySaver cases above prove the resume + exactly-once semantics
+// through the checkpointer interface. Real MongoDBSaver durability across a
+// process restart is proven in tests/integration/mongodb-checkpoint.test.ts
+// (G4.9d), now that the orchestration package resolves langgraph 1.4.x +
+// langgraph-checkpoint-mongodb 1.4.0 (the old 0.2.74 pin was incompatible).
