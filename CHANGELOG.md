@@ -1,5 +1,42 @@
 # Changelog
 
+## [2026-07-15] feat: Wire repository-backed governed tool ports (G3.4, partial)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-control/tools/repository-adapters.ts`:
+  `create_repository_backed_tool_ports({ tenant_context, formula_repository })`
+  builds the governed tool ports for one run over a resolved, frozen
+  `TenantExecutionContext`. The `formula.search`, `formula.comment`, and
+  `formula.confirm` ports now delegate to the tenant-scoped `FormulaRepository`
+  (no more `NOT_WIRED` for these): search lists only the caller's formulas and
+  filters deterministically; comment/confirm surface cross-tenant IDs as
+  `FORMULA_NOT_FOUND`; confirm targets `current+1` and reads the version back
+  from the confirmed document (replay-safe with the executor idempotency key).
+  Every adapter re-asserts the trusted tenant matches the bound run context.
+- `formula.draft`, `formula.revise`, `knowledge.search`, and `web.search` remain
+  fail-closed `NOT_WIRED` here: they depend on the Qdrant formulation/knowledge
+  gateway (G3.5) and the approved external web-search adapter. No legacy handler
+  is ever imported or called.
+
+### Verification approach
+
+- `tests/ai-control/tool-repository-adapters.test.ts` (7 cases) against an
+  in-memory MongoDB: search returns only the caller's tenant rows; comment and
+  confirm succeed in-tenant and reject cross-tenant with `FORMULA_NOT_FOUND`;
+  confirm bumps to v01; a trusted-context tenant mismatch fails
+  `TOOL_INPUT_INVALID`; the four unwired ports fail `NOT_WIRED`.
+- Four gates: full suite **475/475** (was 468; +7), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G3.4, tracked → G3.5)
+
+- Wire `formula.draft`/`formula.revise` (Qdrant formulation pipeline),
+  `knowledge.search` (partitioned Qdrant gateway), and `web.search` (external
+  adapter) once G3.5 lands the knowledge partition.
+
+---
+
 ## [2026-07-15] feat: Reserve and reconcile tenant AI usage (G3.3)
 
 ### Summary
