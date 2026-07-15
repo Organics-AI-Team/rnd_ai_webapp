@@ -1,5 +1,42 @@
 # Changelog
 
+## [2026-07-15] feat: Deterministic formula artifact validator (G4.8, core)
+
+### Summary
+
+- Added `packages/ai-orchestration/src/artifacts/formula-schema.ts`
+  (FormulaArtifactV1 with decimal-string percentages/amounts/costs, evidence
+  index types, the validation-finding shape, and the mandatory review statement)
+  and `formula-validator.ts`: `validate_formula_artifact` — the sole authority on
+  whether a draft may be finalized, using **decimal.js** (never floats) so
+  `|total - 100| <= 0.01` and usage-range checks are exact and replay-stable.
+  Checks: percentage total within tolerance, unique materials, non-water
+  materials evidence-backed (or explicitly external/unverified) and within their
+  evidence usage range, availability, cited claims, and the mandatory
+  laboratory/stability/safety/regulatory review statement. Blocking findings make
+  `valid` false; warnings are surfaced.
+
+### Verification approach
+
+- `tests/orchestration/formula-artifact.test.ts` (11): the 0.01-tolerance anchor
+  (99.98→invalid, 99.99/100.00/100.01→valid, 100.02→invalid), duplicate material,
+  unbacked-vs-external material, usage above the evidence limit, uncited claim,
+  and the required review statement.
+- Four gates: full suite **517/517** (was 506; +11), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.8, tracked)
+
+- `formula-finalizer.ts` + the `finalize` node rewrite (evidence-coverage checks,
+  quality_dimensions, blocking findings returned to the agent as bounded
+  observations, optional model-assisted review notes that can't pass a failed
+  check), `apps/ai/server/services/ai-control/formula-artifact-service.ts`
+  (draft persist + manager-approved idempotent `commit_confirmed`), and the
+  remaining deterministic checks (amount-from-batch, incompatibilities/pH,
+  required phases, dated-cost completeness).
+
+---
+
 ## [2026-07-15] feat: Persist and resume agentic loop checkpoints (G4.7, core)
 
 ### Summary
