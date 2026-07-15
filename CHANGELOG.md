@@ -1,5 +1,34 @@
 # Changelog
 
+## [2026-07-15] feat: Governed AI run persistence (G4.9e, part 1)
+
+### Summary
+
+- Added `apps/ai/server/repositories/ai-run-repository.ts`: the sanctioned access
+  point for the `ai_runs` collection. `create` is idempotent on
+  `[tenantId, idempotencyKey]` — a duplicate-key insert returns the existing run
+  with `created: false`, so a retried gateway call never double-creates (and the
+  same key is still allowed under different tenants). `get` and `mark_status` are
+  tenant-scoped with the canonical `AI_RUN_NOT_FOUND` shape; `find_by_idempotency`
+  supports the gateway's pre-transaction idempotency check. Access is by
+  `tenant_id` string (not a full execution context) because the worker rebuilds
+  tenant identity from a claimed job before it has one.
+
+### Verification approach
+
+- `tests/integration/ai-run-repository.test.ts` (5) against a real in-memory
+  MongoDB with the deployment's unique indexes: create + tenant-scoped read,
+  idempotent retry (one run), cross-tenant read denial, same key under different
+  tenants, and a tenant-scoped status transition.
+- Four gates: full suite **594/594** (was 589; +5), typecheck 0 (new file clean),
+  security scan 0, production web build pass.
+
+### Remaining (G4.9e, part 2)
+
+- The `ai-gateway` `create_run` itself: build the execution context, validate
+  input, compile/pin policy, assemble/pin the context pack, reserve budget, and
+  create the AIRun + enqueue one job in a single transaction, idempotent by key.
+
 ## [2026-07-15] test: Real MongoDBSaver durability (G4.9d — closes G4.7)
 
 ### Summary
