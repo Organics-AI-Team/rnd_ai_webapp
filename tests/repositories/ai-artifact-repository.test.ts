@@ -15,13 +15,22 @@ import { build_tenant_execution_context } from "../../apps/ai/server/auth/tenant
 import { TENANT_ROLE_PERMISSIONS } from "../../packages/shared-types/src/auth";
 import type { RequestPrincipal, TenantRole } from "../../packages/shared-types/src/auth";
 import type { TenantExecutionContext } from "../../packages/shared-types/src/tenant";
-import { ResourceNotFoundError } from "../../apps/ai/server/repositories/tenant-repository-base";
+import {
+  PermissionDeniedError,
+  ResourceNotFoundError,
+} from "../../apps/ai/server/repositories/tenant-repository-base";
 import {
   create_ai_artifact_repository,
   type AIArtifactRepository,
 } from "../../apps/ai/server/repositories/ai-artifact-repository";
 import {
+  create_formula_repository,
+  type FormulaRepository,
+} from "../../apps/ai/server/repositories/formula-repository";
+import {
   FormulaArtifactService,
+  FormulaCommitNotApprovedError,
+  type FormulaApprovalGate,
   type MaterialEvidenceProvider,
 } from "../../apps/ai/server/services/ai-control/formula-artifact-service";
 import type {
@@ -33,6 +42,7 @@ let server: MongoMemoryServer;
 let client: MongoClient;
 let db: Db;
 let repository: AIArtifactRepository;
+let formulas: FormulaRepository;
 
 const TENANT_A = "507f1f77bcf86cd7994390a1";
 const TENANT_B = "507f1f77bcf86cd7994390b1";
@@ -70,7 +80,22 @@ function make_context(
 }
 
 const a_manager = () => make_context(TENANT_A, PROFILE_A, "manager");
+const a_user = () => make_context(TENANT_A, PROFILE_A, "user");
 const b_manager = () => make_context(TENANT_B, PROFILE_B, "manager");
+
+/** An approval gate with a switchable verdict, recording its queries. */
+class FakeApprovalGate implements FormulaApprovalGate {
+  public readonly queries: Array<Record<string, string>> = [];
+  constructor(private approved: boolean) {}
+  async has_approved_artifact(query: {
+    tenant_id: string;
+    artifact_id: string;
+    run_id: string;
+  }): Promise<boolean> {
+    this.queries.push({ ...query });
+    return this.approved;
+  }
+}
 
 /** A minimal valid formula artifact for persistence provenance. */
 function draft_artifact(): FormulaArtifactV1 {
@@ -121,6 +146,7 @@ beforeAll(async () => {
   await client.connect();
   db = client.db("test_ai_artifacts");
   repository = create_ai_artifact_repository(db);
+  formulas = create_formula_repository(db);
 });
 
 afterAll(async () => {
@@ -130,6 +156,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.collection("ai_artifacts").deleteMany({});
+  await db.collection("formulas").deleteMany({});
+  await db.collection("formula_version_logs").deleteMany({});
 });
 
 describe("AIArtifactRepository", () => {
@@ -179,8 +207,11 @@ describe("AIArtifactRepository", () => {
       sourceEvidenceIds: [],
     });
     const id = String(created._id);
-    expect((await repository.mark_confirmed(a_manager(), id)).status).toBe("confirmed");
-    expect((await repository.mark_confirmed(a_manager(), id)).status).toBe("confirmed");
+    const formula_id = "507f1f77bcf86cd79943d001";
+    const first = await repository.mark_confirmed(a_manager(), id, formula_id);
+    expect(first.status).toBe("confirmed");
+    expect(first.confirmedFormulaId).toBe(formula_id);
+    expect((await repository.mark_confirmed(a_manager(), id, formula_id)).status).toBe("confirmed");
   });
 });
 
@@ -207,5 +238,93 @@ describe("FormulaArtifactService.persist_draft", () => {
     await expect(
       service.persist_draft(a_manager(), draft_artifact(), VALIDATION, RUN_ID),
     ).rejects.toThrow(/AIArtifactRepository/);
+  });
+});
+
+describe("FormulaArtifactService.commit_confirmed", () => {
+  const service = () =>
+    new FormulaArtifactService(evidence_provider, undefined, repository, formulas);
+
+  async function persist_draft(): Promise<string> {
+    const { artifact_id } = await service().persist_draft(
+      a_manager(),
+      draft_artifact(),
+      VALIDATION,
+      RUN_ID,
+    );
+    return artifact_id;
+  }
+
+  const commit_args = (artifact_id: string) => ({
+    artifact_id,
+    run_id: RUN_ID,
+    idempotency_key: `commit_${artifact_id}`,
+  });
+
+  it("creates and confirms a formula, links the artifact, and logs the confirm", async () => {
+    const artifact_id = await persist_draft();
+    const result = await service().commit_confirmed(
+      a_manager(),
+      commit_args(artifact_id),
+      new FakeApprovalGate(true),
+    );
+    expect(result.already_committed).toBe(false);
+    expect(result.formula_id).toMatch(/^[a-f0-9]{24}$/);
+
+    const formula = await formulas.get_formula(a_manager(), result.formula_id);
+    expect(formula.status).toBe("confirmed");
+    expect(formula.formulaName).toBe("Test serum");
+
+    const artifact = await repository.get_artifact(a_manager(), artifact_id);
+    expect(artifact.status).toBe("confirmed");
+    expect(artifact.confirmedFormulaId).toBe(result.formula_id);
+
+    const logs = await formulas.list_version_logs(a_manager(), result.formula_id);
+    expect(logs.some((log) => log.action === "confirm")).toBe(true);
+  });
+
+  it("is idempotent: a replay returns the same formula without duplicating it", async () => {
+    const artifact_id = await persist_draft();
+    const first = await service().commit_confirmed(
+      a_manager(),
+      commit_args(artifact_id),
+      new FakeApprovalGate(true),
+    );
+    const second = await service().commit_confirmed(
+      a_manager(),
+      commit_args(artifact_id),
+      new FakeApprovalGate(true),
+    );
+    expect(second.already_committed).toBe(true);
+    expect(second.formula_id).toBe(first.formula_id);
+    expect(await db.collection("formulas").countDocuments({ tenantId: TENANT_A })).toBe(1);
+  });
+
+  it("rejects a commit with no covering approval and creates no formula", async () => {
+    const artifact_id = await persist_draft();
+    await expect(
+      service().commit_confirmed(a_manager(), commit_args(artifact_id), new FakeApprovalGate(false)),
+    ).rejects.toBeInstanceOf(FormulaCommitNotApprovedError);
+    expect(await db.collection("formulas").countDocuments({ tenantId: TENANT_A })).toBe(0);
+  });
+
+  it("denies a caller lacking formula:confirm before checking approval", async () => {
+    const artifact_id = await persist_draft();
+    const gate = new FakeApprovalGate(true);
+    await expect(
+      service().commit_confirmed(a_user(), commit_args(artifact_id), gate),
+    ).rejects.toBeInstanceOf(PermissionDeniedError);
+    expect(gate.queries).toHaveLength(0);
+  });
+
+  it("throws when the formula repository is not injected", async () => {
+    const partial = new FormulaArtifactService(evidence_provider, undefined, repository);
+    await expect(
+      partial.commit_confirmed(
+        a_manager(),
+        commit_args("507f1f77bcf86cd79943f001"),
+        new FakeApprovalGate(true),
+      ),
+    ).rejects.toThrow(/FormulaRepository/);
   });
 });

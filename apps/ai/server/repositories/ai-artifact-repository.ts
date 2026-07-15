@@ -54,17 +54,20 @@ export interface AIArtifactRepository {
   ): Promise<WithId<Document>>;
 
   /**
-   * Mark a draft artifact confirmed (idempotent). Setting the same status again
-   * is a no-op that still returns the current document.
+   * Mark a draft artifact confirmed (idempotent), linking it to the committed
+   * formula so a replayed commit can return the same formula. Setting the same
+   * status again is a no-op that still returns the current document.
    *
    * @param context - Verified tenant execution context.
    * @param artifact_id - Caller-supplied artifact ID.
+   * @param confirmed_formula_id - The formula this artifact was committed to.
    * @returns The updated artifact document.
    * @throws ResourceNotFoundError ("AI_ARTIFACT_NOT_FOUND").
    */
   mark_confirmed(
     context: TenantExecutionContext,
     artifact_id: string,
+    confirmed_formula_id: string,
   ): Promise<WithId<Document>>;
 }
 
@@ -90,13 +93,13 @@ export function create_ai_artifact_repository(db: Db): AIArtifactRepository {
       return get_scoped_document(artifacts, context, artifact_id, NOT_FOUND);
     },
 
-    async mark_confirmed(context, artifact_id) {
+    async mark_confirmed(context, artifact_id, confirmed_formula_id) {
       return update_scoped_document(
         artifacts,
         context,
         artifact_id,
         NOT_FOUND,
-        { status: "confirmed" },
+        { status: "confirmed", confirmedFormulaId: confirmed_formula_id },
       );
     },
   };

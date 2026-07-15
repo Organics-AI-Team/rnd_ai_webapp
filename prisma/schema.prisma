@@ -1053,6 +1053,9 @@ model AIArtifact {
   sourceEvidenceIds      String[]
   parentArtifactId       String?          @db.ObjectId
   supersededByArtifactId String?          @db.ObjectId
+  // G4.8d-iii: set when a confirmed artifact is committed to a Formula, so a
+  // replayed commit_confirmed returns the same formula instead of duplicating it.
+  confirmedFormulaId     String?          @db.ObjectId
   createdAt              DateTime         @default(now())
   updatedAt              DateTime         @updatedAt
 

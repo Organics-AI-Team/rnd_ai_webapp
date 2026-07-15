@@ -1,5 +1,43 @@
 # Changelog
 
+## [2026-07-15] feat: Approval-gated formula artifact commit (G4.8d-iii)
+
+### Summary
+
+- Added `FormulaArtifactService.commit_confirmed`: a manager holding
+  `formula:confirm`, with an approved AIApproval (checked through an injected
+  `FormulaApprovalGate` port — the concrete ai_approvals adapter is wired by the
+  gateway), commits a confirmed draft artifact to a real tenant `Formula`. It
+  maps the validated `FormulaArtifactV1` into a create payload (no `organizationId`
+  — a server-derived security field the tenant repository stamps itself), creates
+  and confirms the formula idempotently through the existing `FormulaRepository`
+  (`create_formula` → `confirm_formula`, replay-safe by idempotency key), then
+  links the formula back onto the artifact via `mark_confirmed`. A replay short-
+  circuits on the stored `confirmedFormulaId` and returns the same formula instead
+  of duplicating it. Permission is checked before any write, and a missing
+  approval raises the typed `FormulaCommitNotApprovedError`.
+- Added the `confirmedFormulaId` link field to the `AIArtifact` Prisma model and
+  extended `AIArtifactRepository.mark_confirmed` to persist it. All writes flow
+  through the scoped repository helpers, so the boundary scanner stays satisfied.
+
+### Verification approach
+
+- `tests/repositories/ai-artifact-repository.test.ts` grew to 10 against a real
+  in-memory MongoDB: the happy path (formula confirmed + artifact linked + confirm
+  version-log), idempotent replay (one formula, `already_committed`), missing
+  approval (rejected, zero formulas), a non-manager denied before the approval
+  check, and the missing-repository guard.
+- Four gates: full suite **554/554** (was 549; +5), typecheck 0 (new files clean
+  under apps/ai), security scan 0, production web build pass; Prisma schema valid.
+
+### Remaining (G4.8)
+
+- Only the concrete raw-material-backed `MaterialEvidenceProvider` and the
+  `FormulaApprovalGate` ai_approvals adapter remain — thin read-only adapters that
+  plug into the already-built injected interfaces when the AI gateway is wired
+  (G4.9). The deterministic artifact system (validate → quality → finalize →
+  persist → approval-gated commit) is complete and tested.
+
 ## [2026-07-15] feat: Draft formula artifact persistence (G4.8d-ii)
 
 ### Summary

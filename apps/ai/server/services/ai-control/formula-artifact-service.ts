@@ -30,6 +30,8 @@ import {
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 
 import type { AIArtifactRepository } from "../../repositories/ai-artifact-repository";
+import type { FormulaRepository } from "../../repositories/formula-repository";
+import { require_permission } from "../../repositories/tenant-repository-base";
 
 /**
  * Loads deterministic material evidence for a tenant's formula draft.
@@ -121,6 +123,79 @@ function collect_source_ids(artifact: FormulaArtifactV1): string[] {
   return [...ids];
 }
 
+/**
+ * Answers whether a durable manager approval covers committing an artifact.
+ * The concrete adapter (backed by ai_approvals) is wired by the AI gateway; the
+ * service stays agnostic to how approvals are stored.
+ */
+export interface FormulaApprovalGate {
+  /**
+   * @param query - Tenant, artifact, and run identifying the approval.
+   * @param context - Verified tenant execution context.
+   * @returns True when an approved AIApproval covers the commit.
+   */
+  has_approved_artifact(
+    query: { tenant_id: string; artifact_id: string; run_id: string },
+    context: TenantExecutionContext,
+  ): Promise<boolean>;
+}
+
+/** Raised when commit_confirmed is called without a covering approval. */
+export class FormulaCommitNotApprovedError extends Error {
+  /** Stable, client-safe error code. */
+  readonly code = "FORMULA_COMMIT_NOT_APPROVED";
+  /**
+   * @param artifact_id - The artifact that lacked an approval.
+   */
+  constructor(artifact_id: string) {
+    super(`No approved AIApproval covers artifact "${artifact_id}".`);
+    this.name = "FormulaCommitNotApprovedError";
+  }
+}
+
+/** Arguments identifying one idempotent artifact commit. */
+export interface CommitConfirmedArgs {
+  readonly artifact_id: string;
+  readonly run_id: string;
+  /** Stable key making the confirm version-log write replay-safe. */
+  readonly idempotency_key: string;
+}
+
+/**
+ * Map a validated formula artifact into a Formula repository create payload.
+ *
+ * `organizationId` is deliberately NOT set: it is a server-derived security
+ * field the tenant repository forbids in input and stamps itself from the
+ * tenant context, exactly as every other tenant-scoped formula is created.
+ *
+ * @param artifact - The validated formula artifact.
+ * @param created_by - Acting profile id recorded as the creator.
+ * @returns A create_formula input document.
+ */
+function map_artifact_to_formula(
+  artifact: FormulaArtifactV1,
+  created_by: string,
+): Record<string, unknown> {
+  return {
+    formulaName: artifact.name,
+    version: 0,
+    targetBenefits: [],
+    ingredients: artifact.ingredients.map((ingredient) => ({
+      materialId: ingredient.material_id,
+      rm_code: ingredient.rm_code,
+      productName: ingredient.rm_code,
+      amount: Number(ingredient.amount),
+      percentage: Number(ingredient.percentage),
+      notes: `${ingredient.phase} — ${ingredient.rationale}`,
+    })),
+    totalAmount: Number(artifact.batch_size),
+    remarks: "Confirmed from AI formula artifact",
+    aiGenerated: true,
+    createdBy: created_by,
+    warnings: artifact.warnings ?? [],
+  };
+}
+
 /** Deterministic formula ArtifactService adapter for the governed loop. */
 export class FormulaArtifactService implements ArtifactService {
   /**
@@ -128,12 +203,15 @@ export class FormulaArtifactService implements ArtifactService {
    * @param constraint_provider - Optional tenant/product constraint source; when
    *                              omitted, constraint-gated checks are no-ops.
    * @param artifact_repository - Optional persistence for draft artifacts;
-   *                              required only for `persist_draft`.
+   *                              required for `persist_draft`/`commit_confirmed`.
+   * @param formula_repository - Optional tenant formula repository; required for
+   *                             `commit_confirmed`.
    */
   constructor(
     private readonly evidence_provider: MaterialEvidenceProvider,
     private readonly constraint_provider?: FormulaConstraintProvider,
     private readonly artifact_repository?: AIArtifactRepository,
+    private readonly formula_repository?: FormulaRepository,
   ) {}
 
   /**
@@ -222,5 +300,80 @@ export class FormulaArtifactService implements ArtifactService {
       sourceEvidenceIds: collect_source_ids(artifact),
     });
     return { artifact_id: String(document._id), content_hash };
+  }
+
+  /**
+   * Commit a confirmed draft artifact to a real tenant Formula. Only a manager
+   * carrying `formula:confirm` with an approved AIApproval may commit; the
+   * artifact is mapped into a Formula, created and confirmed idempotently through
+   * the FormulaRepository, then linked back to the artifact so a replay returns
+   * the same formula instead of duplicating it.
+   *
+   * @param context - Verified tenant execution context (must hold formula:confirm).
+   * @param args - Artifact/run/organization ids and the confirm idempotency key.
+   * @param approval_gate - Injected check for a covering approved AIApproval.
+   * @returns The committed formula id and whether the commit already existed.
+   * @throws Error when the required repositories were not injected.
+   * @throws PermissionDeniedError when the context lacks formula:confirm.
+   * @throws FormulaCommitNotApprovedError when no approval covers the artifact.
+   * @throws ResourceNotFoundError when the artifact is missing or cross-tenant.
+   */
+  async commit_confirmed(
+    context: TenantExecutionContext,
+    args: CommitConfirmedArgs,
+    approval_gate: FormulaApprovalGate,
+  ): Promise<{ formula_id: string; already_committed: boolean }> {
+    if (!this.artifact_repository || !this.formula_repository) {
+      throw new Error(
+        "FormulaArtifactService.commit_confirmed requires an AIArtifactRepository and a FormulaRepository.",
+      );
+    }
+    require_permission(context, "formula:confirm");
+
+    const artifact_document = await this.artifact_repository.get_artifact(
+      context,
+      args.artifact_id,
+    );
+    // Idempotent replay: an already-committed artifact returns its formula.
+    if (
+      artifact_document.status === "confirmed" &&
+      typeof artifact_document.confirmedFormulaId === "string"
+    ) {
+      return { formula_id: artifact_document.confirmedFormulaId, already_committed: true };
+    }
+
+    const approved = await approval_gate.has_approved_artifact(
+      { tenant_id: context.tenant_id, artifact_id: args.artifact_id, run_id: args.run_id },
+      context,
+    );
+    if (!approved) {
+      throw new FormulaCommitNotApprovedError(args.artifact_id);
+    }
+
+    const parsed = formula_artifact_v1_schema.safeParse(artifact_document.content);
+    if (!parsed.success) {
+      throw new Error(
+        `Stored artifact "${args.artifact_id}" content is not a valid formula artifact.`,
+      );
+    }
+
+    const formula = await this.formula_repository.create_formula(
+      context,
+      map_artifact_to_formula(parsed.data, context.actor_profile_id),
+    );
+    const formula_id = String(formula._id);
+    await this.formula_repository.confirm_formula(context, formula_id, args.idempotency_key, {
+      log_fields: {
+        changeType: "confirmed",
+        updatedBySource: "ai",
+        updatedByUserId: context.actor_profile_id,
+        updatedByName: context.actor_profile_id,
+        status: "confirmed",
+        remarks: `Confirmed from AI artifact ${args.artifact_id}`,
+      },
+    });
+    await this.artifact_repository.mark_confirmed(context, args.artifact_id, formula_id);
+
+    return { formula_id, already_committed: false };
   }
 }
