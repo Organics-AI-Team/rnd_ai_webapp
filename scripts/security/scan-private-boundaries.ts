@@ -14,6 +14,10 @@
  *  - TENANT_REPOSITORY_BYPASS: a tenant-owned collection or Prisma model
  *    accessed directly outside the tenant repository layer, migration scripts,
  *    or the documented legacy ReAct tool paths (G2.7).
+ *  - OODA_GATEWAY_BYPASS: a production caller drives the governed loop graph
+ *    directly instead of through the AI gateway (G4.11).
+ *  - LEGACY_ENTRY_POINT_IMPORT: the governed orchestration path (orchestration
+ *    package + AI gateway) imports the legacy AI executor tree (G4.11).
  *  - IGNORED_TYPE_ERRORS: ignoreBuildErrors enabled in build configuration.
  *
  * Run directly (npm run security:scan) to scan the repository and exit
@@ -40,6 +44,7 @@ export type SecurityFindingCode =
   | "ORG_CREATION_OUTSIDE_PROVISIONING"
   | "TENANT_REPOSITORY_BYPASS"
   | "OODA_GATEWAY_BYPASS"
+  | "LEGACY_ENTRY_POINT_IMPORT"
   | "IGNORED_TYPE_ERRORS";
 
 /** One deterministic policy violation with its location. */
@@ -118,6 +123,26 @@ const ALLOWED_OODA_DRIVER_PATHS = [
   "packages/ai-orchestration/",
   "ai-gateway",
 ] as const;
+
+/**
+ * The governed orchestration path: the orchestration package (which owns the
+ * loop graph and its recursive delegation) and the AI gateway (the single
+ * sanctioned run entry point). These files are held free of legacy AI executor
+ * imports so an agentic run can never fall back into a legacy path.
+ */
+const GOVERNED_ORCHESTRATION_PATHS = [
+  "packages/ai-orchestration/",
+  "apps/ai/server/services/ai-gateway/",
+] as const;
+
+/**
+ * Import-specifier fragments that reference the legacy AI executor tree
+ * (apps/ai/agents/**: the ReAct agent, per-domain legacy agents, the agent
+ * manager, and their fixed pipelines). Matched as a `/agents/` path segment so a
+ * relative (`../agents/x`), aliased (`@/ai/agents/x`), or workspace import all
+ * resolve, while unrelated words like `subagents` never trip the check.
+ */
+const LEGACY_AI_ENTRY_POINT_FRAGMENTS = ["/agents/"] as const;
 
 /**
  * Normalize a path to forward slashes for rule matching.
@@ -666,6 +691,106 @@ export function reject_ooda_boundary_bypass(file: SourceFile): SecurityFinding[]
 }
 
 /**
+ * Whether a file is in the governed orchestration path and subject to the
+ * legacy-import rule (test files are never scanned).
+ *
+ * @param path - Repo-relative file path.
+ * @returns True when the legacy-entry-point rule applies to the file.
+ */
+function is_legacy_entry_point_scanned(path: string): boolean {
+  const normalized = normalize_path(path);
+  if (/\.(test|spec)\.[jt]sx?$/.test(normalized)) return false;
+  return GOVERNED_ORCHESTRATION_PATHS.some((fragment) => normalized.includes(fragment));
+}
+
+/**
+ * Whether an import specifier resolves into the legacy AI executor tree.
+ *
+ * @param specifier - The module specifier string from an import/export/require.
+ * @returns True when the specifier references apps/ai/agents/**.
+ */
+function is_legacy_entry_point_specifier(specifier: string): boolean {
+  const normalized = specifier.replace(/\\/g, "/");
+  if (normalized.startsWith("agents/")) return true;
+  return LEGACY_AI_ENTRY_POINT_FRAGMENTS.some((fragment) => normalized.includes(fragment));
+}
+
+/**
+ * Extract the string module specifier a node imports, if any.
+ *
+ * Covers static `import`/`export ... from`, dynamic `import("…")`, and
+ * `require("…")` with a string-literal argument.
+ *
+ * @param node - Candidate AST node.
+ * @returns The specifier text, or null when the node is not a module reference.
+ */
+function module_specifier_of(node: ts.Node): string | null {
+  if (
+    (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+    node.moduleSpecifier !== undefined &&
+    ts.isStringLiteral(node.moduleSpecifier)
+  ) {
+    return node.moduleSpecifier.text;
+  }
+  if (ts.isCallExpression(node) && node.arguments.length > 0) {
+    const is_dynamic_import = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+    const is_require =
+      ts.isIdentifier(node.expression) && node.expression.text === "require";
+    const argument = node.arguments[0];
+    if ((is_dynamic_import || is_require) && ts.isStringLiteral(argument)) {
+      return argument.text;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find legacy AI executor imports inside a governed orchestration file.
+ *
+ * @param file - Scanned file.
+ * @param source - Parsed AST.
+ * @returns LEGACY_ENTRY_POINT_IMPORT findings.
+ */
+function find_legacy_entry_point_imports(
+  file: SourceFile,
+  source: ts.SourceFile,
+): SecurityFinding[] {
+  const findings: SecurityFinding[] = [];
+  const visit = (node: ts.Node): void => {
+    const specifier = module_specifier_of(node);
+    if (specifier !== null && is_legacy_entry_point_specifier(specifier)) {
+      findings.push(
+        finding_at(
+          file,
+          source,
+          node,
+          "LEGACY_ENTRY_POINT_IMPORT",
+          `the governed orchestration path must not import the legacy AI executor "${specifier}"`,
+        ),
+      );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return findings;
+}
+
+/**
+ * Reject imports of the legacy AI executor tree from the governed orchestration
+ * path, so an agentic run can never fall back into a legacy ReAct/pipeline/
+ * agent-manager executor. Only the orchestration package and the AI gateway are
+ * policed; the legacy tree itself and test files are not. Exported for
+ * fixture-driven tests (G4.11).
+ *
+ * @param file - Scanned file.
+ * @returns LEGACY_ENTRY_POINT_IMPORT findings, or [] when out of scope.
+ */
+export function reject_legacy_entry_point_import(file: SourceFile): SecurityFinding[] {
+  if (!is_legacy_entry_point_scanned(file.path)) return [];
+  return find_legacy_entry_point_imports(file, parse(file));
+}
+
+/**
  * Find ignored TypeScript build errors in configuration.
  *
  * @param file - Scanned file.
@@ -723,6 +848,9 @@ export function scan_private_boundaries(
       ...(is_ooda_boundary_exempt(file.path)
         ? []
         : find_ooda_boundary_violations(file, source)),
+      ...(is_legacy_entry_point_scanned(file.path)
+        ? find_legacy_entry_point_imports(file, source)
+        : []),
       ...find_ignored_type_errors(file, source),
     ];
   });

@@ -1,5 +1,40 @@
 # Changelog
 
+## [2026-07-15] feat: Legacy AI executor import boundary (G4.11)
+
+### Summary
+
+Extended the private-boundary scanner with a `LEGACY_ENTRY_POINT_IMPORT` rule
+that keeps the governed orchestration path free of the legacy AI executor tree, so
+an agentic run can never fall back into a legacy ReAct/pipeline/agent-manager path.
+Within `packages/ai-orchestration/` and `apps/ai/server/services/ai-gateway/`, any
+static import, dynamic `import()`, or `require()` that resolves into
+`apps/ai/agents/**` (matched as a `/agents/` path segment, so relative, `@/ai`
+aliased, and workspace forms all resolve while words like `subagents` never trip)
+is rejected. The legacy tree itself (retired in G5) and test files are not policed.
+
+### Changes
+
+- `scripts/security/scan-private-boundaries.ts` — added the
+  `LEGACY_ENTRY_POINT_IMPORT` finding code, `GOVERNED_ORCHESTRATION_PATHS` +
+  `LEGACY_AI_ENTRY_POINT_FRAGMENTS` constants, `is_legacy_entry_point_scanned` /
+  `is_legacy_entry_point_specifier` / `module_specifier_of` /
+  `find_legacy_entry_point_imports` helpers, the exported
+  `reject_legacy_entry_point_import`, and wired it into `scan_private_boundaries`.
+- `tests/security/legacy-entry-point-boundary.test.ts` — 8 fixtures (relative,
+  aliased, dynamic `import()`, `require()`, sanctioned imports, out-of-scope legacy
+  tree, `subagents` non-match, governed-path test-file exemption).
+- `docs/commercial/evidence/g4-release.md` — recorded the new rule and refreshed
+  the G4.9/G4.11 status and pending list.
+
+### Verification
+
+- RED then GREEN on the new suite (8/8); full suite 639/639.
+- `npm run typecheck` 0 errors; `npm run security:scan` 0 violations on the tree
+  (the governed path imports no legacy module).
+
+---
+
 ## [2026-07-15] feat: Governed AI run API route handlers (G4.9g, credential-free subset)
 
 ### Summary

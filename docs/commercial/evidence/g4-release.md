@@ -19,7 +19,7 @@ that depend on a live run stream are marked pending below.
 | G4.6 Specialist delegation running the same loop | done | 6d6bd10 |
 | G4.7 MongoDB checkpoints, clarification, durable approval interrupts | core done | 2418bce (real MongoDBSaver pending langgraph upgrade with G4.9) |
 | G4.8 Deterministic, approval-aware formula artifacts + finalize node | done | bf644b7 · 57c6e01 · 97d88b7 · 20984ae · 042f5a6 · 9b353ff |
-| G4.9 Authenticated run + event API + private worker | pending | needs fresh integration + `@langchain/langgraph` upgrade |
+| G4.9 Authenticated run + event API + private worker | credential-free subset done | routes/handlers/event-store/queue/repo/worker-core + `ai-run-api.test.ts`; live execution + concrete adapters pending creds |
 | G4.10 AI UI on versioned run events | core done | reducer 3967621 (SSE hook + cards pending G4.9) |
 | G4.11 Orchestration-boundary enforcement + this evidence | this commit | scanner rule + fixtures below |
 
@@ -70,14 +70,39 @@ test files are exempt. Legacy LangGraph graphs (named `graph` but built from
 G5 canary selector. Covered by `tests/security/ooda-boundary.test.ts` (7 fixtures)
 and enforced in CI via `npm run security:scan` (0 violations on the tree).
 
-## Pending (with G4.9)
+The scanner also gained the **`LEGACY_ENTRY_POINT_IMPORT`** rule: within the
+governed orchestration path (the `packages/ai-orchestration/` package and the
+`apps/ai/server/services/ai-gateway/` service) it rejects any static import,
+dynamic `import()`, or `require()` that resolves into the legacy AI executor tree
+(`apps/ai/agents/**` — the ReAct agent, per-domain legacy agents, and the agent
+manager), so an agentic run can never fall back into a legacy executor. The legacy
+tree itself (retired in G5) and test files are not policed. Covered by
+`tests/security/legacy-entry-point-boundary.test.ts` (8 fixtures); 0 violations on
+the tree (the governed path imports no legacy module).
 
-- The authenticated `POST /run` + SSE `events` + `resume` routes, the event store,
-  and the leased private worker.
-- Real `MongoDBSaver` durability (needs the `@langchain/langgraph` upgrade that
-  resolves the checkpoint-mongodb `pending_sends` conflict with pinned 0.2.74).
-- The live SSE UI hook, approval/clarification/evidence cards, and the reconnect
-  e2e spec (`tests/e2e/agentic-run.spec.ts`).
+## Run API (G4.9g, credential-free subset done)
+
+The three governed-run routes are built on the tested G4.9 blocks: `POST
+/api/ai/runs`, `GET /api/ai/runs/[runId]/events` (SSE with `Last-Event-ID`
+replay + heartbeat), and `POST /api/ai/runs/[runId]/resume`. Run-specific
+routing/validation/error mapping lives in pure handlers
+(`apps/ai/server/services/ai-gateway/run-api-handlers.ts`) exercised with fakes by
+`tests/integration/ai-run-api.test.ts` (12 cases: 202/400/403/503, idempotent run
+id, ordered SSE replay + terminal close + `Last-Event-ID` + 404 authorization +
+heartbeat/abort, resume 202/400/404). Anonymous/suspended cases remain the reused
+`with_request_principal` guard's responsibility (G0). Run creation is fronted by a
+placeholder gateway returning 503 `RUN_API_NOT_WIRED` until the concrete
+policy/context/budget adapters land; events and resume are fully wired to MongoDB.
+
+## Pending (external credential gate — PENDING_EXTERNAL_ROTATION)
+
+- Concrete `RunExecutor`/runtime factory and the policy/context/budget gateway
+  adapters that flip run creation off its 503 (need provider credentials).
+- The leased private worker entry point driving live execution.
+- End-to-end execution evidence through the live run API: completion,
+  provider-failure, budget-limit, and live clarification/approval resume.
+- The live SSE UI hook wiring into the chat surface and the reconnect e2e spec
+  (`tests/e2e/agentic-run.spec.ts`).
 - A CI check that every registered `ToolDefinition` has a matching capability card
-  and no card lacks a tool.
-- Provider-failure and budget-limit evidence exercised through the live run API.
+  and no card lacks a tool (the full-catalogue build depends on the Qdrant gateway;
+  per-tool card presence/drift is already enforced at registration).
