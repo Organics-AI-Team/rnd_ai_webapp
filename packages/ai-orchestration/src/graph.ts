@@ -11,89 +11,27 @@
  *   agent -> { gate, request_clarification, finalize, fail }
  *   gate  -> { act, request_approval, agent (typed denial), fail (loop trip) }
  *   act -> agent; request_clarification -> agent; request_approval -> gate
- *   finalize -> END; fail -> END
+ *   finalize -> END (or -> agent when a blocking validation still has budget)
+ *   fail -> END
  *
- * request_clarification / request_approval are typed stubs until durable
- * interrupts land in plan Task 7; finalize is a deterministic minimal
- * implementation until full artifact validators land in plan Task 8.
+ * finalize authoritatively validates any produced artifact and, while budget
+ * remains, routes a blocking validation back to the agent as an observation.
  */
 import { Command, END, START, StateGraph } from "@langchain/langgraph";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
-import { build_run_event } from "./events";
 import { agent } from "./nodes/agent";
 import { act } from "./nodes/act";
 import { fail } from "./nodes/fail";
+import { finalize } from "./nodes/finalize";
 import { gate } from "./nodes/gate";
 import { ingress } from "./nodes/ingress";
 import { request_approval } from "./nodes/request-approval";
 import { request_clarification } from "./nodes/request-clarification";
-import { build_output_document } from "./output";
 import type { AgentLoopRuntime } from "./ports";
 import { log_loop_event } from "./ports";
-import { LOOP_NODE, build_run_error } from "./routing";
+import { LOOP_NODE } from "./routing";
 import { AgentLoopState } from "./state";
-import type { AgentLoopStateType, AgentLoopStateUpdate } from "./state";
-
-/**
- * Interim deterministic finalize: builds a schema-validated output from the
- * model's finalize proposal, records completion, and reconciles usage.
- * Plan Task 8 replaces this with artifact validators, evidence-coverage
- * checks, and computed quality dimensions.
- *
- * @param state - Current loop state carrying the finalize proposal.
- * @param runtime - Injected ports and trusted context.
- * @returns State update with the validated output and run.completed event,
- *          or a typed error update on an invariant violation.
- */
-async function finalize_minimal(
-  state: AgentLoopStateType,
-  runtime: AgentLoopRuntime,
-): Promise<AgentLoopStateUpdate> {
-  log_loop_event(runtime, "info", "finalize.start");
-  const action = state.pending_action;
-  if (!action || action.kind !== "finalize") {
-    log_loop_event(runtime, "error", "finalize.missing_request");
-    return {
-      error: build_run_error(
-        runtime,
-        "ORCHESTRATOR_INVARIANT_VIOLATION",
-        "Finalize was reached without a finalize proposal.",
-      ),
-    };
-  }
-  const output = build_output_document(state, runtime, {
-    status: "completed",
-    answer: action.request.answer,
-    citations: action.request.citations,
-    uncertainty: action.request.uncertainty,
-  });
-  await runtime.ports.usage.reconcile(
-    state.run_id,
-    {
-      model_calls: state.usage.model_calls,
-      tool_calls: state.usage.tool_calls,
-      tokens_used: state.usage.tokens_used,
-      cost_usd_used: state.usage.cost_usd_used,
-    },
-    runtime.context,
-  );
-  await runtime.ports.runs.mark_completed(
-    state.run_id,
-    output,
-    runtime.context,
-  );
-  const events = [
-    build_run_event(
-      state,
-      { clock: runtime.ports.clock, ids: runtime.ports.ids },
-      0,
-      "run.completed",
-      { status: "completed", output_schema_version: "1" },
-    ),
-  ];
-  log_loop_event(runtime, "info", "finalize.finish");
-  return { output, pending_action: null, events };
-}
+import type { AgentLoopStateType } from "./state";
 
 /**
  * Build the uncompiled governed-loop StateGraph with the exact topology.
@@ -125,8 +63,10 @@ export function build_agent_loop_graph(runtime: AgentLoopRuntime) {
     .addNode(LOOP_NODE.request_approval, (state: AgentLoopStateType) =>
       request_approval(state, runtime),
     )
-    .addNode(LOOP_NODE.finalize, (state: AgentLoopStateType) =>
-      finalize_minimal(state, runtime),
+    .addNode(
+      LOOP_NODE.finalize,
+      (state: AgentLoopStateType) => finalize(state, runtime),
+      { ends: ["agent"] },
     )
     .addNode(LOOP_NODE.fail, (state: AgentLoopStateType) =>
       fail(state, runtime),

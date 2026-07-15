@@ -9,11 +9,26 @@ import {
 } from "./contracts";
 import type {
   AgentRunOutputV1,
+  ArtifactReferenceV1,
   CitationV1,
+  QualityDimensionsV1,
   UsageSummaryV1,
+  ValidationResultV1,
 } from "./contracts";
 import type { AgentLoopRuntime } from "./ports";
 import type { AgentLoopStateType } from "./state";
+
+/** Conservative quality-dimension floors used when nothing computed better. */
+const DEFAULT_QUALITY_DIMENSIONS: QualityDimensionsV1 = Object.freeze({
+  groundedness: 0,
+  evidence_coverage: 0,
+  source_quality: 0,
+  source_freshness_days: null,
+  contradiction_state: "none",
+  validation_rate: 0,
+  completeness: 0,
+  risk_severity: "none",
+});
 
 /**
  * Map live loop usage counters to the public usage summary.
@@ -58,6 +73,14 @@ export interface BuildOutputArgs {
   readonly answer: string | null;
   readonly citations: readonly CitationV1[];
   readonly uncertainty: readonly string[];
+  /** Computed quality dimensions; defaults to conservative floors when omitted. */
+  readonly quality_dimensions?: QualityDimensionsV1;
+  /** Draft/confirmed artifact references produced by the run (default none). */
+  readonly artifacts?: readonly ArtifactReferenceV1[];
+  /** Deterministic validation results for the decision summary (default none). */
+  readonly validation_results?: readonly ValidationResultV1[];
+  /** Extra warnings appended to the run's warnings (e.g. finalize findings). */
+  readonly extra_warnings?: readonly string[];
 }
 
 /**
@@ -89,22 +112,13 @@ export function build_output_document(
         .map((decision) => decision.rationale_summary)
         .filter((rationale) => rationale.length > 0)
         .slice(0, 50),
-      validation_results: [],
+      validation_results: [...(args.validation_results ?? [])].slice(0, 100),
       uncertainty: [...args.uncertainty].slice(0, 50),
     },
     citations: [...args.citations].slice(0, 200),
-    artifacts: [],
-    quality_dimensions: {
-      groundedness: 0,
-      evidence_coverage: 0,
-      source_quality: 0,
-      source_freshness_days: null,
-      contradiction_state: "none",
-      validation_rate: 0,
-      completeness: 0,
-      risk_severity: "none",
-    },
-    warnings: state.warnings.slice(0, 100),
+    artifacts: [...(args.artifacts ?? [])].slice(0, 20),
+    quality_dimensions: args.quality_dimensions ?? DEFAULT_QUALITY_DIMENSIONS,
+    warnings: [...state.warnings, ...(args.extra_warnings ?? [])].slice(0, 100),
     usage_summary: summarize_usage(state),
     started_at: state.started_at,
     completed_at: runtime.ports.clock.now_iso(),

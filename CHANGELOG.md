@@ -1,5 +1,49 @@
 # Changelog
 
+## [2026-07-15] feat: Authoritative finalize node with artifact validation (G4.8c)
+
+### Summary
+
+- Extracted finalize into `packages/ai-orchestration/src/nodes/finalize.ts` and
+  made it the authoritative artifact gate. It recovers any produced tenant
+  artifact from the run's observations (newest `tool_result` whose tool is
+  registered `produces_artifact`), validates it through the injected
+  `ArtifactService` — the orchestration package still holds no material evidence
+  — and then:
+  - **valid** → completes with a draft `ArtifactReferenceV1` (id = the producing
+    observation's content hash) and the adapter-computed `quality_dimensions` +
+    validation results in the run output;
+  - **blocking, budget remaining** → routes back to the agent as a typed
+    `validation_finding` observation (mirroring `route_denial`) so the model can
+    revise, without completing or reconciling;
+  - **blocking, budget exhausted** → completes honestly with the findings
+    surfaced as warnings and no confirmable artifact.
+  Answer-only runs (no produced artifact) finalize exactly as before.
+- Graph rewire: `finalize` is registered with `ends: ["agent"]` alongside its
+  static `finalize → END` edge, so the terminal path returns a plain update while
+  the revision path returns a `Command`. `ArtifactValidationV1` gained an optional
+  `quality_dimensions`, and `build_output_document` now accepts optional
+  `quality_dimensions` / `artifacts` / `validation_results` / `extra_warnings`
+  (all backward-compatible defaults, so the fail node is unchanged).
+
+### Verification approach
+
+- `tests/orchestration/finalize-node.test.ts` (5): answer-only completion; valid
+  candidate → draft reference + quality passthrough; blocking with budget → routes
+  to agent, no completion/reconcile; blocking at budget exhaustion → completes with
+  warnings and no artifact; and the missing-proposal invariant.
+- `graph-shape.test.ts` updated to lock the plan-mandated `finalize → agent` edge.
+- Four gates: full suite **540/540** (was 535; +5), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.8, tracked as G4.8d)
+
+- `apps/ai/server/services/ai-control/formula-artifact-service.ts`: the concrete
+  `ArtifactService` adapter that loads evidence, runs `validate_formula_artifact` +
+  `compute_formula_quality_dimensions`, persists the draft `AIArtifact`, and lets a
+  manager with `formula:confirm` + an approved `AIApproval` commit it idempotently
+  to `Formula` + version/audit records.
+
 ## [2026-07-15] feat: Deterministic formula finalizer / quality dimensions (G4.8b)
 
 ### Summary

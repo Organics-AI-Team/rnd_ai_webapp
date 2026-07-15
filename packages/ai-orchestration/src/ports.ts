@@ -8,7 +8,7 @@
  * model-visible input.
  */
 
-import type { ApprovalResultV1 } from "./contracts";
+import type { ApprovalResultV1, QualityDimensionsV1 } from "./contracts";
 
 /**
  * Server-resolved identity and lineage for one run. Built exclusively from a
@@ -181,6 +181,13 @@ export interface ArtifactValidationFindingV1 {
 export interface ArtifactValidationV1 {
   readonly valid: boolean;
   readonly findings: readonly ArtifactValidationFindingV1[];
+  /**
+   * Deterministic quality dimensions computed by the validating adapter, which
+   * holds the material evidence the orchestration package deliberately does not.
+   * Optional so pre-existing adapters/tests remain valid; the finalize node
+   * surfaces it in the run output when present.
+   */
+  readonly quality_dimensions?: QualityDimensionsV1;
 }
 
 /** Deterministic validation and persistence of tenant artifacts (e.g. formulas). */

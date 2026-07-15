@@ -72,6 +72,7 @@ describe("governed agentic loop graph shape", () => {
         "act->agent",
         "request_clarification->agent",
         "request_approval->gate",
+        "finalize->agent",
         "finalize->__end__",
         "fail->__end__",
       ].sort(),
