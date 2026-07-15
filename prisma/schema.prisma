@@ -995,6 +995,9 @@ model AIRun {
   // the RunSelector, and the assembled context-pack hash pinned at creation.
   executor               String      @default("legacy")
   contextPackHash        String?
+  // G4.9g: the validated resume payload (clarification answer or approval
+  // decision) the resume route persists for the worker to consume on resume.
+  pendingResume          Json?
   requestBudget          Json?
   usageSummary           Json?
   safeDecisionSummaries  Json?
