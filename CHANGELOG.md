@@ -1,5 +1,42 @@
 # Changelog
 
+## [2026-07-15] feat: Deterministic formula finalizer / quality dimensions (G4.8b)
+
+### Summary
+
+- Added `packages/ai-orchestration/src/artifacts/formula-finalizer.ts`:
+  `compute_formula_quality_dimensions` maps a validated artifact + its material
+  evidence to the public `QualityDimensionsV1` contract with no model
+  involvement, so a replay reproduces the numbers exactly. Dimensions are
+  computed from what is actually measurable — evidence coverage (backed non-water
+  materials), source quality (materials with sources), groundedness (backed
+  materials + cited claims over all such units), validation rate (structural +
+  per-item checks minus blocking findings), completeness (artifact section
+  presence), risk severity (blocking → high, warnings → medium/low), with
+  contradiction state and source freshness taken from optional loop signals. The
+  result is `quality_dimensions_v1_schema.parse`d so an out-of-contract value
+  fails closed.
+- Added `to_validation_results`: blocking findings map to failed
+  `ValidationResultV1` records, warnings to passed-with-detail, for the run
+  output's decision summary.
+
+### Verification approach
+
+- `tests/orchestration/formula-finalizer.test.ts` (6): a fully valid artifact
+  tops every band; an unbacked material drops coverage and raises risk to high; an
+  uncited claim drops groundedness; a below-minimum (warning-only) artifact is low
+  risk yet valid; signals surface contradiction/freshness; and findings map to the
+  public validation-result shape.
+- Four gates: full suite **535/535** (was 529; +6), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.8, tracked as G4.8c–G4.8d)
+
+- `nodes/finalize.ts` (extract candidate artifact from observations, blocking
+  findings → agent observation bounded by budget, else output + artifact
+  reference + these quality dimensions) with the graph rewire, and the `apps/ai`
+  `formula-artifact-service.ts` draft persist + manager confirmed commit.
+
 ## [2026-07-15] feat: Complete deterministic formula validator checks (G4.8a)
 
 ### Summary
