@@ -1,5 +1,40 @@
 # Changelog
 
+## [2026-07-15] feat: Durable run-job queue with compare-and-set leases (G4.9a)
+
+### Summary
+
+- Added the `AIRunJob` Prisma model (`ai_run_jobs`) and
+  `apps/ai/server/services/ai-gateway/run-job-queue.ts`: the durable work queue
+  that drives a governed run forward independently of any serverless request.
+  `enqueue` is idempotent on `[runId, command]` (unique index + `$setOnInsert`),
+  so a retried gateway call never double-schedules. `claim` is a single
+  `findOneAndUpdate` compare-and-set over available-or-expired jobs, so two
+  workers can never own the same job and a crashed worker's expired lease is
+  reclaimable on the next claim (attempts increment each claim). `heartbeat`,
+  `complete`, and `release` (with a backoff before re-availability) are all
+  owner-gated. The queue is deliberately platform-level, not tenant-scoped — the
+  worker rebuilds the tenant context from the pinned AIRun after claiming.
+- Context: the `@langchain/langgraph` upgrade this task nominally required is
+  already in place — the orchestration package resolves nested langgraph 1.4.7 /
+  core 1.2.2 / langgraph-checkpoint-mongodb 1.4.0 (isolated from apps/ai's legacy
+  0.2.74), and the suite already runs on it.
+
+### Verification approach
+
+- `tests/integration/run-job-queue.test.ts` (7) against a real in-memory MongoDB:
+  idempotent enqueue, distinct start/resume, single-worker claim, expired-lease
+  reclaim, owner-gated heartbeat (with steal-prevention), complete, and
+  backoff-gated release.
+- Four gates: full suite **577/577** (was 570; +7), typecheck 0 (new file clean
+  under apps/ai), security scan 0, production web build pass; Prisma schema valid.
+
+### Remaining (G4.9)
+
+- `event-store` (G4.9b), `run-selector` (G4.9c), real-`MongoDBSaver` durability
+  verification (G4.9d, closes G4.7), the `ai-gateway` `create_run` transaction
+  (G4.9e), the private `worker.ts` (G4.9f), and the three Next.js routes (G4.9g).
+
 ## [2026-07-15] feat: Orchestration-boundary enforcement + G4 evidence (G4.11, core)
 
 ### Summary

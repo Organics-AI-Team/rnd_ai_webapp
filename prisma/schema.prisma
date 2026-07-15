@@ -1086,3 +1086,38 @@ model AIApproval {
   @@index([tenantId, status, requestedAt])
   @@map("ai_approvals")
 }
+
+/** Lease state of a durable run job claimed by the private worker (G4.9). */
+enum AIRunJobStatus {
+  available
+  leased
+  completed
+  failed
+}
+
+/**
+ * Durable work item that drives one governed run forward (G4.9). The gateway
+ * enqueues a job in the same transaction as the AIRun; the private worker claims
+ * it with a compare-and-set lease, heartbeats, and releases it. A crashed worker
+ * lets the lease expire so the job becomes reclaimable — the run never depends on
+ * a serverless request staying alive.
+ */
+model AIRunJob {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId       String         @db.ObjectId
+  runId          String         @db.ObjectId
+  command        String // "start" | "resume"
+  status         AIRunJobStatus @default(available)
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  heartbeatAt    DateTime?
+  attempts       Int            @default(0)
+  availableAt    DateTime       @default(now())
+  lastError      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([runId, command])
+  @@index([status, availableAt])
+  @@map("ai_run_jobs")
+}
