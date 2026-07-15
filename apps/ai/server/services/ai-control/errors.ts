@@ -29,7 +29,11 @@ export type ToolGovernanceErrorCode =
   | "CARDS_ROOT_NOT_FOUND"
   | "CONTEXT_CARD_MISSING"
   | "CONTEXT_CARD_DRIFT"
-  | "NOT_WIRED";
+  | "NOT_WIRED"
+  // Policy compilation (G3.2)
+  | "POLICY_INPUT_INVALID"
+  | "POLICY_NO_PROVIDER"
+  | "POLICY_UNKNOWN_PLAN";
 
 /**
  * Error raised by the governed tool catalogue, executor, card loader, and

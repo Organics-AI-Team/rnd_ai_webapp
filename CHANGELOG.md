@@ -1,5 +1,49 @@
 # Changelog
 
+## [2026-07-15] feat: Compile an effective tenant AI policy (G3.2)
+
+### Summary
+
+- Reconciled `apps/ai/server/services/ai-control/policy-types.ts` to **re-export**
+  the canonical `EffectiveAIPolicy`/`AIApprovalRequirement` from
+  `@rnd-ai/shared-types` (G3.1) instead of a structural duplicate — the earlier
+  "tracked integration TODO" is resolved; the tool catalogue, executor, and
+  context assembler now share the one canonical contract.
+- Added `policy-compiler.ts`: `compile_effective_policy(layers)` folds four
+  ordered layers (platform → plan → tenant → deployment) monotonically —
+  enabled = AND (false wins), provider_models/allowed_tools = intersection,
+  numeric maxima = minimum (bigint-safe), approval_rules = strongest-of (a
+  tenant can never relax an approval). An empty provider/model intersection on
+  an enabled policy is rejected (`POLICY_NO_PROVIDER`); request preferences may
+  only narrow to locale/detail/model-alias-in-allowlist, any unknown field is
+  `POLICY_INPUT_INVALID`. The canonical JSON is SHA-256 hashed (key-order
+  independent, reusing `hashing.ts`) and returned with an explainable
+  `constraint_trace` naming the constraining layer per field.
+- Added `platform-ai-constraints.ts` (provider/tool universe, approval floors,
+  env-tunable ceilings with named defaults — no bare literals) and
+  `plan-entitlements.ts` (starter/growth/enterprise entitlement catalogue,
+  `build_plan_layer` throws `POLICY_UNKNOWN_PLAN`).
+- Added `ai-policy-repository.ts`: loads the active `TenantAIProfile` +
+  `AgentDeployment`, folds them through the compiler (fail-closed
+  `POLICY_DISABLED` when no active profile), and persists the canonical
+  snapshot + version + hash on the `AIRun`.
+- Added the `POLICY_INPUT_INVALID`/`POLICY_NO_PROVIDER`/`POLICY_UNKNOWN_PLAN`
+  governance error codes. All new BigInt values use `BigInt(...)` (not `123n`
+  literals) to stay valid under the sub-ES2020 `apps/ai` target.
+
+### Verification approach
+
+- RED first, then GREEN: `tests/ai-control/policy-compiler.test.ts` (18 cases)
+  covers each restriction direction, fail-closed disablement, empty-intersection
+  rejection, request-preference validation, key-order-independent hashing, the
+  constraint trace, the plan builders, and the repository against an in-memory
+  MongoDB (compile-from-stored-state + snapshot pinning + fail-closed).
+- Four gates: full suite **455/455** (was 437; +18), typecheck 0 (apps/web +
+  orchestration), security scan 0, production web build exit 0. New files also
+  typecheck clean under the stricter `apps/ai` project.
+
+---
+
 ## [2026-07-15] feat: Enforce tenant ownership + repository-bypass scanner (G2.7, G2 complete)
 
 ### Summary
