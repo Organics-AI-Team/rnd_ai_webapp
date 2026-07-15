@@ -36,8 +36,12 @@ function model_block(name: string): string {
 }
 
 describe("tenant provenance schema (G2.2)", () => {
-  it.each(tenant_owned_models)("%s declares nullable tenantId ObjectId", (name) => {
-    expect(model_block(name)).toMatch(/tenantId\s+String\?\s+@db\.ObjectId/);
+  // G2.7 promoted tenantId from nullable to required on every tenant-owned
+  // business model (UserLog stays nullable — it has a platform/tenant scope
+  // discriminator, asserted separately below).
+  it.each(tenant_owned_models)("%s declares required tenantId ObjectId (G2.7)", (name) => {
+    expect(model_block(name)).toMatch(/tenantId\s+String\s+@db\.ObjectId/);
+    expect(model_block(name)).not.toMatch(/tenantId\s+String\?/);
   });
 
   it.each([

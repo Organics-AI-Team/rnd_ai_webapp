@@ -120,7 +120,7 @@ model RawMaterial {
 model Product {
   id                String   @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId          String?  @db.ObjectId
+  tenantId          String   @db.ObjectId
   actorProfileId    String?  @db.ObjectId
   organizationId    String   @db.ObjectId
   productCode       String
@@ -146,7 +146,7 @@ model Product {
 model StockEntry {
   id             String      @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId       String?     @db.ObjectId
+  tenantId       String      @db.ObjectId
   actorProfileId String?     @db.ObjectId
   organizationId String      @db.ObjectId
   materialId     String
@@ -188,7 +188,7 @@ enum StockStatus {
 model Formula {
   id                  String              @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId            String?             @db.ObjectId
+  tenantId            String              @db.ObjectId
   actorProfileId      String?             @db.ObjectId
   ownerProfileId      String?             @db.ObjectId
   organizationId      String              @db.ObjectId
@@ -246,7 +246,7 @@ enum FormulaStatus {
 model FormulaVersionLog {
   id                 String              @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId           String?             @db.ObjectId
+  tenantId           String              @db.ObjectId
   formulaId          String              @db.ObjectId
   version            Int // 0 = pre-confirm draft, 1+ = confirmed versions
   previousVersion    Int? // version before this change (null for initial creation)
@@ -282,7 +282,7 @@ enum FormulaUpdateSource {
 model FormulaComment {
   id              String      @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId        String?     @db.ObjectId
+  tenantId        String      @db.ObjectId
   actorProfileId  String?     @db.ObjectId
   formulaId       String      @db.ObjectId
   version         Int         @default(0) // formula version this comment belongs to
@@ -321,7 +321,7 @@ enum CommentType {
 model Order {
   id                String      @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId          String?     @db.ObjectId
+  tenantId          String      @db.ObjectId
   actorProfileId    String?     @db.ObjectId
   organizationId    String      @db.ObjectId
   productId         String?
@@ -386,7 +386,7 @@ enum OrderSource {
 model CreditTransaction {
   id               String                @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId         String?               @db.ObjectId
+  tenantId         String                @db.ObjectId
   actorProfileId   String?               @db.ObjectId
   organizationId   String                @db.ObjectId
   organizationName String
@@ -422,7 +422,7 @@ enum CreditTransactionType {
 model ProductLog {
   id             String        @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId       String?       @db.ObjectId
+  tenantId       String        @db.ObjectId
   actorProfileId String?       @db.ObjectId
   date           String
   time           String
@@ -484,7 +484,7 @@ model UserLog {
 model Conversation {
   id             String                @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId       String?               @db.ObjectId
+  tenantId       String                @db.ObjectId
   actorProfileId String?               @db.ObjectId
   ownerProfileId String?               @db.ObjectId
   userId         String
@@ -510,7 +510,7 @@ type ConversationMessage {
 model Feedback {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId       String?  @db.ObjectId
+  tenantId       String   @db.ObjectId
   actorProfileId String?  @db.ObjectId
   ownerProfileId String?  @db.ObjectId
   responseId     String?
@@ -530,7 +530,7 @@ model Feedback {
 model AiResponse {
   id               String   @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId         String?  @db.ObjectId
+  tenantId         String   @db.ObjectId
   ownerProfileId   String?  @db.ObjectId
   conversationId   String?
   query            String
@@ -554,7 +554,7 @@ model AiResponse {
 model ChatThread {
   id             String    @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId       String?   @db.ObjectId
+  tenantId       String    @db.ObjectId
   actorProfileId String?   @db.ObjectId
   ownerProfileId String?   @db.ObjectId
   organizationId String    @db.ObjectId
@@ -586,7 +586,7 @@ enum AgentType {
 model ChatMessage {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId  String?  @db.ObjectId
+  tenantId  String   @db.ObjectId
   threadId  String   @db.ObjectId
   role      String
   content   String
@@ -607,7 +607,7 @@ model ChatMessage {
 model PriceCalculation {
   id              String   @id @default(auto()) @map("_id") @db.ObjectId
   // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
-  tenantId        String?  @db.ObjectId
+  tenantId        String   @db.ObjectId
   actorProfileId  String?  @db.ObjectId
   organizationId  String
   formulaId       String?

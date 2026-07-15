@@ -70,21 +70,10 @@ async function fetchRawMaterials(db: Db) {
   }
 }
 
-// Helper function to fetch formulas from MongoDB
-async function fetchFormulas(db: Db) {
-  try {
-    const formulas = await db
-      .collection('formulas')
-      .find({})
-      .toArray();
-
-    console.log(`Found ${formulas.length} formulas`);
-    return formulas;
-  } catch (error) {
-    console.error('Error fetching formulas:', error);
-    return [];
-  }
-}
+// Formula indexing was removed from this legacy Pinecone route (G2.7): reading
+// the tenant-owned `formulas` collection directly here bypassed the tenant
+// repository boundary (an unscoped cross-tenant read). Formula indexing now runs
+// only through the tenant-scoped path in apps/ai/scripts/index-qdrant.ts.
 
 export async function POST(req: NextRequest) {
   return with_request_principal(req, 'tenant:settings:write', async (_principal, guarded_body) => {
@@ -152,21 +141,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (indexType === 'formulas' || indexType === 'all') {
-      // Fetch formulas
-      const formulas = await fetchFormulas(db);
-
-      if (formulas.length > 0) {
-        // Check if we need to index formulas
-        if (!needsIndexing) {
-          // For formulas, we'd need a more complex check, but for now assume if we have raw materials indexed, we're good
-          console.log(`Formulas likely already indexed. Skipping...`);
-          indexedCount += formulas.length;
-        } else {
-          console.log(`Indexing ${formulas.length} formulas...`);
-          await embeddingService.indexFormulas(formulas as any[]);
-          indexedCount += formulas.length;
-        }
-      }
+      // Formula indexing via this legacy route is disabled (G2.7): it read the
+      // tenant-owned `formulas` collection without a tenant scope, bypassing the
+      // repository boundary. Formula indexing now runs only through the
+      // tenant-scoped apps/ai/scripts/index-qdrant.ts path.
+      console.warn(
+        '[index-data] formula indexing is disabled here — use apps/ai/scripts/index-qdrant.ts (tenant-scoped)',
+      );
     }
 
     // Get final index stats

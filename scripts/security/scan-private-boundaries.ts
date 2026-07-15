@@ -11,6 +11,9 @@
  *  - LOCALSTORAGE_AUTH_TOKEN: session token written to browser storage.
  *  - ORG_CREATION_OUTSIDE_PROVISIONING: organization records created outside
  *    the provisioning service path reserved for G1.
+ *  - TENANT_REPOSITORY_BYPASS: a tenant-owned collection or Prisma model
+ *    accessed directly outside the tenant repository layer, migration scripts,
+ *    or the documented legacy ReAct tool paths (G2.7).
  *  - IGNORED_TYPE_ERRORS: ignoreBuildErrors enabled in build configuration.
  *
  * Run directly (npm run security:scan) to scan the repository and exit
@@ -35,6 +38,7 @@ export type SecurityFindingCode =
   | "CLIENT_IDENTITY_FIELD"
   | "LOCALSTORAGE_AUTH_TOKEN"
   | "ORG_CREATION_OUTSIDE_PROVISIONING"
+  | "TENANT_REPOSITORY_BYPASS"
   | "IGNORED_TYPE_ERRORS";
 
 /** One deterministic policy violation with its location. */
@@ -53,6 +57,47 @@ const IDENTITY_KEYS = new Set([
   "tenantid",
   "actorid",
 ]);
+
+/**
+ * Tenant-owned MongoDB collections that may be read or written only through the
+ * tenant repository layer. products/orders are deliberately omitted: they are
+ * reachable through the one sanctioned public client-order ingress
+ * (submitClientOrder) which has no tenant execution context by design.
+ */
+const ENFORCED_TENANT_COLLECTIONS = new Set([
+  "formulas",
+  "formula_comments",
+  "formula_version_logs",
+  "price_calculations",
+  "feedback",
+  "conversations",
+  "chat_threads",
+  "chat_messages",
+]);
+
+/**
+ * Prisma tenant control-plane models (G3.1) that may be accessed only through
+ * the AI policy/usage repositories. Matched as `prisma.<model>.` call chains.
+ */
+const ENFORCED_TENANT_PRISMA_MODELS = new Set([
+  "aIRun",
+  "tenantAIProfile",
+  "agentDeployment",
+  "aIUsageLedger",
+  "aIArtifact",
+  "aIApproval",
+]);
+
+/**
+ * Path fragments where direct tenant-data access is permitted: the repository
+ * layer itself, migration/admin scripts, and the documented legacy ReAct tool
+ * handlers (tenant-scoped in G2.6, slated for retirement in G5).
+ */
+const ALLOWED_TENANT_DATA_PATHS = [
+  "/apps/ai/server/repositories/",
+  "/apps/ai/scripts/",
+  "/apps/ai/agents/react/tool-handlers/",
+] as const;
 
 /**
  * Normalize a path to forward slashes for rule matching.
@@ -378,6 +423,120 @@ function find_org_creation_outside_provisioning(
 }
 
 /**
+ * Determine whether a file may access tenant data directly (repository layer,
+ * migration scripts, or the documented legacy ReAct tool handlers).
+ *
+ * @param path - Slash-normalized file path (absolute or repo-relative).
+ * @returns True when direct tenant-data access is permitted for this file.
+ */
+function is_allowed_tenant_data_path(path: string): boolean {
+  // Prepend a leading slash so repo-relative paths (apps/ai/...) and absolute
+  // paths (/repo/apps/ai/...) both match the leading-slash allowed fragments.
+  const normalized = `/${normalize_path(path).replace(/^\/+/, "")}`;
+  return ALLOWED_TENANT_DATA_PATHS.some((allowed) =>
+    normalized.includes(allowed),
+  );
+}
+
+/**
+ * Read the single string-literal argument of a `.collection('name')` call.
+ *
+ * @param node - Candidate call expression.
+ * @returns The collection name, or null when the node is not such a call.
+ */
+function read_collection_name(node: ts.CallExpression): string | null {
+  if (
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === "collection" &&
+    node.arguments.length === 1 &&
+    ts.isStringLiteralLike(node.arguments[0])
+  ) {
+    return node.arguments[0].text;
+  }
+  return null;
+}
+
+/**
+ * Read the model name of a `prisma.<model>.<op>(...)` call chain.
+ *
+ * @param node - Candidate call expression.
+ * @returns The Prisma model name, or null when the node is not such a call.
+ */
+function read_prisma_model_name(node: ts.CallExpression): string | null {
+  if (!ts.isPropertyAccessExpression(node.expression)) return null;
+  const model_access = node.expression.expression;
+  if (
+    ts.isPropertyAccessExpression(model_access) &&
+    ts.isIdentifier(model_access.expression) &&
+    model_access.expression.text === "prisma"
+  ) {
+    return model_access.name.text;
+  }
+  return null;
+}
+
+/**
+ * Find direct tenant-collection and tenant-Prisma-model access. Callers must
+ * gate this by {@link is_allowed_tenant_data_path} — this function itself does
+ * not exempt any path, so it can be reused on synthetic fixtures.
+ *
+ * @param file - Scanned file.
+ * @param source - Parsed AST.
+ * @returns TENANT_REPOSITORY_BYPASS findings.
+ */
+function find_tenant_collection_access(
+  file: SourceFile,
+  source: ts.SourceFile,
+): SecurityFinding[] {
+  const findings: SecurityFinding[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const collection = read_collection_name(node);
+      if (collection && ENFORCED_TENANT_COLLECTIONS.has(collection)) {
+        findings.push(
+          finding_at(
+            file,
+            source,
+            node,
+            "TENANT_REPOSITORY_BYPASS",
+            `tenant collection '${collection}' must be accessed through a tenant repository`,
+          ),
+        );
+      }
+      const model = read_prisma_model_name(node);
+      if (model && ENFORCED_TENANT_PRISMA_MODELS.has(model)) {
+        findings.push(
+          finding_at(
+            file,
+            source,
+            node,
+            "TENANT_REPOSITORY_BYPASS",
+            `tenant Prisma model 'prisma.${model}' must be accessed through a repository`,
+          ),
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return findings;
+}
+
+/**
+ * Reject direct tenant-data access unless the file is an allowed tenant-data
+ * path. Exported for fixture-driven tests (G2.7 failing-test anchor).
+ *
+ * @param file - Scanned file.
+ * @returns TENANT_REPOSITORY_BYPASS findings, or [] for allowed paths.
+ */
+export function reject_tenant_collection_bypass(
+  file: SourceFile,
+): SecurityFinding[] {
+  if (is_allowed_tenant_data_path(file.path)) return [];
+  return find_tenant_collection_access(file, parse(file));
+}
+
+/**
  * Find ignored TypeScript build errors in configuration.
  *
  * @param file - Scanned file.
@@ -429,6 +588,9 @@ export function scan_private_boundaries(
       ...find_client_identity_fields(file, source),
       ...find_local_storage_token_writes(file, source),
       ...find_org_creation_outside_provisioning(file, source),
+      ...(is_allowed_tenant_data_path(file.path)
+        ? []
+        : find_tenant_collection_access(file, source)),
       ...find_ignored_type_errors(file, source),
     ];
   });

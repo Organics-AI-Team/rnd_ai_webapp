@@ -1,5 +1,47 @@
 # Changelog
 
+## [2026-07-15] feat: Enforce tenant ownership + repository-bypass scanner (G2.7, G2 complete)
+
+### Summary
+
+- Made `tenantId` **required** on the 14 tenant-owned business Prisma models
+  (Product, StockEntry, Formula, FormulaVersionLog, FormulaComment, Order,
+  CreditTransaction, ProductLog, Conversation, Feedback, AiResponse, ChatThread,
+  ChatMessage, PriceCalculation). `UserLog` stays optional (it has a
+  platform/tenant `scope` discriminator); `PromptVersion`/`KnowledgeSource` stay
+  optional (platform-scoped rows have no tenant); `RawMaterial` stays
+  platform-global. `organizationId` is retained for rollback comparison only,
+  never as an authorization source. No code reads these models via Prisma (raw
+  Mongo driver), so the change is type-only — `prisma generate` clean.
+- Extended the AST boundary scanner with a `TENANT_REPOSITORY_BYPASS` rule:
+  direct access to a tenant-owned collection (`db.collection('formulas'|...)`)
+  or a tenant Prisma control-plane model (`prisma.aIRun|...`) is a CI failure
+  unless the file is in an allowed path — the repository layer
+  (`apps/ai/server/repositories/**`), migration scripts (`apps/ai/scripts/**`),
+  or the documented legacy ReAct tools (`apps/ai/agents/react/tool-handlers/**`,
+  tenant-scoped in G2.6, retired in G5). The rule matches aliased db handles and
+  chained collection calls. products/orders are intentionally out of the
+  enforced set (the sanctioned public `submitClientOrder` ingress has no tenant
+  context by design).
+- Fixed a real bypass: `apps/web/app/api/index-data/route.ts` read the `formulas`
+  collection unscoped (a cross-tenant read in the legacy Pinecone indexer).
+  Formula indexing now runs only through the tenant-scoped
+  `apps/ai/scripts/index-qdrant.ts` path.
+- Recorded `docs/commercial/evidence/g2-release.md` (task map, enforcement
+  detail, isolation tests, code gates, and the PENDING_EXTERNAL_STAGING data
+  gates to record during cutover). G2 is now complete (G2.1–G2.7).
+
+### Verification approach
+
+- RED first: `tests/security/tenant-repository-boundary.test.ts` (8 cases,
+  including the failing-test anchor + a full production-tree scan) — the anchor
+  failed before the rule existed, green after.
+- Four gates: full suite **437/437** (was 429; +8), typecheck 0, security scan 0
+  (with the new rule active), production web build exit 0, `prisma generate`
+  clean.
+
+---
+
 ## [2026-07-15] fix: Tenant-scope all legacy AI tools + lock down mongo_query (G2.6 complete)
 
 ### Summary
