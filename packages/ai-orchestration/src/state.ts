@@ -12,6 +12,7 @@ import type {
   AgentRunEventV1,
   AgentRunInputV1,
   AgentRunOutputV1,
+  ApprovalResultV1,
   DecisionRecordV1,
   LoopUsageV1,
   ProposedActionV1,
@@ -73,6 +74,7 @@ export const AgentLoopState = Annotation.Root({
   events: appending<AgentRunEventV1>(),
   warnings: appending<string>(),
   pending_action: replaceable<ProposedActionV1>(),
+  approval_result: replaceable<ApprovalResultV1>(),
   output: replaceable<AgentRunOutputV1>(),
   error: replaceable<RunErrorV1>(),
 });
@@ -127,6 +129,7 @@ export function build_initial_loop_state(
     events: [],
     warnings: [],
     pending_action: null,
+    approval_result: null,
     output: null,
     error: null,
   };

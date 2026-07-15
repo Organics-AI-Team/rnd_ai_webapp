@@ -157,6 +157,46 @@ export const loop_usage_v1_schema = z
   .strict();
 export type LoopUsageV1 = z.infer<typeof loop_usage_v1_schema>;
 
+/** Approval interrupt payload surfaced to the human approver (G4.7). */
+export const approval_request_v1_schema = z
+  .object({
+    schema_version: z.literal("1"),
+    approval_id: z.string().min(1).max(128),
+    run_id: z.string().min(1).max(128),
+    summary: z.string().min(1).max(2_000),
+  })
+  .strict();
+export type ApprovalRequestV1 = z.infer<typeof approval_request_v1_schema>;
+
+/** Approval resume payload provided by the durable interrupt (G4.7). */
+export const approval_resume_v1_schema = z
+  .object({
+    approval_id: z.string().min(1).max(128),
+    decision: z.enum(["approve", "deny"]),
+    decided_by_profile_id: z.string().min(1).max(128),
+  })
+  .strict();
+export type ApprovalResumeV1 = z.infer<typeof approval_resume_v1_schema>;
+
+/** Verified approval outcome recorded on the run (G4.7). */
+export const approval_result_v1_schema = z
+  .object({
+    approval_id: z.string().min(1).max(128),
+    status: z.enum(["approved", "denied"]),
+    /** Hash of the action this decision authorizes; pins it to one action. */
+    action_arguments_hash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  })
+  .strict();
+export type ApprovalResultV1 = z.infer<typeof approval_result_v1_schema>;
+
+/** Clarification resume payload: the user's bounded answer (G4.7). */
+export const clarification_resume_v1_schema = z
+  .object({
+    answer: z.string().min(1).max(4_000),
+  })
+  .strict();
+export type ClarificationResumeV1 = z.infer<typeof clarification_resume_v1_schema>;
+
 /** Zero-valued usage counters for run initialization. */
 export const empty_loop_usage: LoopUsageV1 = Object.freeze({
   model_calls: 0,

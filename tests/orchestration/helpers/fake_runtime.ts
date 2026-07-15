@@ -503,16 +503,39 @@ export class FakeRunRepository {
 /** Recording approval service fake. */
 export class FakeApprovalService {
   public readonly pending: Array<{ run_id: string; key: string }> = [];
+  /** Decision function: how a resume payload verifies (default: approve). */
+  constructor(
+    private readonly decide: (resume: unknown) => "approved" | "denied" = () =>
+      "approved",
+  ) {}
 
-  /** @inheritdoc */
+  /** Idempotent: a repeated key does not create a second approval. */
   async ensure_pending(
     run_id: string,
     action_idempotency_key: string,
     _summary: string,
     _context: TrustedRuntimeContext,
   ): Promise<{ approval_id: string }> {
-    this.pending.push({ run_id, key: action_idempotency_key });
+    if (!this.pending.some((entry) => entry.key === action_idempotency_key)) {
+      this.pending.push({ run_id, key: action_idempotency_key });
+    }
     return { approval_id: `approval_for_${action_idempotency_key}` };
+  }
+
+  /** Verify a resume payload; the fake trusts its decision function. */
+  async verify_resume(
+    args: { run_id: string; action_idempotency_key: string; resume: unknown },
+    _context: TrustedRuntimeContext,
+  ): Promise<{ approval_id: string; status: "approved" | "denied" }> {
+    return {
+      approval_id: `approval_for_${args.action_idempotency_key}`,
+      status: this.decide(args.resume),
+    };
+  }
+
+  /** Count distinct approvals recorded for a run (proves exactly-once). */
+  async count_for_run(run_id: string): Promise<number> {
+    return this.pending.filter((entry) => entry.run_id === run_id).length;
   }
 }
 

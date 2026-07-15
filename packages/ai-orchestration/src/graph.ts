@@ -25,44 +25,14 @@ import { act } from "./nodes/act";
 import { fail } from "./nodes/fail";
 import { gate } from "./nodes/gate";
 import { ingress } from "./nodes/ingress";
+import { request_approval } from "./nodes/request-approval";
+import { request_clarification } from "./nodes/request-clarification";
 import { build_output_document } from "./output";
 import type { AgentLoopRuntime } from "./ports";
 import { log_loop_event } from "./ports";
 import { LOOP_NODE, build_run_error } from "./routing";
 import { AgentLoopState } from "./state";
 import type { AgentLoopStateType, AgentLoopStateUpdate } from "./state";
-
-/**
- * Typed stub for the clarification interrupt node (durable interrupt lands
- * in plan Task 7).
- *
- * @param _state - Current loop state.
- * @param runtime - Node runtime for structured logging.
- * @returns Empty typed update (fixed edge returns to agent).
- */
-async function request_clarification_stub(
-  _state: AgentLoopStateType,
-  runtime: AgentLoopRuntime,
-): Promise<AgentLoopStateUpdate> {
-  log_loop_event(runtime, "info", "request_clarification.stub");
-  return {};
-}
-
-/**
- * Typed stub for the approval interrupt node (durable interrupt lands in
- * plan Task 7).
- *
- * @param _state - Current loop state.
- * @param runtime - Node runtime for structured logging.
- * @returns Empty typed update (fixed edge returns to gate).
- */
-async function request_approval_stub(
-  _state: AgentLoopStateType,
-  runtime: AgentLoopRuntime,
-): Promise<AgentLoopStateUpdate> {
-  log_loop_event(runtime, "info", "request_approval.stub");
-  return {};
-}
 
 /**
  * Interim deterministic finalize: builds a schema-validated output from the
@@ -150,10 +120,10 @@ export function build_agent_loop_graph(runtime: AgentLoopRuntime) {
     )
     .addNode(LOOP_NODE.act, (state: AgentLoopStateType) => act(state, runtime))
     .addNode(LOOP_NODE.request_clarification, (state: AgentLoopStateType) =>
-      request_clarification_stub(state, runtime),
+      request_clarification(state, runtime),
     )
     .addNode(LOOP_NODE.request_approval, (state: AgentLoopStateType) =>
-      request_approval_stub(state, runtime),
+      request_approval(state, runtime),
     )
     .addNode(LOOP_NODE.finalize, (state: AgentLoopStateType) =>
       finalize_minimal(state, runtime),

@@ -8,6 +8,8 @@
  * model-visible input.
  */
 
+import type { ApprovalResultV1 } from "./contracts";
+
 /**
  * Server-resolved identity and lineage for one run. Built exclusively from a
  * verified principal plus stored tenant policy — never from client JSON.
@@ -226,7 +228,7 @@ export interface RunRepository {
   ): Promise<void>;
 }
 
-/** Durable approval workflow port (full interrupt flow lands in plan Task 7). */
+/** Durable approval workflow port (G4.7). */
 export interface ApprovalService {
   /**
    * Idempotently ensure a pending approval exists for an action.
@@ -243,6 +245,34 @@ export interface ApprovalService {
     summary: string,
     context: TrustedRuntimeContext,
   ): Promise<{ approval_id: string }>;
+
+  /**
+   * Verify a resume payload against the stored approval: tenant, checkpoint,
+   * permission, decider, expiry, and current status. Never trusts the resume
+   * blob's authority claims.
+   *
+   * @param args - Run + action key + the untrusted resume payload.
+   * @param context - Trusted identity outside model input.
+   * @returns The verified approval outcome.
+   * @throws Error (rejected) when the resume is invalid, expired, or the decider
+   *         is not authorized.
+   */
+  verify_resume(
+    args: {
+      readonly run_id: string;
+      readonly action_idempotency_key: string;
+      readonly resume: unknown;
+    },
+    context: TrustedRuntimeContext,
+  ): Promise<ApprovalResultV1>;
+
+  /**
+   * Count the approvals recorded for a run (proves exactly-once on replay).
+   *
+   * @param run_id - Internal run identifier.
+   * @returns The number of distinct approvals created for the run.
+   */
+  count_for_run(run_id: string): Promise<number>;
 }
 
 /** Usage metering and reconciliation port. */

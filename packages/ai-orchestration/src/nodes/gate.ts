@@ -41,6 +41,36 @@ export async function gate(
     iteration: state.iteration,
   });
 
+  // Consume a verified approval recorded by request_approval (G4.7): an approved
+  // action proceeds straight to act (every other gate condition already
+  // cleared); a denied action is routed back to the agent (its denial
+  // observation was already appended). The result is cleared so a later action
+  // never inherits a stale approval.
+  if (state.approval_result) {
+    if (
+      state.approval_result.status === "approved" &&
+      state.pending_action?.kind === "tool" &&
+      state.approval_result.action_arguments_hash ===
+        state.pending_action.arguments_hash
+    ) {
+      // Approved for THIS exact action: proceed to act. The result is left on
+      // the run for audit; because it is pinned to this action's hash a later,
+      // different action can never inherit it (and the executor re-checks
+      // approval independently).
+      log_loop_event(runtime, "info", "gate.approval_consumed", {
+        tool_name: state.pending_action.tool_name,
+      });
+      return new Command({ goto: LOOP_NODE.act });
+    }
+    if (state.approval_result.status === "denied") {
+      log_loop_event(runtime, "info", "gate.approval_denied_replan");
+      return new Command({
+        goto: LOOP_NODE.agent,
+        update: { pending_action: null },
+      });
+    }
+  }
+
   const action = state.pending_action;
   if (!action || action.kind !== "tool") {
     log_loop_event(runtime, "error", "gate.missing_pending_action");

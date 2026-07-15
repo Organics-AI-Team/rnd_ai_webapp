@@ -1,5 +1,54 @@
 # Changelog
 
+## [2026-07-15] feat: Persist and resume agentic loop checkpoints (G4.7, core)
+
+### Summary
+
+- Replaced the clarification/approval stubs with durable interrupt nodes.
+  `request-clarification.ts` interrupts with the bounded questions and re-enters
+  the agent with the validated answer as a trusted-user observation.
+  `request-approval.ts` idempotently upserts the approval (replay returns the
+  same one — exactly once), interrupts with an ApprovalRequestV1, and records the
+  `verify_resume`-verified outcome; the interrupt is never wrapped in try/catch.
+- The gate now consumes a verified `approval_result` **pinned to the action's
+  arguments hash** — an approved result routes straight to `act` (and can never
+  be inherited by a different action; the executor also re-checks approval), a
+  denied result routes back to the agent with its denial observation. Added the
+  `approval_result` state channel and the approval/clarification contracts.
+- Extended the `ApprovalService` port with `verify_resume` and `count_for_run`.
+- Added `checkpoint.ts`: `build_checkpoint_thread_id` derives the LangGraph thread
+  key from INTERNAL tenant+thread IDs only (never a client key), plus a lazy
+  `get_mongodb_saver` (dynamic import — a deployment concern, not a module side
+  effect) and a re-export of Command/MemorySaver so callers resolve the same
+  LangGraph instance the graph uses.
+- Added `resume.ts`: `resume_run` re-verifies run existence, tenant ownership,
+  caller permission, and pinned-version availability before invoking the graph
+  with `Command({ resume })` — it never accepts a client checkpoint blob.
+- Added `apps/ai/scripts/setup-langgraph-checkpoints.ts` (deployment step).
+
+### Verification approach
+
+- `tests/orchestration/interrupt-resume.test.ts` (5) against a checkpointer:
+  an approval **resumes exactly once across a simulated restart** (a fresh graph
+  instance over the same saver) with `count_for_run === 1` and one commit
+  execution; a denied resume routes back to the agent with no commit; a
+  clarification answer re-enters as a trusted-user observation; and `resume_run`
+  rejects cross-tenant/forbidden/version-unavailable/missing resumes.
+- Four gates: full suite **506/506** (was 501; +5), typecheck 0, security scan 0,
+  production web build pass. Existing 47 orchestration tests unaffected.
+
+### Remaining (G4.7, tracked)
+
+- Real `MongoDBSaver` durability: the only published
+  `@langchain/langgraph-checkpoint-mongodb` bumps `@langchain/langgraph-checkpoint`
+  to a version incompatible with the pinned `@langchain/langgraph@0.2.74` (a
+  `pending_sends` runtime skew), so it is not added to package.json. The
+  MemorySaver cases prove the identical durable-resume + exactly-once semantics
+  through the same checkpointer interface; production Mongo wiring (a langgraph
+  upgrade + the saver dep) lands with the run API (G4.9).
+
+---
+
 ## [2026-07-15] feat: Add specialist delegation through the governed loop (G4.6)
 
 ### Summary
