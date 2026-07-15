@@ -1,5 +1,45 @@
 # Changelog
 
+## [2026-07-15] feat: Orchestration-boundary enforcement + G4 evidence (G4.11, core)
+
+### Summary
+
+- Added the **`OODA_GATEWAY_BYPASS`** rule to
+  `scripts/security/scan-private-boundaries.ts`: any production caller that drives
+  the governed loop graph directly — `compile_agent_loop_graph(...).invoke|stream`,
+  `build_agent_loop_graph(...).invoke|stream`, or a local variable bound to one of
+  those builders — is rejected, so no route or service can run an agentic loop
+  outside the AI gateway that binds policy, budget, and identity. The rule tracks
+  builder-derived graphs specifically (two-phase: collect bound vars, then flag
+  their invoke/stream), so legacy LangGraph graphs that happen to be named `graph`
+  (built from `StateGraph`) are never mistaken for the governed loop. The
+  orchestration package, the AI gateway, and test files are exempt.
+- Recorded the interim G4 release evidence in
+  `docs/commercial/evidence/g4-release.md`: the verified loop topology,
+  single-model-node invariant, context-pack pinning, exactly-once checkpoint
+  restart, interrupt authorization, deterministic formula validation + commit,
+  idempotent event reconnect, and loop-detection — each tied to its test — plus an
+  honest pending list for the G4.9 run/event API, the langgraph upgrade, and the
+  live-stream UI.
+
+### Verification approach
+
+- `tests/security/ooda-boundary.test.ts` (7): flags a loop graph held in a local
+  variable, any variable name, and a direct builder call; exempts the orchestration
+  package, the gateway, and tests; and does **not** flag unrelated `.invoke`/
+  `.stream` calls (llm, tools, chain, a legacy `this.graph`, a legacy `StateGraph`
+  named `graph`, or `streamEvents`).
+- `npm run security:scan` stays at **0 violations** on the production tree with the
+  new rule live.
+- Four gates: full suite **570/570** (was 563; +7), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.11, with G4.9)
+
+- The capability-card ↔ tool-definition CI consistency check, the legacy-entry-point
+  import rule (needs the gateway to define the boundary), the `agentic-run.spec.ts`
+  e2e, and provider-failure/budget-limit evidence exercised through the live run API.
+
 ## [2026-07-15] feat: Versioned run-event view reducer (G4.10, core)
 
 ### Summary

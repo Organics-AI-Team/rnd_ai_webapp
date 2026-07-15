@@ -39,6 +39,7 @@ export type SecurityFindingCode =
   | "LOCALSTORAGE_AUTH_TOKEN"
   | "ORG_CREATION_OUTSIDE_PROVISIONING"
   | "TENANT_REPOSITORY_BYPASS"
+  | "OODA_GATEWAY_BYPASS"
   | "IGNORED_TYPE_ERRORS";
 
 /** One deterministic policy violation with its location. */
@@ -97,6 +98,25 @@ const ALLOWED_TENANT_DATA_PATHS = [
   "/apps/ai/server/repositories/",
   "/apps/ai/scripts/",
   "/apps/ai/agents/react/tool-handlers/",
+] as const;
+
+/**
+ * Governed-loop graph builders (G4). A caller that invokes a compiled loop
+ * graph directly bypasses the AI gateway that pins policy, budget, and identity.
+ */
+const LOOP_GRAPH_BUILDERS = new Set([
+  "compile_agent_loop_graph",
+  "build_agent_loop_graph",
+]);
+
+/**
+ * Path fragments allowed to drive the governed loop graph directly: the
+ * orchestration package (which owns the graph and its recursive delegation) and
+ * the AI gateway (the single sanctioned entry point that binds a run's runtime).
+ */
+const ALLOWED_OODA_DRIVER_PATHS = [
+  "packages/ai-orchestration/",
+  "ai-gateway",
 ] as const;
 
 /**
@@ -537,6 +557,115 @@ export function reject_tenant_collection_bypass(
 }
 
 /**
+ * Whether a file may drive the governed loop graph directly (orchestration
+ * package internals or the AI gateway), or is a test fixture.
+ *
+ * @param path - Slash-normalized file path.
+ * @returns True when the OODA-boundary rule does not apply.
+ */
+function is_ooda_boundary_exempt(path: string): boolean {
+  if (/\.(test|spec)\.[jt]sx?$/.test(path)) return true;
+  return ALLOWED_OODA_DRIVER_PATHS.some((fragment) => path.includes(fragment));
+}
+
+/**
+ * Whether a node is a governed-loop-graph builder call
+ * (`compile_agent_loop_graph(...)` / `build_agent_loop_graph(...)`), unwrapping
+ * an optional `await`. Only these builders identify the governed loop — a bare
+ * `graph` variable is ambiguous with legacy LangGraph graphs.
+ *
+ * @param node - Candidate expression (initializer or call receiver).
+ * @returns True when the node builds a governed loop graph.
+ */
+function is_loop_builder_call(node: ts.Node): boolean {
+  const expression = ts.isAwaitExpression(node) ? node.expression : node;
+  return (
+    ts.isCallExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    LOOP_GRAPH_BUILDERS.has(expression.expression.text)
+  );
+}
+
+/**
+ * Find direct governed-loop-graph invocations in a parsed file.
+ *
+ * Flags `.invoke`/`.stream` on a governed loop graph, identified either as a
+ * direct builder call or a local variable bound to one — so legacy LangGraph
+ * graphs that happen to be named `graph` are never mistaken for the governed
+ * loop.
+ *
+ * @param file - Scanned file.
+ * @param source - Parsed AST.
+ * @returns OODA_GATEWAY_BYPASS findings.
+ */
+function find_ooda_boundary_violations(
+  file: SourceFile,
+  source: ts.SourceFile,
+): SecurityFinding[] {
+  // Phase 1: local variables bound to a governed-loop-graph builder call.
+  const loop_graph_vars = new Set<string>();
+  const collect = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined &&
+      is_loop_builder_call(node.initializer)
+    ) {
+      loop_graph_vars.add(node.name.text);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(source);
+
+  // Phase 2: flag invoke/stream on a builder call or a bound loop-graph var.
+  const findings: SecurityFinding[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      (node.expression.name.text === "invoke" || node.expression.name.text === "stream")
+    ) {
+      const receiver = node.expression.expression;
+      const drives_loop =
+        is_loop_builder_call(receiver) ||
+        (ts.isIdentifier(receiver) && loop_graph_vars.has(receiver.text));
+      if (drives_loop) {
+        findings.push(
+          finding_at(
+            file,
+            source,
+            node,
+            "OODA_GATEWAY_BYPASS",
+            "the governed loop graph may be driven only through the AI gateway",
+          ),
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return findings;
+}
+
+/**
+ * Reject direct invocation of the governed loop graph outside the AI gateway.
+ *
+ * Flags `graph.invoke(...)`, `graph.stream(...)`, and
+ * `compile_agent_loop_graph(...).invoke|stream(...)` so no production caller can
+ * drive an agentic run without the gateway that pins policy, budget, and
+ * identity. The orchestration package (which owns the graph and its recursive
+ * delegation), the AI gateway, and test files are exempt. Exported for
+ * fixture-driven tests (G4.11 failing-test anchor).
+ *
+ * @param file - Scanned file.
+ * @returns OODA_GATEWAY_BYPASS findings, or [] for exempt files.
+ */
+export function reject_ooda_boundary_bypass(file: SourceFile): SecurityFinding[] {
+  if (is_ooda_boundary_exempt(file.path)) return [];
+  return find_ooda_boundary_violations(file, parse(file));
+}
+
+/**
  * Find ignored TypeScript build errors in configuration.
  *
  * @param file - Scanned file.
@@ -591,6 +720,9 @@ export function scan_private_boundaries(
       ...(is_allowed_tenant_data_path(file.path)
         ? []
         : find_tenant_collection_access(file, source)),
+      ...(is_ooda_boundary_exempt(file.path)
+        ? []
+        : find_ooda_boundary_violations(file, source)),
       ...find_ignored_type_errors(file, source),
     ];
   });
