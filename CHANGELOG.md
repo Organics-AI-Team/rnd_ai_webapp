@@ -1,5 +1,30 @@
 # Changelog
 
+## [2026-07-15] feat: Raw-material MaterialEvidenceProvider — both G4.8 adapters done
+
+### Summary
+
+- Added `apps/ai/server/repositories/material-evidence-provider.ts`:
+  `create_material_evidence_provider` — the concrete `MaterialEvidenceProvider`
+  the gateway injects into `FormulaArtifactService.validate_draft`. A pure
+  platform-global catalogue read (`raw_materials_console`, **no credentials**): a
+  material is evidence-backed and available when it exists in the catalogue, with
+  its own `rm_code` recorded as the source; each match is keyed by both `rm_code`
+  and catalogue id so the validator's `evidence[material_id] ?? evidence[rm_code]`
+  lookup resolves either. Usage ranges are null here (the catalogue carries none;
+  they come from the knowledge layer, G3.5).
+- This completes **both** deferred G4.8 DI adapters (with the `FormulaApprovalGate`
+  from the prior commit) — neither needed provider credentials; only the model
+  gateway does.
+
+### Verification approach
+
+- `tests/integration/material-evidence-provider.test.ts` (4) against a real
+  in-memory MongoDB: available source-backed evidence for a catalogued material,
+  keyed by both rm_code and id, none for an unknown material, empty for no keys.
+- Four gates: full suite **612/612** (was 608; +4), typecheck 0 (new file clean),
+  security scan 0, production web build pass.
+
 ## [2026-07-15] feat: Concrete FormulaApprovalGate over ai_approvals (G4.8 wiring)
 
 ### Summary
