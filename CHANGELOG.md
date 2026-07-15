@@ -1,5 +1,27 @@
 # Changelog
 
+## [2026-07-15] feat: Run executor selection with rollback precedence (G4.9c)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-gateway/run-selector.ts`:
+  `select_run_executor(tenant_id, config)` decides once, before an AIRun is
+  created, whether a run is driven by the governed agentic loop or the legacy
+  executor. An explicit legacy pin always wins (a rollback kill-switch), then an
+  explicit agentic pin, then the configured default — so a tenant can always be
+  pulled back to legacy safely. The rollout config is injected (env/tenant-sourced,
+  never hard-coded); G5's canary assignment extends it. The chosen executor is
+  stored on the AIRun, so an agentic run never falls back and a legacy run never
+  invokes the loop.
+
+### Verification approach
+
+- `tests/integration/run-selector.test.ts` (5): default when unpinned, agentic
+  promotion over a legacy default, legacy rollback over an agentic default, legacy
+  precedence when a tenant is in both lists, and no effect on unrelated tenants.
+- Four gates: full suite **588/588** (was 583; +5), typecheck 0, security scan 0,
+  production web build pass.
+
 ## [2026-07-15] feat: Ordered versioned run-event store (G4.9b)
 
 ### Summary
