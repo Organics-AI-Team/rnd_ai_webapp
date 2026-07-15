@@ -12,8 +12,10 @@
 
 import Decimal from "decimal.js";
 import {
+  EMPTY_FORMULA_CONSTRAINTS,
   MANDATORY_REVIEW_STATEMENT,
   type FormulaArtifactV1,
+  type FormulaConstraintsV1,
   type FormulaIngredientV1,
   type FormulaValidationFinding,
   type FormulaValidationV1,
@@ -22,6 +24,22 @@ import {
 
 /** Absolute percentage-total tolerance (Step 5). */
 const TOTAL_TOLERANCE = new Decimal("0.01");
+
+/** Milliseconds per day, for deterministic cost-freshness arithmetic. */
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * Unit → base-unit conversion, grouped by physical family so amounts can be
+ * compared to a batch expressed in a possibly different (same-family) unit.
+ */
+const UNIT_BASE: Readonly<
+  Record<FormulaIngredientV1["unit"], { readonly family: "mass" | "volume"; readonly factor: string }>
+> = {
+  g: { family: "mass", factor: "1" },
+  kg: { family: "mass", factor: "1000" },
+  ml: { family: "volume", factor: "1" },
+  L: { family: "volume", factor: "1000" },
+};
 
 /**
  * Check the ingredient percentages sum to 100 within the 0.01 tolerance.
@@ -177,16 +195,225 @@ function check_review_statement(
 }
 
 /**
- * Validate a formula artifact deterministically against material evidence.
+ * Check each ingredient's declared amount matches its percentage of the batch.
+ *
+ * Amount and batch may use different units within the same physical family
+ * (mass g/kg, volume ml/L); a cross-family unit is unverifiable and surfaces as
+ * a warning rather than a blocking inconsistency. Comparison is exact
+ * (decimal.js) with a small relative tolerance to permit legitimate rounding.
+ *
+ * @param artifact - The formula artifact (batch size/unit + ingredient lines).
+ * @returns Blocking findings for inconsistent amounts; warnings for mismatched
+ *          unit families.
+ */
+function check_amount_from_batch(
+  artifact: FormulaArtifactV1,
+): FormulaValidationFinding[] {
+  const findings: FormulaValidationFinding[] = [];
+  const batch = UNIT_BASE[artifact.batch_unit];
+  const batch_base = new Decimal(artifact.batch_size).times(batch.factor);
+  for (const ingredient of artifact.ingredients) {
+    const unit = UNIT_BASE[ingredient.unit];
+    if (unit.family !== batch.family) {
+      findings.push({
+        code: "AMOUNT_UNIT_MISMATCH",
+        severity: "warning",
+        message: `Material '${ingredient.rm_code}' uses ${ingredient.unit} but the batch is ${artifact.batch_unit}; amount cannot be verified against the batch.`,
+      });
+      continue;
+    }
+    const expected_base = new Decimal(ingredient.percentage).div(100).times(batch_base);
+    const amount_base = new Decimal(ingredient.amount).times(unit.factor);
+    const tolerance = expected_base.times("0.005").plus("0.01");
+    if (amount_base.minus(expected_base).abs().greaterThan(tolerance)) {
+      findings.push({
+        code: "AMOUNT_INCONSISTENT_WITH_BATCH",
+        severity: "blocking",
+        message: `Material '${ingredient.rm_code}' amount ${ingredient.amount}${ingredient.unit} does not match ${ingredient.percentage}% of the ${artifact.batch_size}${artifact.batch_unit} batch.`,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Determine whether a material identifier is present in the formula, matching
+ * either the material_id or the rm_code of any ingredient.
+ *
+ * @param ingredients - Artifact ingredients.
+ * @param identifier - A material_id or rm_code.
+ * @returns True when some ingredient carries that identifier.
+ */
+function material_present(
+  ingredients: readonly FormulaIngredientV1[],
+  identifier: string,
+): boolean {
+  return ingredients.some(
+    (ingredient) =>
+      ingredient.material_id === identifier || ingredient.rm_code === identifier,
+  );
+}
+
+/**
+ * Check no configured incompatible material pair is co-present.
+ *
+ * @param artifact - The formula artifact.
+ * @param constraints - Configured constraints (incompatibility pairs).
+ * @returns Blocking findings for each co-present incompatible pair.
+ */
+function check_incompatibilities(
+  artifact: FormulaArtifactV1,
+  constraints: FormulaConstraintsV1,
+): FormulaValidationFinding[] {
+  const pairs = constraints.incompatibilities ?? [];
+  const findings: FormulaValidationFinding[] = [];
+  for (const [left, right] of pairs) {
+    if (
+      material_present(artifact.ingredients, left) &&
+      material_present(artifact.ingredients, right)
+    ) {
+      findings.push({
+        code: "INCOMPATIBLE_MATERIALS",
+        severity: "blocking",
+        message: `Materials '${left}' and '${right}' are configured as incompatible and must not co-occur.`,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Check every configured required phase appears at least once.
+ *
+ * @param artifact - The formula artifact.
+ * @param constraints - Configured constraints (required phases).
+ * @returns Blocking findings for each absent required phase.
+ */
+function check_required_phases(
+  artifact: FormulaArtifactV1,
+  constraints: FormulaConstraintsV1,
+): FormulaValidationFinding[] {
+  const required = constraints.required_phases ?? [];
+  const present = new Set(artifact.ingredients.map((ingredient) => ingredient.phase));
+  const findings: FormulaValidationFinding[] = [];
+  for (const phase of required) {
+    if (!present.has(phase)) {
+      findings.push({
+        code: "MISSING_REQUIRED_PHASE",
+        severity: "blocking",
+        message: `Required phase '${phase}' is not present in the formula.`,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Check the artifact's target pH lies within the configured allowed range.
+ *
+ * @param artifact - The formula artifact (optional target_ph).
+ * @param constraints - Configured constraints (ph_range).
+ * @returns A blocking finding for out-of-range pH, a warning when the range is
+ *          configured but the target pH is unspecified, else none.
+ */
+function check_ph(
+  artifact: FormulaArtifactV1,
+  constraints: FormulaConstraintsV1,
+): FormulaValidationFinding[] {
+  const range = constraints.ph_range;
+  if (!range) return [];
+  const target = artifact.target_ph;
+  if (target === null || target === undefined) {
+    return [
+      {
+        code: "PH_UNSPECIFIED",
+        severity: "warning",
+        message: `A target pH range ${range[0]}–${range[1]} is configured but the formula does not specify a target pH.`,
+      },
+    ];
+  }
+  const value = new Decimal(target);
+  if (value.lessThan(new Decimal(range[0])) || value.greaterThan(new Decimal(range[1]))) {
+    return [
+      {
+        code: "PH_OUT_OF_RANGE",
+        severity: "blocking",
+        message: `Target pH ${target} is outside the allowed range ${range[0]}–${range[1]}.`,
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Check dated-cost completeness and freshness when required by constraints.
+ *
+ * Freshness uses the deterministic `as_of_iso` reference, never a wall clock,
+ * so replays are stable. Missing/undated costs block; stale costs warn.
+ *
+ * @param artifact - The formula artifact.
+ * @param constraints - Configured constraints (require_dated_cost, age, as_of).
+ * @returns Blocking findings for missing/undated costs, warnings for stale ones.
+ */
+function check_dated_cost(
+  artifact: FormulaArtifactV1,
+  constraints: FormulaConstraintsV1,
+): FormulaValidationFinding[] {
+  if (!constraints.require_dated_cost) return [];
+  const findings: FormulaValidationFinding[] = [];
+  for (const ingredient of artifact.ingredients) {
+    if (ingredient.is_water) continue;
+    if (ingredient.cost === null) {
+      findings.push({
+        code: "COST_MISSING",
+        severity: "blocking",
+        message: `Material '${ingredient.rm_code}' has no cost, but dated cost is required.`,
+      });
+      continue;
+    }
+    if (!ingredient.cost_as_of) {
+      findings.push({
+        code: "COST_UNDATED",
+        severity: "blocking",
+        message: `Material '${ingredient.rm_code}' has a cost but no dated timestamp.`,
+      });
+      continue;
+    }
+    if (
+      constraints.cost_max_age_days !== null &&
+      constraints.cost_max_age_days !== undefined &&
+      constraints.as_of_iso
+    ) {
+      const age_days =
+        (Date.parse(constraints.as_of_iso) - Date.parse(ingredient.cost_as_of)) / MS_PER_DAY;
+      if (age_days > constraints.cost_max_age_days) {
+        findings.push({
+          code: "COST_STALE",
+          severity: "warning",
+          message: `Material '${ingredient.rm_code}' cost is ${Math.floor(age_days)} days old (limit ${constraints.cost_max_age_days}).`,
+        });
+      }
+    }
+  }
+  return findings;
+}
+
+/**
+ * Validate a formula artifact deterministically against material evidence and
+ * optional tenant/product constraints.
  *
  * @param artifact - The proposed formula artifact.
  * @param evidence - The material evidence index backing usage ranges/claims.
+ * @param constraints - Optional configured constraints (incompatibilities,
+ *                      required phases, pH range, dated-cost policy). Defaults to
+ *                      empty, disabling every constraint-gated check.
  * @returns The validation outcome; `valid` is false when any blocking finding
  *          is present.
  */
 export function validate_formula_artifact(
   artifact: FormulaArtifactV1,
   evidence: MaterialEvidenceIndex,
+  constraints: FormulaConstraintsV1 = EMPTY_FORMULA_CONSTRAINTS,
 ): FormulaValidationV1 {
   const findings: FormulaValidationFinding[] = [];
   const single_checks = [
@@ -199,6 +426,11 @@ export function validate_formula_artifact(
   }
   findings.push(...check_usage_and_backing(artifact.ingredients, evidence));
   findings.push(...check_claim_citations(artifact, evidence));
+  findings.push(...check_amount_from_batch(artifact));
+  findings.push(...check_incompatibilities(artifact, constraints));
+  findings.push(...check_required_phases(artifact, constraints));
+  findings.push(...check_ph(artifact, constraints));
+  findings.push(...check_dated_cost(artifact, constraints));
 
   return {
     valid: !findings.some((finding) => finding.severity === "blocking"),

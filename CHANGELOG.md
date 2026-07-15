@@ -1,5 +1,46 @@
 # Changelog
 
+## [2026-07-15] feat: Complete deterministic formula validator checks (G4.8a)
+
+### Summary
+
+- Extended `packages/ai-orchestration/src/artifacts/formula-validator.ts` with the
+  remaining deterministic checks the G4.8 plan enumerates, closing the validator
+  half of the G4.8 remainder:
+  - **amount-from-batch** (unconditional, blocking `AMOUNT_INCONSISTENT_WITH_BATCH`):
+    each ingredient's `amount` must equal its `percentage` of the batch, with
+    exact decimal.js arithmetic and same-family unit conversion (mass g/kg, volume
+    ml/L). A cross-family unit is unverifiable and surfaces as a warning
+    (`AMOUNT_UNIT_MISMATCH`) rather than blocking.
+  - **constraint-gated** checks that are no-ops unless configured, so pre-existing
+    drafts validate unchanged: `INCOMPATIBLE_MATERIALS` (co-present pairs),
+    `MISSING_REQUIRED_PHASE`, `PH_OUT_OF_RANGE` (blocking) / `PH_UNSPECIFIED`
+    (warning), and dated cost — `COST_MISSING`/`COST_UNDATED` (blocking) with
+    `COST_STALE` (warning) computed against a deterministic `as_of_iso`, never a
+    wall clock.
+- Added two backward-compatible optional schema fields in `formula-schema.ts`
+  (`FormulaArtifactV1.target_ph`, `FormulaIngredientV1.cost_as_of`) via `.optional()`
+  so existing typed fixtures compile unchanged, plus the `FormulaConstraintsV1`
+  contract and a frozen `EMPTY_FORMULA_CONSTRAINTS` default. The validator now
+  takes an optional third `constraints` argument.
+
+### Verification approach
+
+- `tests/orchestration/formula-artifact.test.ts` grew 11 → 23: amount consistent
+  with a same-unit and a kilogram batch, an inconsistent amount, cross-family unit
+  mismatch (warning), incompatible pair, missing required phase, pH out-of/in
+  range, undated cost, dated cost within window, and a stale-cost warning.
+- Four gates: full suite **529/529** (was 517; +12), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.8, tracked as G4.8b–G4.8d)
+
+- `formula-finalizer.ts` (compute quality_dimensions + evidence coverage),
+  `nodes/finalize.ts` (extract candidate artifact from observations, blocking
+  findings → agent observation bounded by budget, else output + artifact reference)
+  with the graph rewire, and the `apps/ai` `formula-artifact-service.ts` draft
+  persist + manager confirmed commit.
+
 ## [2026-07-15] feat: Deterministic formula artifact validator (G4.8, core)
 
 ### Summary

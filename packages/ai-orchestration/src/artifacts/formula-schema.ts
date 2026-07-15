@@ -22,6 +22,12 @@ export const formula_ingredient_v1_schema = z
     amount: decimal_string,
     unit: z.enum(["g", "kg", "ml", "L"]),
     cost: decimal_string.nullable(),
+    /**
+     * ISO-8601 timestamp the `cost` was quoted. Optional so existing drafts
+     * remain valid; the dated-cost check only fires under
+     * `FormulaConstraintsV1.require_dated_cost`.
+     */
+    cost_as_of: z.string().datetime({ offset: true }).nullable().optional(),
     source_ids: z.array(z.string().min(1)).max(50),
     rationale: z.string().max(1_000),
     /** Water/solvent base is exempt from the source-backing rule. */
@@ -51,6 +57,12 @@ export const formula_artifact_v1_schema = z
     ingredients: z.array(formula_ingredient_v1_schema).min(1).max(100),
     claims: z.array(formula_claim_v1_schema).max(50).default([]),
     warnings: z.array(z.string().max(1_000)).max(100).default([]),
+    /**
+     * Target formulation pH (decimal string). Optional so existing drafts
+     * remain valid; the pH check only fires under
+     * `FormulaConstraintsV1.ph_range`.
+     */
+    target_ph: decimal_string.nullable().optional(),
   })
   .strict();
 export type FormulaArtifactV1 = z.infer<typeof formula_artifact_v1_schema>;
@@ -82,3 +94,31 @@ export interface FormulaValidationV1 {
 /** The mandatory statement every artifact must carry (Step 5). */
 export const MANDATORY_REVIEW_STATEMENT =
   "Laboratory, stability, safety, and regulatory review remain required before production.";
+
+/**
+ * Deterministic, tenant/product-configurable formula constraints.
+ *
+ * All fields are optional: an empty object disables every constraint-gated
+ * check so pre-existing drafts validate unchanged. Values are decimal strings
+ * or plain scalars — never floats — so checks are exact and replay-stable.
+ */
+export interface FormulaConstraintsV1 {
+  /**
+   * Pairs of materials (matched by material_id OR rm_code) that must not both
+   * appear in the same formula. Order within a pair is irrelevant.
+   */
+  readonly incompatibilities?: readonly (readonly [string, string])[];
+  /** Phases that must each be present at least once among the ingredients. */
+  readonly required_phases?: readonly string[];
+  /** Inclusive allowed target-pH range as `[min, max]` decimal strings. */
+  readonly ph_range?: readonly [string, string] | null;
+  /** When true, every non-water ingredient must carry a dated cost. */
+  readonly require_dated_cost?: boolean;
+  /** Max age (days) before a dated cost is flagged stale (warning only). */
+  readonly cost_max_age_days?: number | null;
+  /** Deterministic "now" (ISO-8601) used for cost freshness; no wall clock. */
+  readonly as_of_iso?: string | null;
+}
+
+/** Frozen empty constraints — the default when a caller supplies none. */
+export const EMPTY_FORMULA_CONSTRAINTS: FormulaConstraintsV1 = Object.freeze({});
