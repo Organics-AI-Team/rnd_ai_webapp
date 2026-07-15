@@ -1,5 +1,43 @@
 # Changelog
 
+## [2026-07-15] feat: Draft formula artifact persistence (G4.8d-ii)
+
+### Summary
+
+- Added `apps/ai/server/repositories/ai-artifact-repository.ts`: a tenant-scoped
+  repository over `ai_artifacts` built on the G2 `tenant-repository-base` helpers
+  (`persist_draft` forces `status: "draft"` and stamps tenant + owner from the
+  execution context; `get_artifact` and `mark_confirmed` are tenant-filtered with
+  the canonical `AI_ARTIFACT_NOT_FOUND` shape). All writes flow through
+  `insert_scoped_document`/`update_scoped_document`, so the private-boundary
+  scanner (G2.7) stays satisfied.
+- Extended `FormulaArtifactService` with `persist_draft(context, artifact,
+  validation, run_id)`: it stores the validated draft as an AIArtifact with a
+  canonical (key-order-independent) content hash, the recorded validation result,
+  and the deduplicated cited evidence sources. Callers persist the validation they
+  already computed, so the stored record matches what the reviewer saw. The
+  repository is an optional constructor dependency, so the loop-facing
+  `validate_draft` path is unaffected.
+
+### Verification approach
+
+- `tests/repositories/ai-artifact-repository.test.ts` (5) against a real in-memory
+  MongoDB: draft stamped with tenant/owner/draft status; read-back within the
+  tenant but `AI_ARTIFACT_NOT_FOUND` across tenants; idempotent confirm;
+  `persist_draft` records the hash + collected source ids; and the missing-repo
+  guard.
+- Four gates: full suite **549/549** (was 544; +5), typecheck 0 (new files clean
+  under apps/ai too), security scan 0 (new writes go through the repository
+  helpers), production web build pass.
+
+### Remaining (G4.8, tracked as G4.8d-iii)
+
+- `commit_confirmed`: a manager with `formula:confirm` and an approved `AIApproval`
+  idempotently mapping the artifact into a `Formula` (+ `FormulaVersionLog`) via
+  the existing `FormulaRepository`, then `mark_confirmed`. Straddles the
+  orchestration `TrustedRuntimeContext` vs app `TenantExecutionContext` boundary,
+  so it pairs with G4.9 gateway wiring.
+
 ## [2026-07-15] feat: FormulaArtifactService validate_draft adapter (G4.8d-i)
 
 ### Summary

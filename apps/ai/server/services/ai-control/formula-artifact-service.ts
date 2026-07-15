@@ -16,15 +16,20 @@
 import {
   compute_formula_quality_dimensions,
   formula_artifact_v1_schema,
+  hash_arguments,
   validate_formula_artifact,
   type ArtifactService,
   type ArtifactValidationFindingV1,
   type ArtifactValidationV1,
+  type FormulaArtifactV1,
   type FormulaConstraintsV1,
   type FormulaValidationFinding,
   type MaterialEvidenceIndex,
   type TrustedRuntimeContext,
 } from "@rnd-ai/ai-orchestration";
+import type { TenantExecutionContext } from "@rnd-ai/shared-types";
+
+import type { AIArtifactRepository } from "../../repositories/ai-artifact-repository";
 
 /**
  * Loads deterministic material evidence for a tenant's formula draft.
@@ -98,16 +103,37 @@ function collect_material_keys(
   return [...keys];
 }
 
+/**
+ * Collect distinct evidence source ids cited across a draft's ingredients and
+ * claims, for provenance on the persisted artifact.
+ *
+ * @param artifact - The validated formula artifact.
+ * @returns Deduplicated source identifiers.
+ */
+function collect_source_ids(artifact: FormulaArtifactV1): string[] {
+  const ids = new Set<string>();
+  for (const ingredient of artifact.ingredients) {
+    for (const source of ingredient.source_ids ?? []) ids.add(source);
+  }
+  for (const claim of artifact.claims ?? []) {
+    for (const source of claim.source_ids ?? []) ids.add(source);
+  }
+  return [...ids];
+}
+
 /** Deterministic formula ArtifactService adapter for the governed loop. */
 export class FormulaArtifactService implements ArtifactService {
   /**
    * @param evidence_provider - Loads tenant-scoped material evidence.
    * @param constraint_provider - Optional tenant/product constraint source; when
    *                              omitted, constraint-gated checks are no-ops.
+   * @param artifact_repository - Optional persistence for draft artifacts;
+   *                              required only for `persist_draft`.
    */
   constructor(
     private readonly evidence_provider: MaterialEvidenceProvider,
     private readonly constraint_provider?: FormulaConstraintProvider,
+    private readonly artifact_repository?: AIArtifactRepository,
   ) {}
 
   /**
@@ -159,5 +185,42 @@ export class FormulaArtifactService implements ArtifactService {
       findings: validation.findings.map(to_safe_finding),
       quality_dimensions,
     };
+  }
+
+  /**
+   * Persist a validated draft formula as a tenant-scoped AIArtifact (status
+   * draft). Callers persist the validation they already computed rather than
+   * re-running it, so the stored `validationResult` matches what the reviewer
+   * saw. Content is hashed canonically (key-order independent) for provenance.
+   *
+   * @param context - Verified tenant execution context (app-side identity).
+   * @param artifact - The validated formula artifact to store.
+   * @param validation - The validation outcome recorded alongside the draft.
+   * @param run_id - The run that produced the draft (provenance link).
+   * @returns The persisted artifact id and its canonical content hash.
+   * @throws Error when no AIArtifactRepository was injected.
+   */
+  async persist_draft(
+    context: TenantExecutionContext,
+    artifact: FormulaArtifactV1,
+    validation: ArtifactValidationV1,
+    run_id: string,
+  ): Promise<{ artifact_id: string; content_hash: string }> {
+    if (!this.artifact_repository) {
+      throw new Error(
+        "FormulaArtifactService.persist_draft requires an AIArtifactRepository.",
+      );
+    }
+    const content_hash = hash_arguments(artifact);
+    const document = await this.artifact_repository.persist_draft(context, {
+      runId: run_id,
+      artifactType: "formula",
+      schemaVersion: "1",
+      content: artifact,
+      contentHash: content_hash,
+      validationResult: validation,
+      sourceEvidenceIds: collect_source_ids(artifact),
+    });
+    return { artifact_id: String(document._id), content_hash };
   }
 }
