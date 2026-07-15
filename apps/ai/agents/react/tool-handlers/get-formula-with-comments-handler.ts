@@ -10,6 +10,8 @@
 
 import client_promise from '@rnd-ai/shared-database';
 import { ObjectId } from 'mongodb';
+import type { ToolHandlerContext } from '../types';
+import { tenant_scoped_id_filter } from '../tenant-tool-scope';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,15 +39,19 @@ interface GetFormulaWithCommentsParams {
  * 3. Load all comments for this formula, sorted oldest-first for reading order
  * 4. Return combined JSON with formula detail + comment thread
  *
- * @param params - GetFormulaWithCommentsParams with formula_id
+ * @param params  - GetFormulaWithCommentsParams with formula_id
+ * @param context - Tool handler context; its verified tenant_id (never the
+ *                  model-supplied ID) scopes the formula lookup (G2.6).
  * @returns JSON string with formula detail and comment thread
  */
 export async function handle_get_formula_with_comments(
   params: GetFormulaWithCommentsParams,
+  context?: ToolHandlerContext,
 ): Promise<string> {
   const start_ts = Date.now();
   console.log('[get-formula-comments] handle_get_formula_with_comments — start', {
     formula_id: params.formula_id,
+    tenant_id: context?.tenant_id,
   });
 
   if (!params.formula_id) {
@@ -64,8 +70,21 @@ export async function handle_get_formula_with_comments(
       return JSON.stringify({ error: `Invalid formula_id format: "${params.formula_id}"` });
     }
 
+    // --- Tenant scope (G2.6): pin the lookup to the trusted tenant. A
+    // cross-tenant or missing ID is indistinguishable from not-found. When
+    // tenant_id is absent (unconverted legacy call site) the lookup stays
+    // unscoped for backward compatibility until that call site is converted.
+    const scoped_filter = tenant_scoped_id_filter(params.formula_id, context?.tenant_id);
+    if (context?.tenant_id && !scoped_filter) {
+      return JSON.stringify({
+        error: `Formula not found: ${params.formula_id}`,
+        suggestion: 'Use search_reference_formulas to find formula IDs first.',
+      });
+    }
+    const load_filter = scoped_filter ?? { _id: object_id };
+
     // --- Load formula ---
-    const formula = await db.collection('formulas').findOne({ _id: object_id });
+    const formula = await db.collection('formulas').findOne(load_filter);
 
     if (!formula) {
       return JSON.stringify({
@@ -86,13 +105,16 @@ export async function handle_get_formula_with_comments(
       comment_count: comments.length,
     });
 
-    // --- Load parent formula if it exists ---
+    // --- Load parent formula if it exists (tenant-scoped like the primary) ---
     let parent_formula = null;
     if (formula.parentFormulaId) {
       try {
-        parent_formula = await db.collection('formulas').findOne({
-          _id: new ObjectId(formula.parentFormulaId),
-        });
+        const parent_filter =
+          tenant_scoped_id_filter(String(formula.parentFormulaId), context?.tenant_id) ??
+          (context?.tenant_id ? null : { _id: new ObjectId(formula.parentFormulaId) });
+        parent_formula = parent_filter
+          ? await db.collection('formulas').findOne(parent_filter)
+          : null;
       } catch {
         console.log('[get-formula-comments] parent formula lookup failed — skipping');
       }

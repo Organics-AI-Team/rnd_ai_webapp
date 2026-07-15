@@ -61,6 +61,10 @@ export type { ToolHandlerContext } from './types';
  * @property prompt               - The user's natural-language query (required).
  * @property user_id              - Authenticated user identifier (required).
  * @property organization_id      - User's organization ID for DB writes (optional).
+ * @property tenant_id            - Verified tenant ID injected by trusted server
+ *                                  code (from the request principal's active
+ *                                  tenant). Scopes every tenant tool access
+ *                                  (G2.6). Never sourced from model/body input.
  * @property session_id           - Optional chat session ID for context_memory lookups.
  * @property conversation_history - Optional prior turns for multi-turn context.
  */
@@ -68,6 +72,7 @@ export interface ReactAgentRequest {
   prompt: string;
   user_id: string;
   organization_id?: string;
+  tenant_id?: string;
   session_id?: string;
   conversation_history?: Array<{ role: string; content: string }>;
 }
@@ -139,14 +144,16 @@ const TOOL_HANDLER_MAP: Record<
   (args: Record<string, unknown>, context?: ToolHandlerContext) => Promise<string>
 > = {
   qdrant_search: (args) => handle_qdrant_search(args as any),
-  mongo_query: (args) => handle_mongo_query(args as any),
+  // Tenant-scoped tools receive ctx so their tenant predicate is injected from
+  // the trusted execution context, never from a model-supplied argument (G2.6).
+  mongo_query: (args, ctx) => handle_mongo_query(args as any, ctx),
   formula_calculate: (args) => handle_formula_calculate(args as any),
   web_search: (args) => handle_web_search(args as any),
   context_memory: (args, ctx) => handle_context_memory(args as any),
   generate_formula: (args, ctx) => handle_generate_formula(args as any, ctx),
-  search_reference_formulas: (args) => handle_search_reference_formulas(args as any),
+  search_reference_formulas: (args, ctx) => handle_search_reference_formulas(args as any, ctx),
   revise_formula: (args, ctx) => handle_revise_formula(args as any, ctx),
-  get_formula_with_comments: (args) => handle_get_formula_with_comments(args as any),
+  get_formula_with_comments: (args, ctx) => handle_get_formula_with_comments(args as any, ctx),
   confirm_formula: (args, ctx) => handle_confirm_formula(args as any, ctx),
 };
 
@@ -223,10 +230,12 @@ export class ReactAgentService {
       processSteps: [],
     };
 
-    // Build handler context from request for DB persistence
+    // Build handler context from request for DB persistence. tenant_id is the
+    // trusted scope every tenant tool access is pinned to (G2.6).
     const handler_context: ToolHandlerContext = {
       user_id: request.user_id,
       organization_id: request.organization_id,
+      tenant_id: request.tenant_id,
       session_id: request.session_id,
     };
 

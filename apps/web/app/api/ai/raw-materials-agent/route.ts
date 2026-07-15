@@ -334,6 +334,8 @@ export async function POST(request: NextRequest) {
           prompt: body.prompt,
           user_id: body.userId,
           organization_id: body.organizationId,
+          // Tenant scope comes from the verified principal, never the body (G2.6).
+          tenant_id: principal.active_tenant_id ?? undefined,
           session_id: body.sessionId || body.conversationHistory?.[0]?.sessionId,
           conversation_history: body.conversationHistory?.map((m: any) => ({
             role: m.role || 'user',

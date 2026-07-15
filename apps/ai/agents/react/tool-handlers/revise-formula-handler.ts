@@ -16,6 +16,7 @@ import { ObjectId } from 'mongodb';
 import { get_qdrant_service } from '../../../services/vector/qdrant-service';
 import { createEmbeddingService } from '../../../services/embeddings/universal-embedding-service';
 import type { ToolHandlerContext } from '../types';
+import { tenant_scoped_id_filter } from '../tenant-tool-scope';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -199,8 +200,21 @@ export async function handle_revise_formula(params: ReviseFormulaParams, context
       return JSON.stringify({ error: `Invalid formula_id format: "${params.formula_id}"` });
     }
 
+    // --- Tenant scope (G2.6): the model supplies the ID, the tenant predicate
+    // comes from the trusted execution context. Cross-tenant/missing is
+    // indistinguishable from not-found. The later in-place update reuses
+    // object_id only after this load proves tenant ownership. Absent tenant_id
+    // (unconverted legacy call site) stays unscoped for backward compatibility.
+    const scoped_filter = tenant_scoped_id_filter(params.formula_id, context?.tenant_id);
+    if (context?.tenant_id && !scoped_filter) {
+      return JSON.stringify({
+        error: `Formula not found: ${params.formula_id}`,
+        suggestion: 'Use search_reference_formulas to find formula IDs first.',
+      });
+    }
+
     // --- Load formula ---
-    const formula = await db.collection('formulas').findOne({ _id: object_id });
+    const formula = await db.collection('formulas').findOne(scoped_filter ?? { _id: object_id });
     if (!formula) {
       return JSON.stringify({
         error: `Formula not found: ${params.formula_id}`,

@@ -1,5 +1,56 @@
 # Changelog
 
+## [2026-07-15] fix: Tenant-scope all legacy AI tools + lock down mongo_query (G2.6 complete)
+
+### Summary
+
+- Completed G2.6: every legacy ReAct tool that touches a tenant collection now
+  injects the tenant predicate from the trusted execution context, never from a
+  model-supplied argument. A model can name a record ID; deterministic code
+  decides which tenant the lookup runs against.
+- Extended `apps/ai/agents/react/tenant-tool-scope.ts` with two reused helpers
+  (`tenant_match_clause`, `tenant_scoped_query_filter`) and refactored
+  `tenant_scoped_id_filter` onto the shared clause (DRY). The provenance field
+  (`tenantId`, added by G2.2) is defined once as `TENANT_PROVENANCE_FIELD`.
+- Converted four handlers: `get-formula-with-comments` and `revise-formula` now
+  pin the formula load (and parent-formula load) to the caller's tenant —
+  cross-tenant/missing IDs return the generic "Formula not found" shape with no
+  existence oracle; `search-reference-formulas` ANDs a mandatory tenant clause
+  into every query and **fails closed (empty result) when no tenant scope is
+  present** — an unscoped multi-document search would have leaked every tenant's
+  formulas; `generate-formula` stamps `tenantId` on the persisted formula and
+  its version log so later tenant-scoped reads can find AI-generated formulas.
+- Rewrote `mongo-query-handler` from a free-form (model supplies collection +
+  filter + aggregation pipeline — a direct cross-tenant exfiltration vector)
+  into a locked-down named-diagnostic surface: the model may only pick an
+  allowlisted diagnostic by name (`tenant_formula_count`,
+  `tenant_formula_status_breakdown`, `tenant_recent_formulas`,
+  `raw_material_count`) plus allowlist-validated scalar params (status, limit).
+  Server-authored templates own the collection/filter/stages; tenant diagnostics
+  fail closed without a verified tenant. Updated the tool declaration and the
+  ReAct system prompt so the model no longer attempts collection/filter usage.
+- Threaded the trusted tenant end-to-end: `ReactAgentRequest.tenant_id` →
+  `ToolHandlerContext.tenant_id`; the tool-handler dispatch map now passes `ctx`
+  to every tenant-scoped tool; the `raw-materials-agent` route sources
+  `tenant_id` from `principal.active_tenant_id` (never the body).
+
+### Verification approach
+
+- RED first: `tests/integration/tenant-ai-tool-isolation.test.ts` extended with a
+  MongoMemoryServer-backed two-tenant fixture; 9 cross-tenant assertions failed
+  against the pre-conversion handlers (the concrete exploit paths). GREEN after
+  conversion: 17/17 in that file.
+- Four gates: full suite **429/429** (was 416; +13), typecheck 0, security scan 0
+  private-boundary violations, production web build exit 0.
+
+### Remaining (tracked)
+
+- G2.7 (now unblocked): extend the boundary scanner so tenant collections may
+  only be accessed inside `apps/ai/server/repositories/**`; the remaining
+  `TODO(G2.6)` raw accesses in the routers are the last whitelist to remove.
+
+---
+
 ## [2026-07-15] feat: Routers on tenant repositories + AI control-plane models (G2.5, G3.1)
 
 ### Summary
