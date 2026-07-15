@@ -72,6 +72,43 @@ export const agent_run_input_v1_schema = z
   .strict();
 export type AgentRunInputV1 = z.infer<typeof agent_run_input_v1_schema>;
 
+/**
+ * A user's answer to a clarification interrupt, submitted to resume a run. The
+ * resume route accepts ONLY this or an approval decision — never arbitrary graph
+ * state.
+ */
+export const clarification_response_v1_schema = z
+  .object({
+    kind: z.literal("clarification"),
+    answer: z.string().min(1).max(32_000),
+  })
+  .strict();
+export type ClarificationResponseV1 = z.infer<typeof clarification_response_v1_schema>;
+
+/**
+ * A manager's decision on an approval interrupt, submitted to resume a run.
+ */
+export const approval_decision_v1_schema = z
+  .object({
+    kind: z.literal("approval"),
+    approval_id: z.string().min(1).max(128),
+    decision: z.enum(["approve", "deny"]),
+    decided_by_profile_id: z.string().min(1).max(128),
+  })
+  .strict();
+export type ApprovalDecisionV1 = z.infer<typeof approval_decision_v1_schema>;
+
+/**
+ * The strict resume payload the resume route accepts: exactly one interrupt
+ * response, discriminated by `kind`. Anything else is rejected before a resume
+ * job is enqueued.
+ */
+export const resume_request_v1_schema = z.discriminatedUnion("kind", [
+  clarification_response_v1_schema,
+  approval_decision_v1_schema,
+]);
+export type ResumeRequestV1 = z.infer<typeof resume_request_v1_schema>;
+
 /** One evidence citation surfaced with an answer or artifact. */
 export const citation_v1_schema = z
   .object({
