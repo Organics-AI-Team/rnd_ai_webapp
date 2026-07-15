@@ -1,5 +1,34 @@
 # Changelog
 
+## [2026-07-15] feat: Versioned run-event view reducer (G4.10, core)
+
+### Summary
+
+- Added `apps/web/lib/agent_run_view.ts`: a pure, framework-free reducer that
+  folds the server's ordered `AgentRunEventV1` stream into the view state the AI
+  UI renders — lifecycle status, stage, evidence observations, tool actions,
+  pending clarification/approval interrupts, artifact references, and terminal
+  error — **without ever parsing model prose for control state**. `reduce_run_event`
+  validates each raw event against the versioned schema and drops any event whose
+  `sequence` was already seen, so a reconnect that replays earlier events is
+  idempotent ("render each event once"). `apply_typed_run_event` is the exhaustive
+  typed transition; interrupts clear when the loop resumes (`action.started`) or
+  the run ends.
+- This is the deterministic heart of plan Task 10. The live SSE hook
+  (`use_agent_run`), the React cards, and the reconnect e2e spec consume the
+  run/event API that G4.9 provides, so they land with G4.9; the reducer is
+  independently unit-tested now.
+
+### Verification approach
+
+- `tests/web/agent-run-view.test.ts` (9): a full run folds to completed with
+  observations/actions/artifact; a reconnect replay of earlier events does not
+  double-apply; duplicate observation ids are ignored; approval/clarification
+  surface and clear; a terminal failure records the typed error; a malformed event
+  is ignored; and the latest artifact version wins.
+- Four gates: full suite **563/563** (was 554; +9), typecheck 0 (apps/web reducer
+  clean), security scan 0, production web build pass.
+
 ## [2026-07-15] feat: Approval-gated formula artifact commit (G4.8d-iii)
 
 ### Summary
