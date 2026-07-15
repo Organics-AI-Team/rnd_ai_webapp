@@ -1,5 +1,32 @@
 # Changelog
 
+## [2026-07-15] feat: Concrete FormulaApprovalGate over ai_approvals (G4.8 wiring)
+
+### Summary
+
+- Added `apps/ai/server/repositories/ai-approval-gate.ts`:
+  `create_ai_approval_gate` — the concrete `FormulaApprovalGate` the gateway
+  injects into `FormulaArtifactService.commit_confirmed`. It is a pure
+  tenant-scoped `ai_approvals` read (no model, **no provider credentials**):
+  `has_approved_artifact` returns true only when an approval for the tenant, run,
+  and artifact is in the `approved` state. This closes one of the two G4.8 DI
+  adapters that had been deferred to gateway wiring — correcting an earlier
+  mischaracterization that both needed provider credentials; only the model
+  gateway does.
+
+### Verification approach
+
+- `tests/integration/ai-approval-gate.test.ts` (5) against a real in-memory
+  MongoDB: approved match; pending/rejected → false; no approval → false;
+  different artifact/run → false; other tenant → false.
+- Four gates: full suite **608/608** (was 603; +5), typecheck 0 (new file clean),
+  security scan 0, production web build pass.
+
+### Remaining G4.8 adapter
+
+- The concrete `MaterialEvidenceProvider` (a raw-material/knowledge DB read —
+  also credential-free) still to wire.
+
 ## [2026-07-15] feat: Private run-worker orchestration (G4.9f, core)
 
 ### Summary
