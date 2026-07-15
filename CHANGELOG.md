@@ -1,5 +1,36 @@
 # Changelog
 
+## [2026-07-15] feat: Private run-worker orchestration (G4.9f, core)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-gateway/run-worker.ts`: `process_one_job`
+  claims one leased job, loads the pinned AIRun, runs (or resumes) the governed
+  graph through an injected `RunExecutor`, appends the produced events, records the
+  run's terminal/interim status, and completes the job. A handled executor failure
+  releases the job with a backoff so it is retried; a vanished run's job is retired;
+  and a genuine crash runs no cleanup — the lease expires and another worker
+  reclaims it, so a run never depends on one process. An interrupt
+  (`waiting_approval`/`waiting_clarification`) pauses the run and completes the
+  start job, leaving a resume job to continue. The concrete `RunExecutor` (rebuilds
+  the runtime from the pinned run, drives the graph with the MongoDBSaver) is
+  injected, so this orchestration is verified without provider credentials.
+
+### Verification approach
+
+- `tests/integration/run-worker.test.ts` (5) against a real in-memory MongoDB with
+  the live queue/run-repository/event-store: run-to-completion, empty queue,
+  handled failure (released + reclaimable), interrupt (run paused), and a vanished
+  run (job retired).
+- Four gates: full suite **603/603** (was 598; +5), typecheck 0 (new file clean),
+  security scan 0, production web build pass.
+
+### Remaining (G4.9)
+
+- The three Next.js routes + integration test (G4.9g), and the concrete
+  `RunExecutor`/runtime factory + `worker.ts` poll-loop entrypoint — external-facing
+  wiring that needs provider credentials.
+
 ## [2026-07-15] feat: AI gateway create_run — one authenticated run entry (G4.9e, part 2)
 
 ### Summary
