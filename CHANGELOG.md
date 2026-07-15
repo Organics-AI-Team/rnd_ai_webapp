@@ -1,5 +1,39 @@
 # Changelog
 
+## [2026-07-15] feat: FormulaArtifactService validate_draft adapter (G4.8d-i)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-control/formula-artifact-service.ts`: the
+  concrete `ArtifactService` the AI gateway wires into the governed loop's
+  `artifacts` port (consumed by the G4.8c finalize node). `validate_draft` parses
+  the tool-produced payload with `formula_artifact_v1_schema` (fails closed with
+  `ARTIFACT_SCHEMA_INVALID` when it does not match), loads tenant-scoped material
+  evidence through an injected `MaterialEvidenceProvider` (the orchestration
+  package holds none by design), applies optional tenant/product constraints via
+  an injected `FormulaConstraintProvider`, runs `validate_formula_artifact` +
+  `compute_formula_quality_dimensions`, and returns the public
+  `ArtifactValidationV1` — findings mapped to safe messages, plus the computed
+  quality dimensions.
+- Exported `formula-finalizer` from the orchestration barrel so hosts can import
+  `compute_formula_quality_dimensions`.
+
+### Verification approach
+
+- `tests/ai-control/formula-artifact-service.test.ts` (4): a backed draft
+  validates with full evidence coverage; a non-conforming payload fails closed; an
+  unbacked material blocks with a safe message and lowered coverage; and injected
+  incompatibility constraints block. The barrel import resolves from apps/ai.
+- Four gates: full suite **544/544** (was 540; +4), typecheck 0 (new file also
+  clean under apps/ai's tsconfig), security scan 0, production web build pass.
+
+### Remaining (G4.8, tracked as G4.8d-ii)
+
+- Persistence: the `MaterialEvidenceProvider` backed by tenant raw-material/
+  knowledge data, draft `AIArtifact` persistence, and `commit_confirmed` — a
+  manager with `formula:confirm` and an approved `AIApproval` idempotently writing
+  `Formula` + `FormulaVersionLog` in one commit.
+
 ## [2026-07-15] feat: Authoritative finalize node with artifact validation (G4.8c)
 
 ### Summary

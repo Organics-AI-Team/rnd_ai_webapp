@@ -28,6 +28,7 @@ export * from "./nodes/request-approval";
 export * from "./nodes/request-clarification";
 export * from "./artifacts/formula-schema";
 export * from "./artifacts/formula-validator";
+export * from "./artifacts/formula-finalizer";
 export * from "./schemas/specialist";
 export * from "./delegation/delegation-registry";
 export * from "./delegation/delegate-tool-factory";
