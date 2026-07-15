@@ -22,3 +22,6 @@ export * from "./nodes/gate";
 export * from "./nodes/act";
 export * from "./nodes/fail";
 export * from "./graph";
+export * from "./schemas/specialist";
+export * from "./delegation/delegation-registry";
+export * from "./delegation/delegate-tool-factory";

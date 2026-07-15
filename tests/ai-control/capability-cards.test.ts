@@ -31,6 +31,17 @@ import {
 const AGENT_KEYS = ["raw_material_research", "formulation", "sales_rnd"] as const;
 
 /**
+ * Delegation capability cards (G4.6). These are orchestration-level specialist
+ * capabilities (packages/ai-orchestration), not ai-control governed
+ * ToolDefinitions, so they are a distinct card category rather than orphans.
+ */
+const DELEGATION_CARD_NAMES = [
+  "delegate.raw_material_research",
+  "delegate.formulation",
+  "delegate.sales_rnd",
+] as const;
+
+/**
  * Build all governed tool definitions with fail-closed NOT_WIRED ports.
  *
  * @returns The seven production ToolDefinitions.
@@ -58,16 +69,19 @@ describe("governed tool capability cards", () => {
     ]);
   });
 
-  it("has exactly one card file per registered tool and no orphans", () => {
+  it("has exactly one card file per registered tool plus the delegation cards, no orphans", () => {
     const cards_root = resolve_cards_root();
     const card_files = readdirSync(join(cards_root, "tools"))
       .filter((file) => file.endsWith(".md"))
       .map((file) => file.replace(/\.md$/, ""))
       .sort();
-    const tool_names = governed_definitions()
-      .map((definition) => definition.name)
-      .sort();
-    expect(card_files).toEqual(tool_names);
+    // Governed tool cards (one per ai-control ToolDefinition) plus the
+    // orchestration-level delegation cards (G4.6) are the only permitted cards.
+    const expected = [
+      ...governed_definitions().map((definition) => definition.name),
+      ...DELEGATION_CARD_NAMES,
+    ].sort();
+    expect(card_files).toEqual(expected);
   });
 
   it("keeps card frontmatter aligned with each ToolDefinition", () => {
@@ -100,6 +114,7 @@ describe("governed tool capability cards", () => {
       "orchestrator.md",
       ...AGENT_KEYS.map((key) => join("agents", `${key}.md`)),
       ...governed_definitions().map((definition) => definition.capability_card_path),
+      ...DELEGATION_CARD_NAMES.map((name) => join("tools", `${name}.md`)),
     ];
     for (const relative_path of relative_paths) {
       const card = load_capability_card(relative_path, cards_root);

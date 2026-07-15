@@ -1,5 +1,46 @@
 # Changelog
 
+## [2026-07-15] feat: Add specialist delegation through the governed loop (G4.6)
+
+### Summary
+
+- Added `packages/ai-orchestration/src/schemas/specialist.ts`: `SpecialistRequestV1`
+  (public — no tenant/actor/permission/provider/credential field) and
+  `SpecialistResultV1` (tenant_id/parent_run_id/depth stamped from the runtime;
+  proposals constrained to read|draft — never commit).
+- Added `delegation/delegation-registry.ts`: the three specialists
+  (raw_material_research, formulation, sales_rnd) with tool allowlists, iteration
+  ceilings, and budget fractions. Registration fails fast if any allowlist
+  contains a delegation tool, capping delegation depth at 1 at load time.
+- Added `delegation/delegate-tool-factory.ts`: `create_delegation_service` runs a
+  specialist as a **recursive invocation of the same compiled loop graph** —
+  a fresh child run with inherited tenant/actor, `parent_run_id`+`depth+1`
+  lineage, a context pack filtered to the specialist's allowlist, and a budget
+  slice reserved from the parent BEFORE dispatch (refused when it rounds to
+  nothing). The child runtime's policy is wrapped to deny any out-of-allowlist
+  tool at the gate, so even an adversarial child model cannot execute a
+  commit-class or delegation tool. `invoke_parallel` runs read-only specialists
+  concurrently, reserving all branch budgets up front. The recursive runner and
+  the child context-pack builder are injected so the package stays free of
+  provider/context-assembly wiring.
+- Added the three `cards/tools/delegate.*.md` operator cards (when to delegate,
+  budget cost, how to read proposals).
+
+### Verification approach
+
+- `tests/orchestration/delegation.test.ts` (9) runs the REAL graph recursively
+  via a scripted model: tenant/lineage inheritance and depth=1; unknown
+  specialist, depth-cap (a depth-1 runtime cannot delegate), and
+  budget-insufficient rejections; an injected child model that tries
+  `formula.confirm` is denied at the gate with zero executor calls (no commit);
+  read-only concurrent branches; and non-read-only parallel refusal. Updated the
+  capability-card test to treat the delegation cards as a distinct valid
+  category (still size-checked).
+- Four gates: full suite **501/501** (was 492; +9), typecheck 0 (incl.
+  orchestration package), security scan 0, production web build pass.
+
+---
+
 ## [2026-07-15] feat: Add tenant AI administration and platform constraints (G3.6)
 
 ### Summary
