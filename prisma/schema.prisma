@@ -991,6 +991,10 @@ model AIRun {
   currentStage           String?
   correlationId          String      @unique
   idempotencyKey         String
+  // G4.9: which executor drives the run (agentic loop vs legacy), pinned once by
+  // the RunSelector, and the assembled context-pack hash pinned at creation.
+  executor               String      @default("legacy")
+  contextPackHash        String?
   requestBudget          Json?
   usageSummary           Json?
   safeDecisionSummaries  Json?

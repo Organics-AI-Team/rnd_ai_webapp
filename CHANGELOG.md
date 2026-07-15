@@ -1,5 +1,39 @@
 # Changelog
 
+## [2026-07-15] feat: AI gateway create_run — one authenticated run entry (G4.9e, part 2)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-gateway/ai-gateway.ts`: `create_run` validates
+  the input against `agent_run_input_v1_schema`, short-circuits on an already-
+  accepted run (via `find_by_idempotency`), compiles and pins the effective policy
+  (fail-closed with `AIDisabledError` when AI is off), assembles and pins the
+  context-pack hash, selects the executor, reserves budget idempotently, and — in a
+  single Mongo transaction — creates the AIRun and enqueues exactly one worker
+  `start` job. A retry returns the same run and re-compiles / re-reserves /
+  re-enqueues nothing; the request returns only `{ run_id, events_url }` and never
+  depends on staying alive. The heavy control-plane collaborators (policy compile,
+  context assembly, budget reserve) are injected as narrow ports, so the
+  orchestration is tested in isolation while concrete adapters bridge to the
+  `AIPolicyRepository` / `ContextAssembler` / `BudgetService` at wiring time.
+- Added the `executor` and `contextPackHash` fields the run must pin to the
+  `AIRun` model.
+
+### Verification approach
+
+- `tests/integration/ai-gateway.test.ts` (4) against a real in-memory Mongo replica
+  set (the create is transactional): a pinned agentic run with exactly one enqueued
+  job and one budget reservation; an idempotent retry (same run, one compile, one
+  reserve, one job); fail-closed when disabled (no run); and invalid input rejected
+  before any write.
+- Four gates: full suite **598/598** (was 594; +4), typecheck 0 (new files clean),
+  security scan 0, production web build pass; Prisma schema valid.
+
+### Remaining (G4.9)
+
+- The private `worker.ts` (G4.9f) that claims jobs and drives the loop, and the
+  three Next.js routes + integration test (G4.9g).
+
 ## [2026-07-15] feat: Governed AI run persistence (G4.9e, part 1)
 
 ### Summary
