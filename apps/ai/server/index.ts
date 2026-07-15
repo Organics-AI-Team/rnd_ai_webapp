@@ -19,6 +19,9 @@ import { chatThreadsRouter } from "./routers/chat-threads";
 import { platformTenantsRouter } from "./routers/platform-tenants";
 import { tenantMembersRouter } from "./routers/tenant-members";
 import { platformSupportAccessRouter } from "./routers/platform-support-access";
+import { tenantAiSettingsRouter } from "./routers/tenant-ai-settings";
+import { platformAiSettingsRouter } from "./routers/platform-ai-settings";
+import { knowledgeSourcesRouter } from "./routers/knowledge-sources";
 
 export const appRouter = router({
   auth: authRouter,
@@ -41,6 +44,9 @@ export const appRouter = router({
   platformTenants: platformTenantsRouter,
   tenantMembers: tenantMembersRouter,
   platformSupportAccess: platformSupportAccessRouter,
+  tenantAiSettings: tenantAiSettingsRouter,
+  platformAiSettings: platformAiSettingsRouter,
+  knowledgeSources: knowledgeSourcesRouter,
 });
 
 export type AppRouter = typeof appRouter;

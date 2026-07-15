@@ -1,5 +1,39 @@
 # Changelog
 
+## [2026-07-15] feat: Add tenant AI administration and platform constraints (G3.6)
+
+### Summary
+
+- Added three governance routers wired into `appRouter`:
+  - `tenant-ai-settings.ts`: `read` (tenant:ai:read) returns stored settings +
+    platform ceilings so locked values render; `update` (tenant:ai:configure)
+    is **narrowing-only** — a requested value above the plan/platform ceiling is
+    rejected `FORBIDDEN`, the prospective effective policy is compiled fail-closed
+    before persistence, and the change is stored as a new revision (policyVersion
+    bump), never editing a deployment in place.
+  - `knowledge-sources.ts`: `list` (tenant:knowledge:read, metadata only),
+    `requestUpload`/`remove` (tenant:knowledge:manage); new sources are created
+    quarantined `pending` for the G3.5 ingestion pipeline.
+  - `platform-ai-settings.ts`: `getConstraints`/`setDefaults`
+    (platformAdminProcedure) and `emergencyDisable` (superAdminProcedure — the
+    kill switch is super-admin-only).
+- Added three server-rendered pages (`/settings/ai`, `/settings/ai/knowledge`,
+  `/platform/ai`) whose server-side caller enforces permissions; each shows an
+  access-denied fallback and never exposes tenant conversations or artifacts.
+
+### Verification approach
+
+- `tests/integration/ai-control-authorization.test.ts` (7) against in-memory
+  MongoDB, running authorized paths end-to-end: a tenant user is denied AI
+  read/configure and knowledge upload but may list; a manager configures within
+  the plan but is rejected when expanding `max_iterations` or selecting a
+  plan-forbidden model; a manager cannot reach platform surfaces; a platform
+  admin reads constraints but cannot emergency-disable; only a super admin can.
+- Four gates: full suite **492/492** (was 485; +7), typecheck 0, security scan 0,
+  production web build pass (all three new routes in the manifest).
+
+---
+
 ## [2026-07-15] feat: Isolate platform and tenant AI knowledge (G3.5, core)
 
 ### Summary
