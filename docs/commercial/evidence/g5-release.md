@@ -43,6 +43,8 @@ reviewed dependency remediation, signed evidence, and real release operations.
 | `npm run eval:ooda` | PASS — 150 cases, 100% candidate, integrity `1e1ee68ea450343074f6332ec919970d203b3abe483306583226592cfef2b876` |
 | `npm run eval:compare -- --baseline=legacy-frozen --candidate=ooda-current` | PASS in explicit credential-free mode — 14/14 gates |
 | exact `COMMERCIAL_TEST_ADAPTER_MODE=credential_free npm run verify:commercial` | PASS — exit 0, isolated Mongo/Qdrant teardown confirmed, deploy image included |
+| GitHub hosted commercial workflow | PASS — [run 29501948770](https://github.com/Organics-AI-Team/rnd_ai_webapp/actions/runs/29501948770), 7m13s, artifact `commercial-verification-29501948770`; hosted hashes legacy `9f0796f47f9d42c967481d1056bffdd10baf77b40d8b1753275a52c595483244`, agentic `f2c046876e83870f56956ba5c5cc61876c3c45ce45eb56d34e881bbe49ac33b0` |
+| Railway remote state | BLOCKED — recovered project/environment/service from historical GitHub deployments, but the last deployment is inactive, the former public hostname returns Railway `Application not found`, and CLI authorization was not completed |
 | `npm audit --omit=dev` | RELEASE BLOCKER — existing dependency tree reports 48 advisories: 3 critical, 22 high, 18 moderate, 5 low; remediation/reachability review not completed in this task |
 
 These latency measurements are synthetic in-process regression evidence, not

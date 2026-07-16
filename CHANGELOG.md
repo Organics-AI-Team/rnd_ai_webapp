@@ -44,6 +44,13 @@ manager-approval checkpoints for all three agent keys.
   three 50-stream load runs, zero boundary findings, 6 agentic browser cases,
   production web build, and Railway Docker image build all passed. The 7 Clerk
   staging-only browser cases correctly skipped without hosted credentials.
+- GitHub-hosted commercial verification passed on commit `fa849f2` in 7m13s:
+  [run 29501948770](https://github.com/Organics-AI-Team/rnd_ai_webapp/actions/runs/29501948770).
+  The workflow uploaded `commercial-verification-29501948770`; hosted campaign
+  integrity hashes were legacy
+  `9f0796f47f9d42c967481d1056bffdd10baf77b40d8b1753275a52c595483244`
+  and agentic
+  `f2c046876e83870f56956ba5c5cc61876c3c45ce45eb56d34e881bbe49ac33b0`.
 - Built and ran the Railway image locally; `/api/health` returned HTTP 200 with
   `{"status":"ok"}`.
 
