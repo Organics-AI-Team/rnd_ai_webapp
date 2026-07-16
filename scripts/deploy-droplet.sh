@@ -21,6 +21,22 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# Read the last assignment of a variable from the .env file (empty if unset)
+env_value() {
+    grep -E "^${1}=" "$ENV_FILE" | tail -n 1 | cut -d'=' -f2-
+}
+
+# Fail when a variable is unset or still carries a template placeholder
+require_env_value() {
+    local var="$1"
+    local value
+    value="$(env_value "$var")"
+    if [ -z "$value" ] || [[ "$value" == *"replace-with"* ]] || [[ "$value" == *"username:password"* ]] || [[ "$value" == your-* ]] || [[ "$value" == change* ]]; then
+        log_error "Required variable ${var} is not set or still has placeholder value in .env"
+        exit 1
+    fi
+}
+
 # Check prerequisites
 check_prerequisites() {
     log_info "Checking prerequisites..."
@@ -41,16 +57,33 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Validate required env vars
-    local required_vars=("MONGODB_URI" "GEMINI_API_KEY" "NEXT_PUBLIC_API_URL")
+    # Validate required env vars (worker cost accounting fails closed at boot,
+    # so its price variables are deployment prerequisites, not options)
+    local required_vars=(
+        "MONGODB_URI"
+        "GEMINI_API_KEY"
+        "NEXT_PUBLIC_API_URL"
+        "AI_GEMINI_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS"
+        "AI_GEMINI_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS"
+    )
     for var in "${required_vars[@]}"; do
-        local value
-        value="$(grep -E "^${var}=" "$ENV_FILE" | tail -n 1 | cut -d'=' -f2-)"
-        if [ -z "$value" ] || [[ "$value" == *"replace-with"* ]] || [[ "$value" == *"username:password"* ]] || [[ "$value" == your-* ]] || [[ "$value" == change* ]]; then
-            log_error "Required variable ${var} is not set or still has placeholder value in .env"
-            exit 1
-        fi
+        require_env_value "$var"
     done
+
+    # Clerk authentication contract: enabling the cutover without the full
+    # key set would deploy a stack where nobody can sign in
+    if [ "$(env_value CLERK_CUTOVER)" = "true" ]; then
+        local clerk_vars=(
+            "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
+            "CLERK_SECRET_KEY"
+            "CLERK_WEBHOOK_SIGNING_SECRET"
+        )
+        for var in "${clerk_vars[@]}"; do
+            require_env_value "$var"
+        done
+    else
+        log_warn "CLERK_CUTOVER is not 'true' — deploying with Clerk authentication disabled"
+    fi
 
     log_info "Prerequisites OK"
 }
@@ -101,9 +134,11 @@ build() {
     local compose_cmd=$(get_compose_cmd)
     log_info "Building Docker images..."
 
-    # Only the public API URL is a build-time argument; provider keys stay runtime-only.
+    # Only public values are build-time arguments (Next.js inlines NEXT_PUBLIC_*);
+    # provider secrets stay runtime-only.
     $compose_cmd --env-file "$ENV_FILE" build \
-        --build-arg NEXT_PUBLIC_API_URL="$(grep '^NEXT_PUBLIC_API_URL=' "$ENV_FILE" | cut -d'=' -f2-)"
+        --build-arg NEXT_PUBLIC_API_URL="$(env_value NEXT_PUBLIC_API_URL)" \
+        --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$(env_value NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)"
 
     log_info "Build complete"
 }
@@ -154,6 +189,15 @@ health() {
         log_info "qdrant (port 6333): UP"
     else
         log_warn "qdrant (port 6333): DOWN or unreachable"
+    fi
+
+    # The worker has no HTTP port; its container state is the health signal
+    local worker_state
+    worker_state="$(docker inspect -f '{{.State.Status}}' rnd-ai-worker 2>/dev/null || echo "absent")"
+    if [ "$worker_state" = "running" ]; then
+        log_info "worker (rnd-ai-worker): UP"
+    else
+        log_warn "worker (rnd-ai-worker): ${worker_state} — governed AI runs will queue but never complete"
     fi
 }
 

@@ -9,6 +9,8 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
+        # Clerk publishable key is public and inlined by Next.js at build time
+        - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
     container_name: rnd-ai-web
     mem_limit: 1536m
     ports:
@@ -18,6 +20,17 @@ services:
       - DATABASE_URL=${DATABASE_URL:-${MONGODB_URI}}
       - MONGODB_URI=${MONGODB_URI}
       - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI}
+
+      # Clerk authentication (invitation-only commercial identity)
+      # CLERK_CUTOVER=true switches the resolver to Clerk sessions; the
+      # webhook signing secret authenticates Clerk -> app projections.
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
+      - CLERK_WEBHOOK_SIGNING_SECRET=${CLERK_WEBHOOK_SIGNING_SECRET:-}
+      - CLERK_CUTOVER=${CLERK_CUTOVER:-false}
+      # Empty selects custom org role keys (org:manager/org:user);
+      # "built_in" maps to Clerk's org:admin/org:member instead.
+      - CLERK_ORG_ROLE_MODE=${CLERK_ORG_ROLE_MODE:-}
 
       # AI API Keys
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -55,6 +68,58 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Private Governed AI Run Worker
+  # Polls ai_run_jobs and drives checkpointed agentic runs; queued governed
+  # runs cannot complete in production without this service. No HTTP port.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/ai/Dockerfile.worker
+    container_name: rnd-ai-worker
+    mem_limit: 1024m
+    environment:
+      # Database (same Mongo as web; worker rebuilds tenant context per job)
+      - DATABASE_URL=${DATABASE_URL:-${MONGODB_URI}}
+      - MONGODB_URI=${MONGODB_URI}
+
+      # AI provider (required; worker fails closed at boot without it)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+      # Usage cost accounting (required bigints; worker fails closed without)
+      - AI_GEMINI_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS=${AI_GEMINI_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS}
+      - AI_GEMINI_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS=${AI_GEMINI_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS}
+      - AI_RATE_CARD_VERSION=${AI_RATE_CARD_VERSION:-commercial-2026-07-v1}
+
+      # Embeddings for tenant knowledge retrieval
+      - AI_EMBEDDING_MODEL=${AI_EMBEDDING_MODEL:-gemini-embedding-001}
+      - AI_EMBEDDING_VERSION=${AI_EMBEDDING_VERSION:-v1}
+      - AI_EMBEDDING_DIMENSIONS=${AI_EMBEDDING_DIMENSIONS:-768}
+
+      # Vector Database (Qdrant, compose-internal)
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+
+      # Web Search (optional pair — both or neither; tool stays NOT_WIRED when absent)
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
+      - GOOGLE_SEARCH_CSE_ID=${GOOGLE_SEARCH_CSE_ID:-}
+
+      # Worker tuning (defaults match run_private_worker fallbacks)
+      - AI_RUN_TIMEOUT_MS=${AI_RUN_TIMEOUT_MS:-300000}
+      - AI_WORKER_POLL_MS=${AI_WORKER_POLL_MS:-500}
+      - AI_WORKER_MAX_ATTEMPTS=${AI_WORKER_MAX_ATTEMPTS:-5}
+
+      # Node Environment
+      - NODE_ENV=production
+
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+    networks:
+      - rnd-ai-network
+
+    restart: unless-stopped
 
   # Qdrant Vector Database
   qdrant:

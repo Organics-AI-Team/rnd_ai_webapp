@@ -1,5 +1,62 @@
 # Changelog
 
+## [2026-07-17] feat: Make the droplet stack able to enable login and run governed AI (G6.1)
+
+### Summary
+
+Closed the deployment gap where the droplet compose stack could neither enable
+Clerk authentication nor complete queued governed AI runs. The web image now
+inlines the Clerk publishable key at build time, compose injects the full
+Clerk runtime contract, a new private worker service processes governed run
+jobs, and the deployment script refuses to deploy a stack that would be
+unable to sign users in or account for AI usage.
+
+### Changes
+
+- Added `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` as a build argument and inline
+  environment value to both web Dockerfiles (`Dockerfile`,
+  `apps/web/Dockerfile`).
+- Added `apps/ai/Dockerfile.worker`: three-stage Node 24 image that bundles
+  the governed run worker via `npm run build:worker` and ships only the
+  bundle plus the generated Prisma client, running as a non-root user.
+- Added the `worker` service to `docker-compose.yml` with the full worker
+  environment contract (Gemini credential, required usage pricing bigints,
+  rate card, embedding contract, compose-internal Qdrant URL, optional
+  Google Custom Search pair, tuning knobs) and added the Clerk
+  secret/webhook/cutover/role variables to the `web` service.
+- Extended `scripts/deploy-droplet.sh`: reusable `env_value`/
+  `require_env_value` helpers, always-required worker pricing variables,
+  the full Clerk key set required when `CLERK_CUTOVER=true`, the new
+  publishable-key build argument, and a worker container health probe.
+- Replaced the stale legacy-auth section of `.env.example` with the real
+  Clerk contract and documented the governed worker variables.
+- Extended `tests/architecture/deployment-image.test.ts` to lock the Clerk
+  build/runtime injection, the worker image shape, the worker compose
+  service, and the deployment-script validation.
+
+### Verification
+
+- `npx vitest run tests/architecture/` — 6 files / 70 tests passed,
+  including the extended deployment-image contract.
+- `bash -n scripts/deploy-droplet.sh` — clean.
+- `docker compose config --quiet` — valid (expected warnings for unset
+  required variables only).
+- `npm run build:worker` — bundle builds (5.4 MB, esbuild).
+- `docker build -f apps/ai/Dockerfile.worker .` — image built (422 MB);
+  running it without credentials fails closed with
+  `worker.start_failed`, exit 1 (boot path and Prisma client resolution
+  proven inside the container).
+- Tests that assert on the touched deployment files
+  (`public-ai-secrets`, `clerk-surface`, `commercial-verification`) —
+  18/18 passed.
+
+### Release boundary
+
+No droplet deployment is claimed. Clerk credentials, provider credentials,
+and the hosted rollout remain external gates (G6.8/G6.9).
+
+---
+
 ## [2026-07-16] test: Make all-agent credential-free staging verification executable
 
 ### Summary

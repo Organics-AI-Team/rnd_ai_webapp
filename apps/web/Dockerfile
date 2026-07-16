@@ -56,11 +56,13 @@ ENV NODE_ENV=production
 # Disable Next.js telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Public URLs are inlined by Next.js at build time.
-# Provider credentials are injected only into the runtime container.
+# Public URLs and the Clerk publishable key are inlined by Next.js at build
+# time. Provider credentials are injected only into the runtime container.
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 # Build the Next.js app from web workspace
 WORKDIR /app/apps/web
