@@ -25,11 +25,53 @@ export const PLATFORM_PROVIDER_UNIVERSE: Readonly<
   Record<string, readonly string[]>
 > = Object.freeze({
   google: Object.freeze([
+    "gemini-3.5-flash",
     "gemini-3.1-pro-preview",
     "gemini-2.5-flash",
     "gemini-2.5-pro",
   ]),
 });
+
+/**
+ * Platform model preference, newest/most-capable first. Run admission pins
+ * the first entry present in the effective allowlist; models outside this
+ * ranking fall back to a deterministic sort so selection never becomes
+ * unstable. Updating the platform default model is a one-line edit here —
+ * in-flight runs keep their admission-time pin.
+ */
+export const PLATFORM_MODEL_PREFERENCE: readonly string[] = Object.freeze([
+  "gemini-3.5-flash",
+  "gemini-3.1-pro-preview",
+  "gemini-2.5-pro",
+  "gemini-2.5-flash",
+]);
+
+/**
+ * Select the provider and model to pin on a run from the effective policy's
+ * provider→models map.
+ *
+ * Providers are considered in deterministic sorted order; within a provider
+ * the first PLATFORM_MODEL_PREFERENCE entry present in its allowlist wins,
+ * falling back to the lexicographically first allowed model when no ranked
+ * entry matches (e.g. a future model added to a plan before the ranking).
+ *
+ * @param provider_models - Effective provider→models map from the compiled policy.
+ * @returns Pinned provider and model, or null when the map allows nothing.
+ */
+export function select_preferred_model(
+  provider_models: Readonly<Record<string, readonly string[]>>,
+): { provider: string; model: string } | null {
+  for (const provider of Object.keys(provider_models).sort()) {
+    const allowed = provider_models[provider] ?? [];
+    if (allowed.length === 0) continue;
+    const ranked = PLATFORM_MODEL_PREFERENCE.find((model) =>
+      allowed.includes(model),
+    );
+    const model = ranked ?? [...allowed].sort()[0];
+    return { provider, model };
+  }
+  return null;
+}
 
 /** Global tool universe; a policy's allowed tools are always a subset. */
 export const PLATFORM_TOOL_UNIVERSE: readonly string[] = Object.freeze([

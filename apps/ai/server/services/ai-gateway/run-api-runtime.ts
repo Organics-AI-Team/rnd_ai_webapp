@@ -24,6 +24,7 @@ import { create_ai_usage_repository } from "../../repositories/ai-usage-reposito
 import { create_budget_service } from "../ai-control/budget-service";
 import { ContextAssembler } from "../ai-control/context-assembler";
 import { canonical_json } from "../ai-control/hashing";
+import { select_preferred_model } from "../ai-control/platform-ai-constraints";
 import { ToolCatalogue } from "../ai-control/tool-catalogue";
 import {
   create_all_governed_tool_definitions,
@@ -104,13 +105,13 @@ export function create_production_run_gateway(
           },
         );
         const deployment = required_deployment(compiled);
-        const provider = Object.keys(compiled.policy.provider_models).sort()[0];
-        const model = provider
-          ? [...(compiled.policy.provider_models[provider] ?? [])].sort()[0]
-          : undefined;
-        if (!provider || !model) {
+        // Pin the platform-preferred (newest ranked) model from the
+        // effective allowlist; in-flight runs keep their admission-time pin.
+        const selected = select_preferred_model(compiled.policy.provider_models);
+        if (!selected) {
           throw new AIDisabledError("The active deployment has no approved model.");
         }
+        const { provider, model } = selected;
         return {
           enabled: compiled.policy.enabled,
           disabled_reason: compiled.policy.enabled

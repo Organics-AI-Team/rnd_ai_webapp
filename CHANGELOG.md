@@ -1,5 +1,48 @@
 # Changelog
 
+## [2026-07-17] feat: Pin the newest generally available model by platform ranking (G6.6)
+
+### Summary
+
+Adopted Gemini 3.5 Flash — the newest generally available Gemini model as
+of July 2026 and Google's flagship for agentic workloads — as the
+platform-preferred model, replacing the accidental alphabetical model
+selection at run admission with an explicit, config-only preference
+ranking. In-flight runs keep their admission-time pin by design.
+
+### Changes
+
+- `platform-ai-constraints.ts`: added `gemini-3.5-flash` to the provider
+  universe; new `PLATFORM_MODEL_PREFERENCE` ranking (newest first) and a
+  pure `select_preferred_model` helper — ranked pick over the effective
+  allowlist with a deterministic lexicographic fallback for unranked
+  models.
+- `run-api-runtime.ts`: run admission pins the model via
+  `select_preferred_model` instead of `sort()[0]` (which silently chose
+  the alphabetically first model).
+- `plan-entitlements.ts`: `gemini-3.5-flash` added to starter, growth,
+  and enterprise plans (flash-class pricing tier, GA).
+- `docker-compose.yml`: `GEMINI_MODEL` default (legacy env-driven paths)
+  moved from `gemini-3.1-pro-preview` (still preview) to
+  `gemini-3.5-flash`.
+- Embeddings deliberately stay on `gemini-embedding-001`: existing Qdrant
+  vectors depend on it; `.env.example` now documents the
+  `gemini-embedding-2` upgrade path (version bump + full re-index).
+- `tests/ai-control/model-selection.test.ts`: ranked pick, ranking
+  fallback, deterministic unranked fallback, empty-map rejection,
+  ranking⊆universe, and newest-GA-first assertions.
+
+### Verification
+
+- Model IDs verified against the official Gemini API models documentation
+  (July 2026): `gemini-3.5-flash` stable/GA; `gemini-3.1-pro-preview`
+  preview; `gemini-3-pro-preview` shut down (never in our universe).
+- Targeted suites: ai-control + gateway + run API — 17 files / 148 tests
+  passed; apps/web typecheck clean.
+- Full suite: 102 files / 926 tests passed.
+
+---
+
 ## [2026-07-17] docs: Orchestrator guide with tool inventory and drift test (G6.5)
 
 ### Summary

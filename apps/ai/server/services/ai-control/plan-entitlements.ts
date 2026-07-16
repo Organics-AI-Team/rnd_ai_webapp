@@ -41,7 +41,7 @@ export const PLAN_ENTITLEMENTS: Readonly<Record<string, PlanEntitlement>> =
   Object.freeze({
     starter: {
       allowed_providers: ["google"],
-      allowed_models: ["gemini-2.5-flash"],
+      allowed_models: ["gemini-3.5-flash", "gemini-2.5-flash"],
       allowed_tools: ["formula.search", "knowledge.search"],
       monthly_request_limit: BigInt(5_000),
       monthly_token_limit: BigInt(20_000_000),
@@ -57,7 +57,7 @@ export const PLAN_ENTITLEMENTS: Readonly<Record<string, PlanEntitlement>> =
     },
     growth: {
       allowed_providers: ["google"],
-      allowed_models: ["gemini-2.5-flash", "gemini-2.5-pro"],
+      allowed_models: ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
       allowed_tools: [
         "formula.search",
         "formula.draft",
@@ -81,6 +81,7 @@ export const PLAN_ENTITLEMENTS: Readonly<Record<string, PlanEntitlement>> =
     enterprise: {
       allowed_providers: ["google"],
       allowed_models: [
+        "gemini-3.5-flash",
         "gemini-2.5-flash",
         "gemini-2.5-pro",
         "gemini-3.1-pro-preview",
