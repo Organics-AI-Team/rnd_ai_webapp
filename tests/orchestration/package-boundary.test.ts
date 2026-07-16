@@ -142,8 +142,8 @@ describe("ai-orchestration package boundary", () => {
       dependencies?: Record<string, string>;
     };
     expect(manifest.dependencies).toMatchObject({
-      "@langchain/langgraph": "1.4.7",
-      "@langchain/core": "1.2.2",
+      "@langchain/langgraph": "1.4.8",
+      "@langchain/core": "1.2.3",
       "@langchain/langgraph-checkpoint-mongodb": "1.4.0",
       mongodb: "6.21.0",
       zod: "3.25.76",

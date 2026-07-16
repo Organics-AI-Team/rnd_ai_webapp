@@ -1,5 +1,50 @@
 # Changelog
 
+## [2026-07-17] fix: Clear all 48 production npm audit advisories (G6.7)
+
+### Summary
+
+`npm audit --omit=dev` now reports **0 vulnerabilities**, down from 48
+(3 critical, 22 high, 18 moderate, 5 low). No `--force` downgrades were
+used; the absurd `next@9.3.3` "fix" path was explicitly rejected in favor
+of a targeted nested override.
+
+### Changes
+
+- `npm audit fix --legacy-peer-deps`: 30 semver-compatible advisory fixes
+  (protobufjs critical, tRPC prototype pollution, langchain/langsmith
+  updates in the governed tree, defu, effect, fast-uri, form-data, glob,
+  hono, minimatch, picomatch, prisma, socket.io, tar, undici, ws, and
+  more).
+- Removed dependencies that were declared but never imported: `ai`
+  (apps/web — cleared 3 advisories) and `xlsx` (apps/ai — cleared the
+  unfixable SheetJS high advisories entirely).
+- `jspdf` ^3.0.3 → ^4.2.1 (critical: LFI/path traversal + AcroForm
+  arbitrary JS execution). The only usage (dashboard monthly report,
+  core text/autoTable API) is compatible.
+- `packages/ai-orchestration`: `@langchain/core` 1.2.2 → 1.2.3 and
+  `@langchain/langgraph` 1.4.7 → 1.4.8 (patch security releases);
+  package-boundary pin test updated to the new exact versions.
+- Root `overrides`: `langsmith >=0.6.1` (SSRF via tracing header
+  injection sat in the legacy 0.3-era tree that remains compiled as the
+  rollback executor), `uuid >=11.1.1` (buffer bounds), and
+  `next > postcss >=8.5.10` (stringify XSS) — stale lockfile subtrees
+  were re-resolved so the overrides actually apply.
+
+### Verification
+
+- `npm audit --omit=dev` — 0 vulnerabilities.
+- Full suite — 102 files / 926 tests passed (one clean run; an earlier
+  load-test timeout reproduced only under concurrent-build CPU
+  contention and passes in isolation).
+- `npm run build:worker` + import check of the bundle — clean (proves
+  the legacy executor still bundles with overridden langsmith/uuid).
+- `npm run build:web` — production build passed (proves Next works with
+  the postcss override and jspdf 4).
+- `npx tsc --noEmit -p apps/web` — clean; boundary scan — 0 violations.
+
+---
+
 ## [2026-07-17] feat: Pin the newest generally available model by platform ranking (G6.6)
 
 ### Summary
