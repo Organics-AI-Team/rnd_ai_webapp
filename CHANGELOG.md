@@ -1,5 +1,35 @@
 # Changelog
 
+## [2026-07-17] docs: Orchestrator guide with tool inventory and drift test (G6.5)
+
+### Summary
+
+Added the human-facing orchestrator documentation the model-facing
+capability cards already had: `docs/ai/orchestrator-guide.md` explains the
+run architecture, the reasoning chain (one action per turn, gate
+authorization, finalize validation, clarification/approval interrupts),
+the internal-first search strategy, the complete 10-capability tool
+inventory, the exact procedure for authoring a new tool + card, and where
+model selection is configured. A drift test ties the guide to the live
+tool catalogue so an undocumented tool fails CI.
+
+### Changes
+
+- Added `docs/ai/orchestrator-guide.md` (architecture, reasoning chain,
+  search, tool inventory, tool authoring, model configuration, code map)
+  and linked it from `docs/README.md`.
+- Added `tests/ai-control/orchestrator-guide.test.ts`: the guide must
+  mention every registered governed tool and its permission, every
+  delegation capability and agent persona, all seven required card
+  sections, and the reasoning/search/model anchors.
+
+### Verification
+
+- `npx vitest run tests/ai-control` — 14 files / 124 tests passed
+  (guide drift test 4/4 included).
+
+---
+
 ## [2026-07-17] fix: Login and onboarding polish (G6.4)
 
 ### Summary
