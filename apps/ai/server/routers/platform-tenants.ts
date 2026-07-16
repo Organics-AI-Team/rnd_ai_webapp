@@ -14,6 +14,12 @@ import {
 } from "../services/provisioning/production-ports";
 import { create_university_input_schema } from "../services/provisioning/provisioning-types";
 import { create_platform_audit_service } from "../services/audit/platform-audit-service";
+import {
+  appoint_manager,
+  AlreadyTenantMemberError,
+} from "../services/provisioning/appoint-manager";
+import { MultipleMembershipsDisabledError } from "../services/provisioning/invite-tenant-user";
+import { create_production_member_ports } from "../services/provisioning/production-member-ports";
 
 /**
  * Build the Clerk backend client at request time from the private secret.
@@ -106,6 +112,40 @@ export const platformTenantsRouter = router({
         return await provision_university(ctx.principal, input, ports);
       } catch (error) {
         if (error instanceof DuplicateSlugError) {
+          throw new TRPCError({ code: "CONFLICT", message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  /**
+   * Appoint a university manager. Platform-only by plan (G1.5): tenant
+   * managers can never mint managers — their invite path always passes the
+   * user role. Idempotent over pending invitations; single-membership rule
+   * enforced before Clerk is called; every appointment is audited.
+   */
+  appointManager: platformAdminProcedure
+    .input(
+      z
+        .object({
+          tenant_id: z.string().min(1),
+          email: z.string().email(),
+        })
+        .strict(),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const client = await client_promise;
+      try {
+        return await appoint_manager(
+          ctx.principal,
+          { tenant_id: input.tenant_id ?? "", email: input.email ?? "" },
+          create_production_member_ports(client.db()),
+        );
+      } catch (error) {
+        if (
+          error instanceof MultipleMembershipsDisabledError ||
+          error instanceof AlreadyTenantMemberError
+        ) {
           throw new TRPCError({ code: "CONFLICT", message: error.message });
         }
         throw error;

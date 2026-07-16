@@ -63,6 +63,11 @@ test("invited student cannot create a university or appoint a manager", async ({
     data: { 0: { json: { name: "X", slug: "x-uni", region: "sgp", plan_key: "standard", initial_manager_email: "x@x.com", idempotency_key: "00000000-0000-4000-8000-000000000000" } } },
   });
   expect([401, 403]).toContain(response.status());
+  // The appointment endpoint itself must reject a non-platform caller.
+  const appointment = await page.request.post("/api/trpc/platformTenants.appointManager?batch=1", {
+    data: { 0: { json: { tenant_id: "000000000000000000000000", email: "x@x.com" } } },
+  });
+  expect([401, 403]).toContain(appointment.status());
 });
 
 test("user without membership sees onboarding states", async ({ page }) => {

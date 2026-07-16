@@ -1,5 +1,49 @@
 # Changelog
 
+## [2026-07-17] feat: Platform-only manager appointment (G6.3)
+
+### Summary
+
+Implemented the plan-required `appointManager` operation on the platform
+tenants router. Manager appointment was previously only possible as the
+initial invitation during university creation; existing universities had no
+governed way to appoint an additional or replacement manager. The E2E test
+named "cannot appoint a manager" now actually calls the appointment
+endpoint.
+
+### Changes
+
+- Added `appoint_manager` service
+  (`apps/ai/server/services/provisioning/appoint-manager.ts`):
+  platform-role asserted inside the service (defense in depth), the
+  single-membership rule enforced before Clerk is called, a typed
+  `AlreadyTenantMemberError` for active same-university members, an
+  idempotent manager invitation, projection upsert, and an
+  `appoint_manager` audit record.
+- Extracted the production member ports out of the tenant members router
+  into shared `production-member-ports.ts` (DRY), extended them with an
+  idempotent `create_manager_invitation` (reuses a pending invitation
+  instead of minting another) and a role-derived invitation projection
+  (`org:manager`/`org:admin` project as manager; user roles as user).
+- Added `platformTenants.appointManager` (platformAdminProcedure) mapping
+  membership conflicts onto CONFLICT.
+- `tests/provisioning/appoint-manager.test.ts`: six cases — appoint,
+  pending-invitation replay, non-platform caller rejected, other-university
+  email rejected, already-active member rejected, missing Clerk
+  organization rejected.
+- `tests/e2e/clerk-auth.spec.ts`: the student denial test now POSTs
+  `platformTenants.appointManager` and expects 401/403.
+
+### Verification
+
+- `npx vitest run tests/provisioning tests/auth` — 12 files / 134 tests
+  passed.
+- `npx tsc --noEmit -p apps/web` — clean.
+- `npx tsx scripts/security/scan-private-boundaries.ts` — 0 violations.
+- `npm run build:web` — production build passed (exit 0).
+
+---
+
 ## [2026-07-17] feat: Move formula AI generation onto the governed run API (G6.2)
 
 ### Summary
