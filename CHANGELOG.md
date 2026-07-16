@@ -1,5 +1,37 @@
 # Changelog
 
+## [2026-07-17] feat: Move formula AI generation onto the governed run API (G6.2)
+
+### Summary
+
+The formulas page AI-suggest flow no longer calls the legacy ReAct
+raw-materials endpoint. It now starts a governed `formulation` run through
+the versioned run API and streams typed events — validation findings,
+evidence, clarification questions, and the manager approval checkpoint that
+commits the confirmed formula — directly inside the suggest modal.
+
+### Changes
+
+- `apps/web/app/formulas/page.tsx`: `handleAiSuggest` starts a governed run
+  via `useAgentRun` (agent key `formulation`, detailed responses, Thai
+  auto-detection); the modal embeds `AiRunView` for run progress,
+  clarifications, and approvals; a completion effect refreshes the list and
+  auto-opens only a genuinely new committed AI draft (an unapproved run
+  produces an artifact, not a Formula document); cancel/close discards the
+  stream safely.
+- `tests/web/agent-run-ui-wiring.test.ts`: the formulas page joins the
+  governed-run boundary tests — must use `useAgentRun` + `AiRunView` and
+  must not reference the legacy ReAct endpoint or its request shape.
+
+### Verification
+
+- `npx vitest run tests/web/agent-run-ui-wiring.test.ts` — 4/4 passed.
+- `npx tsc --noEmit -p apps/web` — clean.
+- Workspace ESLint on the page — 0 errors.
+- `npm run build:web` — production build passed (exit 0).
+
+---
+
 ## [2026-07-17] feat: Make the droplet stack able to enable login and run governed AI (G6.1)
 
 ### Summary

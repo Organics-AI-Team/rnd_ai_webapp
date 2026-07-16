@@ -27,6 +27,15 @@ describe("governed run page wiring", () => {
     expect(page).not.toMatch(/fetch\('\/api\/ai\/enhanced-chat'[\s\S]{0,100}method:\s*'POST'/);
   });
 
+  it("routes the formulas AI suggest flow through the governed run API", () => {
+    const page = source("apps/web/app/formulas/page.tsx");
+    expect(page).toContain("useAgentRun");
+    expect(page).toContain('agent_key: "formulation"');
+    expect(page).toContain("<AiRunView");
+    expect(page).not.toContain("/api/ai/raw-materials-agent");
+    expect(page).not.toContain("conversationHistory");
+  });
+
   it("the run hook owns create, actor-free resume, named SSE, reset, and close behavior", () => {
     const hook = source("apps/web/hooks/use_agent_run.ts");
     expect(hook).toContain("create_agent_run_client");
