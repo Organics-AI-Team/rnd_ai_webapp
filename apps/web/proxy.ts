@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextFetchEvent, NextRequest } from "next/server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
 import { is_clerk_cutover, is_clerk_enabled } from "./lib/server/clerk-config";
 
@@ -78,16 +78,24 @@ async function legacy_guidance(request: NextRequest): Promise<NextResponse> {
 }
 
 /**
- * Public routes under the Clerk surface. The legacy /login and /signup pages
- * were deleted at the G1.7 cutover.
+ * Public API ingress routes: webhook authentication is signature-based
+ * (svix) and the liveness probe returns a constant status only.
  */
-const is_public = createRouteMatcher([
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/onboarding",
-  "/api/webhooks/clerk",
-  "/api/health",
-]);
+const PUBLIC_API_ROUTES = ["/api/webhooks/clerk", "/api/health"];
+
+/**
+ * Decide whether a request targets a public route under the Clerk surface.
+ * Plain path matching replaces Clerk's deprecated route-matcher helper; this
+ * is traffic guidance only — every protected operation is authorized at the
+ * resource level by its own handler (tRPC procedures, route guards,
+ * tenant repositories).
+ *
+ * @param pathname - Request pathname from nextUrl.
+ * @returns True when the route needs no Clerk session.
+ */
+function is_public(pathname: string): boolean {
+  return is_public_path(pathname) || PUBLIC_API_ROUTES.includes(pathname);
+}
 
 /**
  * Clerk-enabled guidance. After cutover, auth.protect() enforces a Clerk
@@ -98,7 +106,7 @@ const is_public = createRouteMatcher([
  */
 const clerk_proxy = clerkMiddleware(
   async (auth, request) => {
-    if (is_public(request)) {
+    if (is_public(request.nextUrl.pathname)) {
       log_proxy_event("decision", "allow", "public");
       return;
     }

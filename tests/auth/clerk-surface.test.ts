@@ -45,7 +45,10 @@ describe("Clerk authentication surface (G1.1)", () => {
 
   it("routes Clerk enforcement to /sign-in, never the legacy /login page", () => {
     const proxy_source = read_source("apps/web/proxy.ts");
-    expect(proxy_source).toContain('"/sign-in(.*)"');
+    expect(proxy_source).toContain('"/sign-in"');
+    // Traffic guidance uses plain path checks; the deprecated
+    // createRouteMatcher API is gone and authorization stays resource-level.
+    expect(proxy_source).not.toContain("createRouteMatcher");
     // The legacy /login redirect may only exist in the pre-cutover fallback
     // (legacy_guidance), never in the Clerk enforcement handler itself.
     const clerk_section = proxy_source.slice(
@@ -66,6 +69,25 @@ describe("Clerk authentication surface (G1.1)", () => {
     const body_close_index = layout_source.indexOf("</body>");
     expect(provider_index).toBeGreaterThan(body_index);
     expect(provider_index).toBeLessThan(body_close_index);
+  });
+
+  it("never links auth pages to the deleted legacy /login page", () => {
+    for (const path of [
+      "apps/web/app/sign-in/[[...sign-in]]/page.tsx",
+      "apps/web/app/sign-up/[[...sign-up]]/page.tsx",
+      "apps/web/app/onboarding/page.tsx",
+    ]) {
+      expect(read_source(path)).not.toContain('href="/login"');
+    }
+  });
+
+  it("onboarding resolves the internal membership projection, not just the session", () => {
+    const onboarding = read_source("apps/web/app/onboarding/page.tsx");
+    expect(onboarding).toContain("resolve_clerk_principal");
+    expect(onboarding).toContain("create_identity_projection_repositories");
+    expect(onboarding).toContain('"ready"');
+    expect(onboarding).toContain('"reconciliation_required"');
+    expect(onboarding).toContain('href="/dashboard"');
   });
 
   it("provides Clerk sign-in and sign-up catch-all pages", () => {

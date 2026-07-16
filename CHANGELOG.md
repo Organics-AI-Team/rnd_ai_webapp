@@ -1,5 +1,41 @@
 # Changelog
 
+## [2026-07-17] fix: Login and onboarding polish (G6.4)
+
+### Summary
+
+Closed the three login/onboarding gaps: dead links to the deleted legacy
+/login page, an onboarding page that never consulted the internal
+membership projection, and Clerk's deprecated route-matcher helper in the
+middleware.
+
+### Changes
+
+- `apps/web/app/onboarding/page.tsx`: the session's `orgId` is no longer
+  trusted alone — the page resolves the database-authoritative principal
+  via `resolve_clerk_principal` over the identity projection repositories.
+  New states: `ready` (active membership, links to /dashboard) and
+  `reconciliation_required` (inactive tenant or role mismatch — needs an
+  operator); webhook-lag cases keep showing synchronization pending.
+- `apps/web/app/sign-in/[[...sign-in]]/page.tsx` and
+  `sign-up/[[...sign-up]]/page.tsx`: removed links to the deleted /login
+  page; honest configuration notices instead.
+- `apps/web/proxy.ts`: replaced Clerk's deprecated route-matcher helper
+  with plain path checks reusing `is_public_path` plus the two
+  signature/constant public API routes; authorization remains
+  resource-level in handlers.
+- `tests/auth/clerk-surface.test.ts`: locks no-/login-links, the
+  projection-backed onboarding resolution, and the removal of the
+  deprecated matcher.
+
+### Verification
+
+- `npx vitest run tests/auth tests/web` — 123/123 passed.
+- `npx tsc --noEmit -p apps/web` — clean.
+- `npm run build:web` — production build passed.
+
+---
+
 ## [2026-07-17] feat: Platform-only manager appointment (G6.3)
 
 ### Summary
