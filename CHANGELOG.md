@@ -1,5 +1,218 @@
 # Changelog
 
+## [2026-07-16] test: Make all-agent credential-free staging verification executable
+
+### Summary
+
+Closed the two missing self-contained G5 verification paths without weakening
+the reviewed release gate. The immutable 150-case corpus now runs through both
+native evaluator adapters and emits integrity-linked test reports; the default
+comparator rejects those credential-free artifacts unless the explicit CI
+adapter mode is active. A non-production-only browser adapter now drives the
+real governed run client, typed SSE reducer, evidence UI, clarification and
+manager-approval checkpoints for all three agent keys.
+
+### Changes
+
+- Added `eval:legacy` and `eval:ooda` full-corpus commands and wired them before
+  the numerical comparison in the exact verifier.
+- Added explicit `credential_free_test` versus `reviewed_release` evidence
+  classes so generated CI artifacts cannot become rollout evidence.
+- Added the non-production commercial agentic console and strict synthetic run
+  API adapter for raw-material, formulation, and sales-R&D browser flows,
+  including Last-Event-ID replay, tenant isolation, hard-budget failure, and
+  emergency disable.
+- Added Playwright HTML evidence and automatic pinned Chromium installation to
+  the commercial verifier.
+- Repaired the Railway Docker image for npm workspace hoisting, Node 24,
+  Prisma generation/runtime packaging, and the `@rnd-ai/ai-orchestration`
+  workspace; added default config-as-code plus a public constant `/api/health`
+  endpoint that returns the HTTP 200 Railway requires.
+- Made the exact verifier build the real Railway Docker image after the web
+  build, so deploy-artifact regressions fail the same credential-free gate.
+
+### Verification
+
+- Evaluation campaign: 150/150 cases executed per adapter; legacy test baseline
+  50%, agentic candidate 100%; all 14 credential-free comparison gates passed.
+  Final integrity hashes: legacy
+  `5a5a9d72974c02923b757254c61fcb57d47f95fe26f7a63d47d81b740ac7579a`,
+  agentic
+  `1e1ee68ea450343074f6332ec919970d203b3abe483306583226592cfef2b876`.
+- Exact `COMMERCIAL_TEST_ADAPTER_MODE=credential_free npm run
+  verify:commercial`: exit 0; 99 files / 901 tests, 8 resilience assertions,
+  three 50-stream load runs, zero boundary findings, 6 agentic browser cases,
+  production web build, and Railway Docker image build all passed. The 7 Clerk
+  staging-only browser cases correctly skipped without hosted credentials.
+- Built and ran the Railway image locally; `/api/health` returned HTTP 200 with
+  `{"status":"ok"}`.
+
+### Release boundary
+
+Credential-free reports remain local/CI regression evidence. Clerk/provider
+staging credentials, signed tagged-executor reports, hosted canaries, rollout,
+restore-window observation, dependency-advisory remediation/review, and legacy
+retirement remain external gates. No Railway deployment was claimed without a
+linked authenticated project.
+
+---
+
+## [2026-07-16] feat: Complete governed commercial runtime implementation
+
+### Summary
+
+Closed the remaining credential-free G3/G4/G5 implementation gaps without
+claiming that external release operations have happened. The authenticated run
+API now admits a policy/context/budget/deployment-pinned run transactionally;
+the deployable private worker reconstructs current authorization, drives the
+checkpointed agentic loop, persists events before acknowledgement, and retains
+an explicitly pinned rollback-only legacy executor. Formula drafts/revisions
+use the canonical validated artifact contract, confirmation is bound to an
+exact durable manager approval, and knowledge/web capabilities are real
+fail-closed production adapters.
+
+The final `web.search` port uses the server-only Google Custom Search JSON API
+with a strict 1–10 result cap, 512 KiB response limit, response validation,
+HTTP(S)-only citations, bounded text, request abort propagation, safe retryable
+errors, and no provider-body/key logging. Both Google search credentials must
+be present or the worker fails closed; when both are absent the tool remains
+`NOT_WIRED`.
+
+### Changes
+
+- Added the production runtime/worker bundle, durable approval/runtime/tool
+  repositories, pinned executors, safe heartbeat/retry/poison handling, and
+  worker commands/environment contract.
+- Wired canonical formula artifacts through validation, idempotent durable
+  persistence, exact checkpoint approval, and tenant-owned formula commit.
+- Completed Qdrant collection partitioning, ingestion/upload authorization,
+  evidence/citation isolation, and the provisioned web-search adapter.
+- Completed the typed run client/UI, commercial operations/governance,
+  evaluation/scoring/shadow/rollout/resilience/load/CI implementation, and
+  reconciled the G4/G5 evidence manifests.
+- Added an ESLint 9 backend boundary, a package-local shared-types tsconfig,
+  fixed the new React hook/error-boundary findings, and made the Next.js 16 E2E
+  dev server explicitly use webpack.
+
+### Verification
+
+- Full Vitest suite: 94 files, 883 tests passed.
+- Root typecheck and lint: passed; private-boundary scan: 0 violations.
+- Worker production bundle and import smoke: passed; Next.js production build:
+  passed.
+- Resilience: 8/8; three-run 50-stream synthetic load: passed with zero errors,
+  duplicate commits, cross-tenant events, or unreconciled usage.
+- Playwright starts successfully; seven Clerk staging tests skip without staged
+  credentials.
+- The comparison CLI correctly exits 1 because no approved `legacy-frozen`
+  artifact exists. The exact Docker verifier is additionally unavailable while
+  the local Docker daemon is stopped. These are recorded release gates, not
+  implementation-pass claims.
+
+### External release gates
+
+Credential rotation/provisioning, signed legacy/candidate evaluation artifacts,
+hosted Docker verification, credentialed full-story staging, cohort promotion,
+100% rollout, restore-window observation, legacy retirement, release tag, and
+owner sign-off remain pending. See
+`docs/commercial/evidence/g5-release.md`.
+
+---
+
+## [2026-07-16] feat: Commercial verification wiring and AI indexes
+
+### Summary
+
+Made the G5 commercial verification entrypoints callable through the root
+package and GitHub workflow, without turning the incomplete evaluation layer
+into a false-positive gate. Resilience and load commands use their existing
+credential-free runners. `eval:compare` now loads two strictly validated named
+metric artifacts, evaluates the canonical release thresholds, prints only an
+aggregate safe summary, and exits non-zero for missing/invalid evidence or any
+failed gate. The repository contains no approved frozen/candidate artifacts or
+full-corpus generators yet, so the release gate intentionally fails closed
+instead of manufacturing a baseline.
+
+Expanded `setup:commercial-indexes` from 10 identity indexes to 38 deployment
+indexes. The 28 additions cover the current control-plane, rollout, run,
+budget, approval, artifact, queue, event replay, tool idempotency, and aggregate
+operations query patterns. This includes the finalize persistence uniqueness
+key `{ tenantId, runId, contentHash }` for `ai_artifacts`.
+
+### Changes
+
+- `package.json` — routed `verify:commercial` through the fail-fast shell
+  verifier and added backed `test:resilience`, `test:load`, and `eval:compare`
+  entrypoints.
+- `.github/workflows/commercial.yml` — calls the root verification command so
+  local and hosted execution use the same boundary.
+- `evals/runner/compare-evaluations.ts` + `evals/README.md` — added the strict
+  artifact comparison CLI and documented its credential-free input contract.
+- `apps/ai/scripts/setup-commercial-indexes.ts` — added repository-shaped
+  compound, unique, replay, lease, range, and operational indexes for 16 new AI
+  collections.
+- `apps/ai/.env.example` — documented the private worker's required token-price
+  units plus rate-card, embedding, timeout, lease, heartbeat, backoff, and poll
+  settings in the backend-only example.
+- Commercial architecture, Mongo deployment, and evaluation tests now pin the
+  complete wiring contract and fail-closed process status.
+
+### Verification
+
+- TDD RED observed missing entrypoints/env keys/index collections and the absent
+  comparator module; GREEN focused suite: 20/20 assertions.
+- Related run/queue/event/approval/rollout/usage/tool/operations suites: 92/92.
+- `npm run test:resilience`: 8/8.
+- `npm run test:load -- --repetitions=1`: 50 synthetic streams, zero errors,
+  duplicate commits, cross-tenant events, or unreconciled usage; accepted p95
+  4.285 ms, simple completion p95 146.794 ms, formula completion p95 87.12 ms.
+- Root typecheck, focused standalone TypeScript compile, security scan (zero
+  violations), shell syntax, and diff hygiene: pass.
+- `npm run eval:compare -- --baseline=legacy-frozen --candidate=ooda-current`:
+  expected fail-closed exit 1 because `legacy-frozen.json` is not present.
+- Full workspace lint now passes after the later governed-runtime completion
+  change added explicit package boundaries and fixed the new web findings. The
+  full Docker verifier remains fail-closed on external release evidence.
+
+---
+
+## [2026-07-16] fix: Canonical governed-tool permissions
+
+### Summary
+
+Bound the governed AI `ToolPermission` contract to the shared-auth `Permission`
+union and replaced the stale pre-integration literals used by tool definitions and
+capability cards. The canonical mappings are `formula.search -> formula:read`,
+`formula.draft -> formula:draft:create`, `formula.revise ->
+formula:draft:update_own`, `formula.comment -> formula:comment:create`,
+`formula.confirm -> formula:confirm`, and `knowledge.search ->
+tenant:knowledge:read`. `web.search` intentionally uses `ai:run`, the narrowest
+existing permission for an operation within an authorized AI run; no new auth
+permission was added.
+
+The model-visible Zod input/output schemas and all tool execution behavior remain
+unchanged. Capability-card registration still compares raw parsed frontmatter to
+the now-typed definition, so invalid or stale card permissions fail closed as
+card drift without treating unvalidated markdown as a trusted `Permission`.
+
+### Verification
+
+- TDD RED: capability-card mapping test failed on exactly the five stale values
+  (1 failed, 14 passed), then GREEN (15/15).
+- Full AI-control suite: 110/110.
+- Focused capability/executor/context/integration suites: 58/58.
+- Full parallel suite: 849/852 passed; the only failures were three 5-second
+  whole-tree scanner timeouts. All timed-out scanner suites passed serially
+  (26/26), confirming no boundary findings.
+- Full single-worker suite initially passed 852/852. After concurrent runtime
+  work added another test, the final shared-tree rerun passed 853/853 assertions
+  but Vitest reported one unhandled external Qdrant rejection from the dirty,
+  excluded `run-api-runtime` path; that suite passes alone (3/3).
+- `npm run typecheck`: pass.
+- `npm run security:scan`: 0 private-boundary violations.
+
+---
+
 ## [2026-07-15] feat: Legacy AI executor import boundary (G4.11)
 
 ### Summary

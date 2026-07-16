@@ -30,6 +30,7 @@ import {
 } from "../../apps/ai/server/services/ai-control/tools";
 import {
   make_context,
+  governed_formula_artifact,
   make_echo_tool,
   make_policy,
   make_ports,
@@ -54,7 +55,6 @@ function make_fake_formula_ports(): {
     comment: 0,
     confirm: 0,
   };
-  const warnings: never[] = [];
   const ports: FormulaToolPorts = {
     formula_search: {
       async search_formulas() {
@@ -81,45 +81,13 @@ function make_fake_formula_ports(): {
     formula_draft: {
       async create_draft_formula(args) {
         calls.draft += 1;
-        return {
-          formula_id: "d".repeat(24),
-          status: "draft" as const,
-          formula_name: `AI ${args.product_type} draft`,
-          product_type: args.product_type,
-          batch_size_grams: args.batch_size_grams ?? 100,
-          total_percentage: 100,
-          ingredients: [
-            {
-              rm_code: "RM000001",
-              inci_name: "Aqua",
-              trade_name: null,
-              phase: "water",
-              percentage: 80,
-              amount_grams: 80,
-              rationale: "Solvent base",
-            },
-          ],
-          warnings,
-        };
+        return args.artifact;
       },
     },
     formula_revise: {
       async revise_formula(args) {
         calls.revise += 1;
-        return {
-          draft_formula_id: "e".repeat(24),
-          parent_formula_id: args.formula_id,
-          status: "draft" as const,
-          changelog: [
-            {
-              action: "adjusted_percentage" as const,
-              ingredient: "Niacinamide",
-              detail: "Reduced from 12% to 10% to respect usage limits",
-              driven_by_comment: null,
-            },
-          ],
-          warnings,
-        };
+        return args.artifact;
       },
     },
     formula_comment: {
@@ -137,12 +105,10 @@ function make_fake_formula_ports(): {
       async confirm_formula(args) {
         calls.confirm += 1;
         return {
-          formula_id: args.formula_id,
-          formula_code: "FM-0001",
-          previous_version: 1,
-          new_version: 2,
-          version_label: "v02",
+          artifact_id: args.artifact_id,
+          formula_id: "f".repeat(24),
           status: "confirmed" as const,
+          already_committed: false,
         };
       },
     },
@@ -257,7 +223,7 @@ describe("tool executor governance", () => {
   it("rejects a caller without the required permission", async () => {
     const { catalogue } = make_formula_catalogue();
     const executor = new ToolExecutor(catalogue, make_ports());
-    const context = make_context({ permissions: ["knowledge:search"] });
+    const context = make_context({ permissions: ["tenant:knowledge:read"] });
     await expect(
       executor.execute(
         { name: "formula.search", arguments: { query: "serum" } },
@@ -300,9 +266,7 @@ describe("tool executor governance", () => {
         {
           name: "formula.draft",
           arguments: {
-            product_type: "serum",
-            target_benefits: ["brightening"],
-            constraints: { $where: "sleep(1000)" },
+            artifact: { ...governed_formula_artifact(), $where: "sleep(1000)" },
           },
         },
         make_context(),
@@ -313,9 +277,7 @@ describe("tool executor governance", () => {
         {
           name: "formula.draft",
           arguments: {
-            product_type: "serum",
-            target_benefits: ["brightening"],
-            constraints: { userId: "someone-else" },
+            artifact: { ...governed_formula_artifact(), userId: "someone-else" },
           },
         },
         make_context(),
@@ -330,7 +292,7 @@ describe("tool executor governance", () => {
     const executor = new ToolExecutor(catalogue, ports);
     const proposal = {
       name: "formula.confirm",
-      arguments: { formula_id: "f".repeat(24), remarks: "approved by manager" },
+      arguments: { artifact_id: "a".repeat(24), remarks: "approved by manager" },
     };
     await expect(executor.execute(proposal, make_context())).rejects.toMatchObject(
       { code: "TOOL_APPROVAL_REQUIRED" },
@@ -339,7 +301,7 @@ describe("tool executor governance", () => {
 
     ports.approval_service.approved = true;
     const result = await executor.execute(proposal, make_context());
-    expect(result.output).toMatchObject({ status: "confirmed", new_version: 2 });
+    expect(result.output).toMatchObject({ status: "confirmed", already_committed: false });
     expect(calls.confirm).toBe(1);
     expect(ports.approval_service.queries[0]).toMatchObject({
       tool_name: "formula.confirm",
@@ -363,7 +325,7 @@ describe("tool executor governance", () => {
       executor.execute(
         {
           name: "formula.draft",
-          arguments: { product_type: "serum", target_benefits: ["hydration"] },
+          arguments: { artifact: governed_formula_artifact() },
         },
         context,
       ),
@@ -376,7 +338,7 @@ describe("tool executor governance", () => {
     const executor = new ToolExecutor(catalogue, ports);
     const proposal = {
       name: "formula.draft",
-      arguments: { product_type: "serum", target_benefits: ["hydration"] },
+      arguments: { artifact: governed_formula_artifact() },
     };
     const first = await executor.execute(proposal, make_context());
     const second = await executor.execute(proposal, make_context());
@@ -392,7 +354,7 @@ describe("tool executor governance", () => {
     const executor = new ToolExecutor(catalogue, make_ports());
     const proposal = {
       name: "formula.draft",
-      arguments: { product_type: "serum", target_benefits: ["hydration"] },
+      arguments: { artifact: governed_formula_artifact() },
     };
     const first = await executor.execute(proposal, make_context());
     const second = await executor.execute(
@@ -547,15 +509,11 @@ describe("tool executor governance", () => {
     const result = await executor.execute(
       {
         name: "formula.draft",
-        arguments: {
-          product_type: "serum",
-          target_benefits: ["brightening", "hydration"],
-          batch_size_grams: 100,
-        },
+        arguments: { artifact: governed_formula_artifact() },
       },
       make_context(),
     );
-    expect(result.output).toMatchObject({ status: "draft" });
+    expect(result.output).toEqual(governed_formula_artifact());
     expect(calls.draft).toBe(1);
     expect(ports.usage_service.entries).toHaveLength(1);
     expect(ports.audit_log.events[0]).toMatchObject({
@@ -604,7 +562,7 @@ describe("tool executor governance", () => {
     const definition = catalogue.get("web.search");
     expect(definition).toMatchObject({
       side_effect: "read",
-      required_permission: "web:search",
+      required_permission: "ai:run",
       approval_requirement: "none",
     });
     const executor = new ToolExecutor(catalogue, make_ports());

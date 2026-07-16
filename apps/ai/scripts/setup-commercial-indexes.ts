@@ -83,6 +83,160 @@ const commercial_indexes: readonly CommercialIndex[] = [
     specification: { eventId: 1 },
     options: { name: "uniq_webhook_receipt_event", unique: true },
   },
+  {
+    collection: "tenant_ai_profiles",
+    specification: { tenantId: 1 },
+    options: { name: "uniq_tenant_ai_profile_tenant", unique: true },
+  },
+  {
+    collection: "agent_deployments",
+    specification: { tenantId: 1, agentKey: 1, revision: 1 },
+    options: { name: "uniq_agent_deployment_revision", unique: true },
+  },
+  {
+    collection: "agent_deployments",
+    specification: { tenantId: 1, agentKey: 1, status: 1 },
+    options: { name: "idx_agent_deployment_active_lookup" },
+  },
+  {
+    collection: "platform_ai_state",
+    specification: { key: 1 },
+    options: { name: "uniq_platform_ai_state_key", unique: true },
+  },
+  {
+    collection: "ai_rollout_assignments",
+    specification: { tenantId: 1 },
+    options: { name: "uniq_ai_rollout_assignment_tenant", unique: true },
+  },
+  {
+    collection: "ai_rollout_events",
+    specification: { idempotencyKey: 1 },
+    options: { name: "uniq_ai_rollout_event_idempotency", unique: true },
+  },
+  {
+    collection: "ai_rollout_events",
+    specification: {
+      tenantId: 1,
+      eventType: 1,
+      fromVersion: 1,
+      toVersion: 1,
+      actorProfileId: 1,
+    },
+    options: { name: "idx_ai_rollout_event_replay" },
+  },
+  {
+    collection: "ai_runs",
+    specification: { tenantId: 1, idempotencyKey: 1 },
+    options: { name: "uniq_ai_run_tenant_idempotency", unique: true },
+  },
+  {
+    collection: "ai_runs",
+    specification: { correlationId: 1 },
+    options: {
+      name: "uniq_ai_run_correlation",
+      unique: true,
+      partialFilterExpression: { correlationId: { $type: "string" } },
+    },
+  },
+  {
+    collection: "ai_runs",
+    specification: { tenantId: 1, status: 1, createdAt: -1 },
+    options: { name: "idx_ai_run_tenant_status_created" },
+  },
+  {
+    collection: "ai_usage_ledger",
+    specification: { tenantId: 1, idempotencyKey: 1 },
+    options: { name: "uniq_ai_usage_tenant_idempotency", unique: true },
+  },
+  {
+    collection: "ai_usage_ledger",
+    specification: { tenantId: 1, month: 1 },
+    options: { name: "idx_ai_usage_tenant_month" },
+  },
+  {
+    collection: "ai_usage_ledger",
+    specification: { tenantId: 1, runId: 1, kind: 1, reservationId: 1 },
+    options: { name: "idx_ai_usage_tenant_run_kind" },
+  },
+  {
+    collection: "ai_usage_ledger",
+    specification: { kind: 1, runId: 1 },
+    options: { name: "idx_ai_usage_open_reservations" },
+  },
+  {
+    collection: "ai_usage_counters",
+    specification: { tenantId: 1, month: 1 },
+    options: { name: "uniq_ai_usage_counter_tenant_month", unique: true },
+  },
+  {
+    collection: "ai_artifacts",
+    specification: { tenantId: 1, runId: 1, contentHash: 1 },
+    options: { name: "uniq_ai_artifact_run_content", unique: true },
+  },
+  {
+    collection: "ai_approvals",
+    specification: { idempotencyKey: 1 },
+    options: {
+      name: "uniq_ai_approval_idempotency",
+      unique: true,
+      partialFilterExpression: { idempotencyKey: { $type: "string" } },
+    },
+  },
+  {
+    collection: "ai_approvals",
+    specification: { tenantId: 1, runId: 1, checkpointId: 1, status: 1 },
+    options: { name: "idx_ai_approval_run_checkpoint_status" },
+  },
+  {
+    collection: "ai_approvals",
+    specification: { tenantId: 1, runId: 1, artifactId: 1, status: 1 },
+    options: { name: "idx_ai_approval_artifact_status" },
+  },
+  {
+    collection: "ai_run_jobs",
+    specification: { runId: 1, command: 1, idempotencyKey: 1 },
+    options: { name: "uniq_ai_run_job_command", unique: true },
+  },
+  {
+    collection: "ai_run_jobs",
+    specification: { status: 1, availableAt: 1, createdAt: 1 },
+    options: { name: "idx_ai_run_job_available" },
+  },
+  {
+    collection: "ai_run_jobs",
+    specification: { status: 1, leaseExpiresAt: 1, availableAt: 1, createdAt: 1 },
+    options: { name: "idx_ai_run_job_expired_lease" },
+  },
+  {
+    collection: "ai_run_events",
+    specification: { runId: 1, sequence: 1 },
+    options: { name: "uniq_ai_run_event_sequence", unique: true },
+  },
+  {
+    collection: "ai_run_events",
+    specification: { tenantId: 1, runId: 1, sequence: 1 },
+    options: { name: "idx_ai_run_event_replay" },
+  },
+  {
+    collection: "ai_tool_usage_events",
+    specification: { tenantId: 1, idempotencyKey: 1 },
+    options: { name: "uniq_ai_tool_usage_tenant_idempotency", unique: true },
+  },
+  {
+    collection: "ai_tool_results",
+    specification: { tenantId: 1, idempotencyKey: 1 },
+    options: { name: "uniq_ai_tool_result_tenant_idempotency", unique: true },
+  },
+  {
+    collection: "ai_commercial_events",
+    specification: { occurred_at: 1 },
+    options: { name: "idx_ai_commercial_event_occurred" },
+  },
+  {
+    collection: "ai_incidents",
+    specification: { status: 1, started_at: -1 },
+    options: { name: "idx_ai_incident_active_started" },
+  },
 ];
 
 /**

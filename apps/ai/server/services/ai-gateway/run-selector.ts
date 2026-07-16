@@ -17,6 +17,27 @@
 /** Which executor drives a run. */
 export type RunExecutor = "agentic" | "legacy";
 
+/** Minimal assignment shape consumed at run ingress. */
+export interface RolloutAssignmentRecord {
+  readonly _id: { toString(): string };
+  readonly executor: RunExecutor;
+  readonly deploymentId: { toString(): string };
+  readonly version: number;
+}
+
+/** Tenant-scoped repository port used by the async G5 selector. */
+export interface RolloutAssignmentSource {
+  select_for_run(tenant_id: string): Promise<RolloutAssignmentRecord>;
+}
+
+/** Immutable selection pinned on a newly inserted AIRun. */
+export interface ExecutorSelection {
+  readonly executor: RunExecutor;
+  readonly deployment_id: string;
+  readonly assignment_id: string;
+  readonly assignment_version: number;
+}
+
 /** Deterministic rollout configuration resolved by the gateway. */
 export interface RolloutConfig {
   /** Executor used when a tenant is neither explicitly pinned agentic nor legacy. */
@@ -42,4 +63,28 @@ export function select_run_executor(
   if (config.legacy_tenant_ids?.includes(tenant_id)) return "legacy";
   if (config.agentic_tenant_ids?.includes(tenant_id)) return "agentic";
   return config.default_executor;
+}
+
+/**
+ * Load exactly one tenant assignment and freeze the values a new run pins.
+ *
+ * The historical rollout plan called the governed executor `ooda`; persistence
+ * and the runtime use the canonical `agentic` name. Compatibility translation
+ * is confined to the operator CLI, never this selection boundary.
+ *
+ * @param tenant_id - Verified internal tenant ID.
+ * @param repository - Tenant-scoped rollout assignment source.
+ * @returns Frozen executor, deployment, assignment id, and assignment version.
+ */
+export async function select_executor(
+  tenant_id: string,
+  repository: RolloutAssignmentSource,
+): Promise<ExecutorSelection> {
+  const assignment = await repository.select_for_run(tenant_id);
+  return Object.freeze({
+    executor: assignment.executor,
+    deployment_id: assignment.deploymentId.toString(),
+    assignment_id: assignment._id.toString(),
+    assignment_version: assignment.version,
+  });
 }

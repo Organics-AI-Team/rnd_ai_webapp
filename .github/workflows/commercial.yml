@@ -1,0 +1,56 @@
+name: Commercial verification
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "dev/**"
+    tags:
+      - "commercial-g*"
+      - "release-*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify commercial gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      COMMERCIAL_TEST_ADAPTER_MODE: credential_free
+      NODE_ENV: test
+      DATABASE_URL: mongodb://127.0.0.1:27018/rnd_ai_commercial_test?replicaSet=rs0&directConnection=true
+      MONGODB_URI: mongodb://127.0.0.1:27018/rnd_ai_commercial_test?replicaSet=rs0&directConnection=true
+      QDRANT_URL: http://127.0.0.1:6335
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Run commercial verification
+        run: npm run verify:commercial
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-verification-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            artifacts/commercial/
+            test-results/
+            playwright-report/
+            evals/reports/
+            docs/commercial/evidence/generated/

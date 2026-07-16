@@ -15,6 +15,10 @@
 
 import { type NextRequest } from "next/server";
 
+import {
+  is_credential_free_commercial_test_runtime,
+  resume_commercial_test_run,
+} from "@/lib/server/commercial-test-run-adapter";
 import { with_request_principal } from "@/lib/server/with-request-principal";
 import { resolve_tenant_context } from "@/lib/server/tenant-context-route";
 import { handle_resume_run } from "@/server/services/ai-gateway/run-api-handlers";
@@ -35,6 +39,20 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ runId: string }> },
 ): Promise<Response> {
+  if (is_credential_free_commercial_test_runtime()) {
+    const { runId } = await context.params;
+    const tenant_id = request.cookies.get("commercial_test_tenant")?.value ?? "tenant_a";
+    const role = request.cookies.get("commercial_test_role")?.value === "manager"
+      ? "manager"
+      : "student";
+    let body: unknown = null;
+    try {
+      body = await request.json();
+    } catch {
+      body = null;
+    }
+    return resume_commercial_test_run(runId, tenant_id, role, body);
+  }
   return with_request_principal(request, "ai:run", async (principal, body) => {
     const scope = resolve_tenant_context(principal);
     if (scope.status === "error") return scope.response;

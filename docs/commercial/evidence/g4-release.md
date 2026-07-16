@@ -1,11 +1,11 @@
-# G4 — Agentic Orchestration Release Evidence (interim)
+# G4 — Agentic Orchestration Implementation Evidence
 
 Gate G4 replaces free-form agent execution with a **governed agentic loop**: one
 reasoning node may call the model, every other node is deterministic code, and a
 tenant AI control plane pins policy, budget, and identity for each run. This
-document records the behavior verified so far. G4 is **not yet fully closed** —
-the authenticated run/event API and private worker (G4.9) remain, and the items
-that depend on a live run stream are marked pending below.
+document records the implemented and locally verified behavior. The production
+composition is complete; G4 release approval remains open only for the
+credentialed staged full-story evidence listed below.
 
 ## Task completion map
 
@@ -17,11 +17,11 @@ that depend on a live run stream are marked pending below.
 | G4.4 Agent reasoning node + ingress | done | merged 599fc72 |
 | G4.5 Deterministic governor (gate, act, validators, loop detection) | done | merged 599fc72 |
 | G4.6 Specialist delegation running the same loop | done | 6d6bd10 |
-| G4.7 MongoDB checkpoints, clarification, durable approval interrupts | core done | 2418bce (real MongoDBSaver pending langgraph upgrade with G4.9) |
+| G4.7 MongoDB checkpoints, clarification, durable approval interrupts | done | real MongoDBSaver restart/resume exactly-once test |
 | G4.8 Deterministic, approval-aware formula artifacts + finalize node | done | bf644b7 · 57c6e01 · 97d88b7 · 20984ae · 042f5a6 · 9b353ff |
-| G4.9 Authenticated run + event API + private worker | credential-free subset done | routes/handlers/event-store/queue/repo/worker-core + `ai-run-api.test.ts`; live execution + concrete adapters pending creds |
-| G4.10 AI UI on versioned run events | core done | reducer 3967621 (SSE hook + cards pending G4.9) |
-| G4.11 Orchestration-boundary enforcement + this evidence | this commit | scanner rule + fixtures below |
+| G4.9 Authenticated run + event API + private worker | implementation done | concrete admission/runtime, deployable worker, queue/events/resume, pinned rollback path, focused integration tests |
+| G4.10 AI UI on versioned run events | done | typed client/hook/reducer/cards and both AI pages, with reconnect/wiring tests |
+| G4.11 Orchestration-boundary enforcement + this evidence | done | scanner rules plus exact tool/card consistency tests |
 
 ## Verified behavior
 
@@ -80,29 +80,46 @@ tree itself (retired in G5) and test files are not policed. Covered by
 `tests/security/legacy-entry-point-boundary.test.ts` (8 fixtures); 0 violations on
 the tree (the governed path imports no legacy module).
 
-## Run API (G4.9g, credential-free subset done)
+## Run API and private worker (G4.9 implementation done)
 
 The three governed-run routes are built on the tested G4.9 blocks: `POST
 /api/ai/runs`, `GET /api/ai/runs/[runId]/events` (SSE with `Last-Event-ID`
 replay + heartbeat), and `POST /api/ai/runs/[runId]/resume`. Run-specific
 routing/validation/error mapping lives in pure handlers
 (`apps/ai/server/services/ai-gateway/run-api-handlers.ts`) exercised with fakes by
-`tests/integration/ai-run-api.test.ts` (12 cases: 202/400/403/503, idempotent run
+`tests/integration/ai-run-api.test.ts` (create/error/idempotency,
 id, ordered SSE replay + terminal close + `Last-Event-ID` + 404 authorization +
-heartbeat/abort, resume 202/400/404). Anonymous/suspended cases remain the reused
-`with_request_principal` guard's responsibility (G0). Run creation is fronted by a
-placeholder gateway returning 503 `RUN_API_NOT_WIRED` until the concrete
-policy/context/budget adapters land; events and resume are fully wired to MongoDB.
+heartbeat/abort, and strict resume). Anonymous/suspended cases remain the reused
+`with_request_principal` guard's responsibility (G0). Run creation now composes
+the real policy compiler, context assembler, budget reservation, tenant rollout
+assignment, transactional run/job persistence, and stable deployment/model
+pins. Admission performs no paid provider request.
 
-## Pending (external credential gate — PENDING_EXTERNAL_ROTATION)
+The private worker is a non-HTTP deployable process. It rebuilds authorization
+from the pinned run, rechecks the platform emergency switch at action time,
+loads MongoDB checkpoints, binds the governed catalogue and exact approval gate,
+uses tenant-filtered Qdrant knowledge, optional fail-closed Google Custom Search,
+and the pinned Gemini model/rate card. Retry is limited to explicitly retryable
+errors with exponential backoff, jitter, a maximum-attempt poison path, lease
+heartbeat, safe error codes, and append-before-ack event persistence. The
+rollback-only legacy executor is selected before run creation and cannot be
+entered from the governed graph.
 
-- Concrete `RunExecutor`/runtime factory and the policy/context/budget gateway
-  adapters that flip run creation off its 503 (need provider credentials).
-- The leased private worker entry point driving live execution.
+`tests/integration/run-api-runtime.test.ts`, `private-worker-entry.test.ts`,
+`run-worker.test.ts`, `governed-run-executor.test.ts`, and
+`pinned-run-executor.test.ts` exercise these seams without paid credentials.
+`npm run build:worker` and an import smoke test verify the server-only bundle.
+
+## Pending release evidence (external gate — PENDING_EXTERNAL_ROTATION)
+
 - End-to-end execution evidence through the live run API: completion,
   provider-failure, budget-limit, and live clarification/approval resume.
-- The live SSE UI hook wiring into the chat surface and the reconnect e2e spec
-  (`tests/e2e/agentic-run.spec.ts`).
-- A CI check that every registered `ToolDefinition` has a matching capability card
-  and no card lacks a tool (the full-catalogue build depends on the Qdrant gateway;
-  per-tool card presence/drift is already enforced at registration).
+- A credentialed browser reconnect run proving the staged proxy, EventSource,
+  Clerk identity, Mongo replica set, Qdrant service, and private worker together.
+- Provider and vector credentials must be rotated/revoked as documented and
+  provisioned only to the staged worker before either run is allowed.
+
+The exact no-orphan card check is no longer pending:
+`tests/ai-control/capability-cards.test.ts` builds all seven definitions with
+fail-closed ports, requires one matching card for each, permits only the three
+known delegation cards, and rejects metadata drift.

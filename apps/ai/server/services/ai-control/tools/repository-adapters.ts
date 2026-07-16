@@ -19,6 +19,12 @@
 import type { Document, WithId } from "mongodb";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 import type { FormulaRepository } from "../../../repositories/formula-repository";
+import { ResourceNotFoundError } from "../../../repositories/tenant-repository-base";
+import type {
+  FormulaApprovalGate,
+  FormulaArtifactService,
+} from "../formula-artifact-service";
+import { hash_canonical } from "../hashing";
 import { ToolGovernanceError } from "../errors";
 import type { TrustedToolContext } from "../tool-definition";
 import type { GovernedToolPorts } from "./index";
@@ -27,6 +33,10 @@ import type {
   FormulaCommentOutput,
   FormulaConfirmInput,
   FormulaConfirmOutput,
+  FormulaDraftInput,
+  FormulaDraftOutput,
+  FormulaReviseInput,
+  FormulaReviseOutput,
   FormulaSearchInput,
   FormulaSearchOutput,
 } from "./formula-tools";
@@ -37,6 +47,11 @@ export interface RepositoryToolPortDeps {
   readonly tenant_context: TenantExecutionContext;
   /** Tenant-scoped formula repository. */
   readonly formula_repository: FormulaRepository;
+  /** Validated artifact commit path. Omission keeps formula.confirm fail-closed. */
+  readonly formula_commit?: {
+    readonly service: Pick<FormulaArtifactService, "commit_confirmed">;
+    readonly approval_gate: FormulaApprovalGate;
+  };
 }
 
 /** Default number of search results when the caller does not specify a limit. */
@@ -145,7 +160,7 @@ function to_search_row(
 export function create_repository_backed_tool_ports(
   deps: RepositoryToolPortDeps,
 ): GovernedToolPorts {
-  const { tenant_context, formula_repository } = deps;
+  const { tenant_context, formula_repository, formula_commit } = deps;
 
   return {
     formula_search: {
@@ -234,42 +249,67 @@ export function create_repository_backed_tool_ports(
         trusted: TrustedToolContext,
       ): Promise<FormulaConfirmOutput> {
         assert_same_tenant(trusted, tenant_context);
-        // The repository confirms to an explicit target version (it does not
-        // auto-bump), so read the current version and target current+1. On an
-        // idempotent replay the repository short-circuits and returns the
-        // already-confirmed document, so the version is read back from it.
-        const current = await formula_repository.get_formula(
+        if (!formula_commit) {
+          throw new ToolGovernanceError(
+            "NOT_WIRED",
+            "The validated formula artifact commit adapter is unavailable.",
+          );
+        }
+        const arguments_hash = hash_canonical(args);
+        const confirmed = await formula_commit.service.commit_confirmed(
           tenant_context,
-          args.formula_id,
+          {
+            artifact_id: args.artifact_id,
+            run_id: trusted.run_id,
+            idempotency_key: trusted.idempotency_key,
+            approval_checkpoint_id:
+              `${trusted.run_id}:approval:formula.confirm:${arguments_hash}`,
+          },
+          formula_commit.approval_gate,
         );
-        const current_version =
-          typeof current.version === "number" ? current.version : 0;
-        const confirmed = await formula_repository.confirm_formula(
-          tenant_context,
-          args.formula_id,
-          trusted.idempotency_key,
-          { confirmed_version: current_version + 1 },
-        );
-        const new_version =
-          typeof confirmed.version === "number"
-            ? confirmed.version
-            : current_version + 1;
-        const previous_version = Math.max(0, new_version - 1);
         return {
-          formula_id: String(confirmed._id),
-          formula_code: confirmed.formulaCode ?? null,
-          previous_version,
-          new_version,
-          version_label: `v${String(new_version).padStart(2, "0")}`,
+          artifact_id: args.artifact_id,
+          formula_id: confirmed.formula_id,
           status: "confirmed",
+          already_committed: confirmed.already_committed,
         };
       },
     },
 
-    // Qdrant formulation/knowledge gateway (G3.5) + external web search: not
-    // wired here. Fail closed rather than fall back to a legacy handler.
-    formula_draft: { create_draft_formula: not_wired("formula.draft") },
-    formula_revise: { revise_formula: not_wired("formula.revise") },
+    formula_draft: {
+      async create_draft_formula(
+        args: FormulaDraftInput,
+        trusted: TrustedToolContext,
+      ): Promise<FormulaDraftOutput> {
+        assert_same_tenant(trusted, tenant_context);
+        // The model proposes the candidate, but cannot certify it. The
+        // orchestration artifact service deterministically validates this
+        // canonical shape before finalization and durable persistence.
+        return args.artifact;
+      },
+    },
+
+    formula_revise: {
+      async revise_formula(
+        args: FormulaReviseInput,
+        trusted: TrustedToolContext,
+      ): Promise<FormulaReviseOutput> {
+        assert_same_tenant(trusted, tenant_context);
+        const parent = await formula_repository.get_formula(
+          tenant_context,
+          args.formula_id,
+        );
+        if (String(parent.ownerProfileId ?? "") !== tenant_context.actor_profile_id) {
+          // `formula:draft:update_own` must not disclose that another user's
+          // formula exists, even within the same tenant.
+          throw new ResourceNotFoundError("FORMULA_NOT_FOUND");
+        }
+        return args.artifact;
+      },
+    },
+
+    // Knowledge and provisioned web search are overridden by the production
+    // runtime. The repository layer itself keeps both external ports closed.
     knowledge_search: { search_knowledge: not_wired("knowledge.search") },
     web_search: { search_web: not_wired("web.search") },
   };

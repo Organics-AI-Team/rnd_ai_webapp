@@ -33,6 +33,8 @@ const RUNS_COLLECTION = "ai_runs";
 
 /** Run states that no longer count against the concurrency budget. */
 export const TERMINAL_RUN_STATUSES: readonly string[] = Object.freeze([
+  "completed",
+  "partial",
   "succeeded",
   "failed",
   "cancelled",
@@ -128,6 +130,29 @@ function to_bigint(value: unknown): bigint {
   return BigInt(0);
 }
 
+/** Hydrate the Mongo storage shape into the canonical ledger contract. */
+function to_ledger_entry(doc: Document): LedgerEntry {
+  return {
+    tenant_id: String(doc.tenantId),
+    actor_profile_id: String(doc.actorProfileId),
+    run_id: String(doc.runId),
+    kind: doc.kind as LedgerEntryKind,
+    idempotency_key: String(doc.idempotencyKey),
+    rate_card_version: String(doc.rateCardVersion),
+    reservation_id:
+      doc.kind === "reservation"
+        ? String(doc._id)
+        : doc.reservationId
+          ? String(doc.reservationId)
+          : undefined,
+    requests: to_bigint(doc.requests),
+    tokens: to_bigint(doc.tokens),
+    cost_microusd: to_bigint(doc.costMicrousd),
+    ...(doc.released === true ? { released: true } : {}),
+    created_at: doc.createdAt instanceof Date ? doc.createdAt : new Date(0),
+  };
+}
+
 /**
  * Sum the signed ledger contribution of an entry: reservations and actuals add,
  * releases subtract (a release stores the negated amount as `released`).
@@ -181,7 +206,7 @@ export function create_ai_usage_repository(db: Db): AIUsageRepository {
           { tenantId: tenant_id, idempotencyKey: idempotency_key },
           { session: session as ClientSession | undefined },
         );
-      return doc ? (doc as unknown as LedgerEntry) : null;
+      return doc ? to_ledger_entry(doc) : null;
     },
 
     async find_reservation(tenant_id, reservation_id, session) {
@@ -191,7 +216,7 @@ export function create_ai_usage_repository(db: Db): AIUsageRepository {
       const doc = await db
         .collection(LEDGER_COLLECTION)
         .findOne(filter, { session: session as ClientSession | undefined });
-      return doc ? (doc as unknown as LedgerEntry) : null;
+      return doc ? to_ledger_entry(doc) : null;
     },
 
     async locked_month_totals(tenant_id, actor_profile_id, month, session) {

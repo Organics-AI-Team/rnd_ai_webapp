@@ -98,6 +98,63 @@ describe("partial unique external identifiers", () => {
   });
 });
 
+describe("commercial AI indexes", () => {
+  it("creates the uniqueness, queue, replay, budget, rollout, and operations indexes used by repositories", async () => {
+    const expected: Record<string, readonly string[]> = {
+      tenant_ai_profiles: ["uniq_tenant_ai_profile_tenant"],
+      agent_deployments: [
+        "uniq_agent_deployment_revision",
+        "idx_agent_deployment_active_lookup",
+      ],
+      platform_ai_state: ["uniq_platform_ai_state_key"],
+      ai_rollout_assignments: ["uniq_ai_rollout_assignment_tenant"],
+      ai_rollout_events: [
+        "uniq_ai_rollout_event_idempotency",
+        "idx_ai_rollout_event_replay",
+      ],
+      ai_runs: [
+        "uniq_ai_run_tenant_idempotency",
+        "uniq_ai_run_correlation",
+        "idx_ai_run_tenant_status_created",
+      ],
+      ai_usage_ledger: [
+        "uniq_ai_usage_tenant_idempotency",
+        "idx_ai_usage_tenant_month",
+        "idx_ai_usage_tenant_run_kind",
+      ],
+      ai_usage_counters: ["uniq_ai_usage_counter_tenant_month"],
+      ai_artifacts: ["uniq_ai_artifact_run_content"],
+      ai_approvals: [
+        "uniq_ai_approval_idempotency",
+        "idx_ai_approval_run_checkpoint_status",
+        "idx_ai_approval_artifact_status",
+      ],
+      ai_run_jobs: [
+        "uniq_ai_run_job_command",
+        "idx_ai_run_job_available",
+        "idx_ai_run_job_expired_lease",
+      ],
+      ai_run_events: [
+        "uniq_ai_run_event_sequence",
+        "idx_ai_run_event_replay",
+      ],
+      ai_tool_usage_events: ["uniq_ai_tool_usage_tenant_idempotency"],
+      ai_tool_results: ["uniq_ai_tool_result_tenant_idempotency"],
+      ai_commercial_events: ["idx_ai_commercial_event_occurred"],
+      ai_incidents: ["idx_ai_incident_active_started"],
+    };
+
+    for (const [collection, required_names] of Object.entries(expected)) {
+      const names = new Set(
+        (await db.collection(collection).listIndexes().toArray()).map(
+          (index) => index.name,
+        ),
+      );
+      for (const name of required_names) expect(names.has(name)).toBe(true);
+    }
+  });
+});
+
 describe("membership uniqueness", () => {
   it("rejects a duplicate tenant/profile membership", async () => {
     const memberships = create_membership_repository(db);

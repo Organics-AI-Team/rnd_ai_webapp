@@ -178,6 +178,31 @@ describe("AIArtifactRepository", () => {
     expect(doc.ownerProfileId).toBe(PROFILE_A);
   });
 
+  it("returns the same draft when finalize replays the same run and content hash", async () => {
+    const context = a_manager();
+    const input = {
+      runId: RUN_ID,
+      artifactType: "formula",
+      schemaVersion: "1",
+      content: draft_artifact(),
+      contentHash: "c".repeat(64),
+      validationResult: VALIDATION,
+      sourceEvidenceIds: ["src-1"],
+    };
+
+    const first = await repository.persist_draft(context, input);
+    const replay = await repository.persist_draft(context, input);
+
+    expect(String(replay._id)).toBe(String(first._id));
+    expect(
+      await db.collection("ai_artifacts").countDocuments({
+        tenantId: TENANT_A,
+        runId: RUN_ID,
+        contentHash: "c".repeat(64),
+      }),
+    ).toBe(1);
+  });
+
   it("reads a draft back within the tenant but not across tenants", async () => {
     const created = await repository.persist_draft(a_manager(), {
       runId: RUN_ID,

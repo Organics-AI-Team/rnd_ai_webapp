@@ -15,6 +15,10 @@
 
 import { type NextRequest } from "next/server";
 
+import {
+  is_credential_free_commercial_test_runtime,
+  stream_commercial_test_run,
+} from "@/lib/server/commercial-test-run-adapter";
 import { with_request_principal } from "@/lib/server/with-request-principal";
 import { resolve_tenant_context } from "@/lib/server/tenant-context-route";
 import { handle_run_events } from "@/server/services/ai-gateway/run-api-handlers";
@@ -35,6 +39,14 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ runId: string }> },
 ): Promise<Response> {
+  if (is_credential_free_commercial_test_runtime()) {
+    const { runId } = await context.params;
+    const tenant_id = request.cookies.get("commercial_test_tenant")?.value ?? "tenant_a";
+    const last_event_id =
+      request.headers.get("last-event-id") ??
+      new URL(request.url).searchParams.get("last_event_id");
+    return stream_commercial_test_run(runId, tenant_id, last_event_id);
+  }
   return with_request_principal(request, "ai:run", async (principal) => {
     const scope = resolve_tenant_context(principal);
     if (scope.status === "error") return scope.response;

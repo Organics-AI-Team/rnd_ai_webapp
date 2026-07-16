@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Package, Search } from 'lucide-react';
 import { useAuth } from "@/lib/app-auth";
 import { useChatThreads } from '@/hooks/use_chat_threads';
+import { useAgentRun } from '@/hooks/use_agent_run';
 import {
   AIChatHeader,
   AIChatMessagesContainer,
@@ -15,18 +16,11 @@ import {
   AIChatSidebar,
   AIChatLayout,
   SidebarToggleButton,
+  AiRunView,
   type Message,
 } from '@/components/ai';
 
 const THAI_CHAR_REGEX = /[\u0E00-\u0E7F]/;
-
-function get_error_message(user_input: string): string {
-  if (!THAI_CHAR_REGEX.test(user_input)) {
-    return 'Sorry, I encountered an error while searching the database. Please try again later.';
-  }
-
-  return 'ขออภัย ระบบค้นฐานข้อมูลไม่สำเร็จในรอบนี้ กรุณาลองใหม่อีกครั้ง หรือระบุวัตถุดิบ/ประเภทสูตรให้แคบลง';
-}
 
 /**
  * Raw Materials AI Page
@@ -48,15 +42,16 @@ function RawMaterialsAIPageContent() {
   const search_params = useSearchParams();
   const thread_param = search_params.get('thread');
   const chat = useChatThreads('raw_materials_ai', thread_param);
+  const agent_run = useAgentRun();
 
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
   const [inputAreaHeight, setInputAreaHeight] = useState<number>(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') return window.innerWidth >= 1024;
     return true;
   });
+  const isLoading = agent_run.is_starting || agent_run.is_streaming;
 
   /**
    * Convert persistent ChatMessages to the Message type expected by UI components.
@@ -72,83 +67,28 @@ function RawMaterialsAIPageContent() {
   }));
 
   /**
-   * Sends user message to AI and processes response.
-   * Persists both user and assistant messages to the active thread.
+   * Persist a user turn, then start the governed run for that concrete thread.
    */
   const handle_send_message = useCallback(async () => {
     if (!input.trim() || isLoading) return;
 
     const user_input = input;
     setInput('');
-    setIsLoading(true);
-
     console.log('[RawMaterialsAI] handle_send_message — start');
-
-    // Persist user message (creates thread if needed)
-    await chat.add_message('user', user_input);
-
-    try {
-      // 60s timeout to prevent hanging requests
-      const abort_controller = new AbortController();
-      const timeout_id = setTimeout(() => abort_controller.abort(), 60000);
-
-      const response = await fetch('/api/ai/raw-materials-agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abort_controller.signal,
-        body: JSON.stringify({
-          prompt: user_input,
-          sessionId: chat.active_thread?.id || undefined,
-          conversationHistory: chat.messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-          enableEnhancements: true,
-          enableStreaming: false,
-          enableMLOptimizations: true,
-          enableSearch: true,
-        }),
-      });
-      clearTimeout(timeout_id);
-
-      if (!response.ok) {
-        throw new Error('Failed to get AI response');
-      }
-
-      const data = await response.json();
-      const artifacts = data.metadata?.artifacts;
-      const ai_content = data.response || (
-        THAI_CHAR_REGEX.test(user_input)
-          ? 'ขออภัย ระบบยังประมวลผลคำขอนี้ไม่สำเร็จ'
-          : 'Sorry, I could not process your request at the moment.'
-      );
-      const ai_metadata = {
-        sources: data.searchResults || artifacts?.citations || [],
-        confidence: data.metadata?.confidence || 0.5,
-        ragUsed: data.features?.searchEnabled || false,
-        responseTime: data.metadata?.processingTime || data.metadata?.latency || 0,
-        toolCalls: data.features?.optimizationsApplied || [],
-        processSteps: artifacts?.processSteps || [],
-        formula: artifacts?.formula,
-        citations: artifacts?.citations || [],
-        quickActions: artifacts?.quickActions || [],
-        language: artifacts?.language,
-      };
-
-      // Persist assistant message
-      await chat.add_message('assistant', ai_content, ai_metadata);
-
-      console.log('[RawMaterialsAI] handle_send_message — done');
-    } catch (error) {
-      console.error('[RawMaterialsAI] handle_send_message — error', error);
-      await chat.add_message(
-        'assistant',
-        get_error_message(user_input),
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [input, isLoading, user, chat, setInput, setIsLoading]);
+    const added_message = await chat.add_message('user', user_input);
+    if (!added_message) return;
+    await agent_run.start_run({
+      thread_id: added_message.thread_id,
+      agent_key: 'raw_material_research',
+      message: user_input,
+      attachment_source_ids: [],
+      response_preferences: {
+        language: THAI_CHAR_REGEX.test(user_input) ? 'th' : 'en',
+        detail: 'standard',
+      },
+    });
+    console.log('[RawMaterialsAI] handle_send_message — governed run requested');
+  }, [input, isLoading, chat, agent_run]);
 
   /**
    * Submits user feedback for ML preference learning.
@@ -202,8 +142,14 @@ function RawMaterialsAIPageContent() {
             threads={chat.threads}
             active_thread_id={chat.active_thread?.id || null}
             loading={chat.threads_loading}
-            on_select={chat.select_thread}
-            on_new_chat={chat.start_new_chat}
+            on_select={(thread_id) => {
+              agent_run.reset_run();
+              chat.select_thread(thread_id);
+            }}
+            on_new_chat={() => {
+              agent_run.reset_run();
+              chat.start_new_chat();
+            }}
             on_archive={chat.archive_thread}
             is_new_chat={chat.is_new_chat}
             theme_color="blue"
@@ -247,6 +193,18 @@ function RawMaterialsAIPageContent() {
                 bottomPadding={8}
                 onFeedback={handle_feedback}
                 feedbackSubmitted={feedbackSubmitted}
+                runContent={
+                  <AiRunView
+                    state={agent_run.state}
+                    client_error={agent_run.client_error}
+                    is_streaming={agent_run.is_streaming}
+                    is_resuming={agent_run.is_resuming}
+                    is_manager={user.role === 'admin'}
+                    on_clarification={agent_run.submit_clarification}
+                    on_approval={agent_run.submit_approval}
+                    on_cancel_stream={agent_run.cancel_stream}
+                  />
+                }
               />
             }
           />

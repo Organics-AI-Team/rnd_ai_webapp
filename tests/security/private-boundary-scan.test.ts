@@ -75,7 +75,7 @@ describe("scan_private_boundaries fixtures", () => {
     ]);
   });
 
-  it("exempts the tRPC adapter, webhooks, and OPTIONS handlers from the route guard rule", () => {
+  it("exempts infrastructure ingress and OPTIONS handlers from the route guard rule", () => {
     const findings = scan_private_boundaries([
       source(
         "apps/web/app/api/trpc/[trpc]/route.ts",
@@ -84,6 +84,10 @@ describe("scan_private_boundaries fixtures", () => {
       source(
         "apps/web/app/api/webhooks/clerk/route.ts",
         "export async function POST(request: Request) { return handle_clerk_webhook(request, deps); }",
+      ),
+      source(
+        "apps/web/app/api/health/route.ts",
+        "export async function GET() { return Response.json({ status: 'ok' }); }",
       ),
       source(
         "apps/web/app/api/example/route.ts",

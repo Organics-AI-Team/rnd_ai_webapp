@@ -137,6 +137,92 @@ describe("reduce_run_event", () => {
     expect(state.error).toEqual({ code: "LIMIT_MAX_ITERATIONS", safe_message: "Too many steps.", retryable: false });
   });
 
+  it("records typed decisions and usage for the activity trail", () => {
+    const state = fold([
+      HAPPY_PATH[0],
+      evt(1, "decision.recorded", {
+        iteration: 1,
+        kind: "tool",
+        tool_name: "knowledge.search",
+        arguments_hash: HASH,
+        rationale_summary: "Find source-backed material evidence.",
+      }),
+      evt(2, "usage.updated", {
+        model_calls: 1,
+        tool_calls: 1,
+        tokens_used: 120,
+        cost_usd_used: "0.004",
+      }),
+    ]);
+    expect(state.decisions).toEqual([
+      {
+        iteration: 1,
+        kind: "tool",
+        tool_name: "knowledge.search",
+        rationale_summary: "Find source-backed material evidence.",
+      },
+    ]);
+    expect(state.usage).toEqual({
+      model_calls: 1,
+      tool_calls: 1,
+      tokens_used: 120,
+      cost_usd_used: "0.004",
+    });
+  });
+
+  it("retains the typed terminal output for answer and citation rendering", () => {
+    const output = {
+      schema_version: "1" as const,
+      run_id: "run_1",
+      status: "completed" as const,
+      answer: "Niacinamide is supported by the cited material record.",
+      decision_summary: {
+        facts_considered: ["The material record is current."],
+        evidence_references: ["material:rm_1"],
+        action_rationales: [],
+        validation_results: [],
+        uncertainty: [],
+      },
+      citations: [{
+        source_id: "rm_1",
+        source_type: "material" as const,
+        reference: "/raw-materials/rm_1",
+        retrieved_at: "2026-07-16T00:00:00.000Z",
+      }],
+      artifacts: [],
+      quality_dimensions: {
+        groundedness: 1,
+        evidence_coverage: 1,
+        source_quality: 1,
+        source_freshness_days: 0,
+        contradiction_state: "none" as const,
+        validation_rate: 1,
+        completeness: 1,
+        risk_severity: "none" as const,
+      },
+      warnings: [],
+      usage_summary: {
+        model_calls: 1,
+        tool_calls: 1,
+        input_tokens: 10,
+        output_tokens: 10,
+        total_tokens: 20,
+        cost_usd: "0.001",
+      },
+      started_at: "2026-07-16T00:00:00.000Z",
+      completed_at: "2026-07-16T00:00:01.000Z",
+    };
+    const state = fold([
+      HAPPY_PATH[0],
+      evt(1, "run.completed", {
+        status: "completed",
+        output_schema_version: "1",
+        output,
+      }),
+    ]);
+    expect((state as AgentRunViewState & { output?: unknown }).output).toEqual(output);
+  });
+
   it("ignores a malformed event without throwing", () => {
     const state = reduce_run_event(initial_agent_run_view_state, { type: "not.an.event" });
     expect(state).toBe(initial_agent_run_view_state);

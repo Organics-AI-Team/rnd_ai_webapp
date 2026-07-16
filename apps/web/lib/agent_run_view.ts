@@ -13,6 +13,7 @@
 import {
   agent_run_event_v1_schema,
   type AgentRunEventV1,
+  type AgentRunOutputV1,
   type RunErrorCodeV1,
   type RunStageV1,
 } from "@rnd-ai/shared-types/src/ai/contracts";
@@ -25,6 +26,22 @@ export interface RunActionView {
   readonly action_id: string;
   readonly tool_name: string;
   readonly status: "running" | "ok" | "error" | "denied";
+}
+
+/** One safe, typed decision summary suitable for the activity trail. */
+export interface RunDecisionView {
+  readonly iteration: number;
+  readonly kind: "tool" | "clarify" | "finalize";
+  readonly tool_name: string | null;
+  readonly rationale_summary: string;
+}
+
+/** Latest public usage counters emitted for a live run. */
+export interface RunUsageView {
+  readonly model_calls: number;
+  readonly tool_calls: number;
+  readonly tokens_used: number;
+  readonly cost_usd_used: string;
 }
 
 /** One normalized observation reference surfaced as evidence. */
@@ -56,10 +73,13 @@ export interface AgentRunViewState {
   readonly status: RunViewStatus;
   readonly stage: RunStageV1 | null;
   readonly observations: readonly RunObservationView[];
+  readonly decisions: readonly RunDecisionView[];
   readonly actions: readonly RunActionView[];
   readonly pending_clarification: readonly string[] | null;
   readonly pending_approval: RunApprovalView | null;
   readonly artifacts: readonly RunArtifactView[];
+  readonly usage: RunUsageView | null;
+  readonly output: AgentRunOutputV1 | null;
   readonly error: { readonly code: RunErrorCodeV1; readonly safe_message: string; readonly retryable: boolean } | null;
 }
 
@@ -69,10 +89,13 @@ export const initial_agent_run_view_state: AgentRunViewState = Object.freeze({
   status: "pending",
   stage: null,
   observations: [],
+  decisions: [],
   actions: [],
   pending_clarification: null,
   pending_approval: null,
   artifacts: [],
+  usage: null,
+  output: null,
   error: null,
 });
 
@@ -111,6 +134,19 @@ export function apply_typed_run_event(
         ],
       };
     }
+    case "decision.recorded":
+      return {
+        ...base,
+        decisions: [
+          ...state.decisions,
+          {
+            iteration: event.payload.iteration,
+            kind: event.payload.kind,
+            tool_name: event.payload.tool_name,
+            rationale_summary: event.payload.rationale_summary,
+          },
+        ],
+      };
     case "action.started":
       return {
         ...base,
@@ -156,8 +192,24 @@ export function apply_typed_run_event(
         ],
       };
     }
+    case "usage.updated":
+      return {
+        ...base,
+        usage: {
+          model_calls: event.payload.model_calls,
+          tool_calls: event.payload.tool_calls,
+          tokens_used: event.payload.tokens_used,
+          cost_usd_used: event.payload.cost_usd_used,
+        },
+      };
     case "run.completed":
-      return { ...base, status: "completed", pending_clarification: null, pending_approval: null };
+      return {
+        ...base,
+        status: "completed",
+        pending_clarification: null,
+        pending_approval: null,
+        output: event.payload.output ?? state.output,
+      };
     case "run.failed":
       return {
         ...base,
@@ -171,7 +223,6 @@ export function apply_typed_run_event(
         },
       };
     default:
-      // decision.recorded / usage.updated carry no view-state change here.
       return base;
   }
 }

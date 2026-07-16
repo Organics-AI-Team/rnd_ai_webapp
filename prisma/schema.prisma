@@ -913,6 +913,48 @@ model AgentDeployment {
   @@map("agent_deployments")
 }
 
+// Tenant is the canary unit: this record is loaded once before AIRun creation,
+// then executor/deployment/version are pinned on the run for its full lifetime.
+model AIRolloutAssignment {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId            String   @unique @db.ObjectId
+  executor            String
+  deploymentId        String   @db.ObjectId
+  cohort              String
+  status              String
+  assignedByProfileId String   @db.ObjectId
+  reason              String
+  activatedAt         DateTime
+  rolledBackAt        DateTime?
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status, cohort])
+  @@map("ai_rollout_assignments")
+}
+
+// Immutable audit trail for every compare-and-set assignment transition.
+model AIRolloutEvent {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId         String   @db.ObjectId
+  assignmentId     String   @db.ObjectId
+  eventType        String
+  executor         String
+  deploymentId     String   @db.ObjectId
+  cohort           String
+  actorProfileId   String   @db.ObjectId
+  reason           String
+  fromVersion      Int
+  toVersion        Int
+  occurredAt       DateTime @default(now())
+  idempotencyKey   String   @unique
+
+  @@index([tenantId, occurredAt])
+  @@index([assignmentId, toVersion])
+  @@map("ai_rollout_events")
+}
+
 model PromptVersion {
   id                    String         @id @default(auto()) @map("_id") @db.ObjectId
   scope                 KnowledgeScope
@@ -994,11 +1036,19 @@ model AIRun {
   // G4.9: which executor drives the run (agentic loop vs legacy), pinned once by
   // the RunSelector, and the assembled context-pack hash pinned at creation.
   executor               String      @default("legacy")
+  rolloutAssignmentId    String?     @db.ObjectId
+  rolloutAssignmentVersion Int?
   contextPackHash        String?
+  // Strict AgentRunInputV1 and terminal AgentRunOutputV1 snapshots. Input is
+  // identity-free; both are needed for private execution, replay, and approved
+  // read-only shadow evaluation.
+  input                   Json
+  output                  Json?
   // G4.9g: the validated resume payload (clarification answer or approval
   // decision) the resume route persists for the worker to consume on resume.
   pendingResume          Json?
   requestBudget          Json?
+  usageReservationId     String?     @db.ObjectId
   usageSummary           Json?
   safeDecisionSummaries  Json?
   toolAuditEventIds      String[]
@@ -1114,6 +1164,8 @@ model AIRunJob {
   tenantId       String         @db.ObjectId
   runId          String         @db.ObjectId
   command        String // "start" | "resume"
+  idempotencyKey String
+  resumePayload  Json?
   status         AIRunJobStatus @default(available)
   leaseOwner     String?
   leaseExpiresAt DateTime?
@@ -1124,7 +1176,7 @@ model AIRunJob {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  @@unique([runId, command])
+  @@unique([runId, command, idempotencyKey])
   @@index([status, availableAt])
   @@map("ai_run_jobs")
 }

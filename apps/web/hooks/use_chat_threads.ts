@@ -43,6 +43,12 @@ export interface ChatMessage {
   createdAt: Date;
 }
 
+/** Identity of a message persisted to a concrete conversation thread. */
+export interface AddedChatMessage {
+  message_id: string;
+  thread_id: string;
+}
+
 export interface UseChatThreadsReturn {
   /** List of threads for the current agent type */
   threads: ChatThread[];
@@ -59,7 +65,7 @@ export interface UseChatThreadsReturn {
   /** Start a new chat (clears active thread; thread created on first message) */
   start_new_chat: () => void;
   /** Add a message to the active thread (creates thread if needed) */
-  add_message: (role: 'user' | 'assistant', content: string, metadata?: any) => Promise<string | null>;
+  add_message: (role: 'user' | 'assistant', content: string, metadata?: any) => Promise<AddedChatMessage | null>;
   /** Archive (soft delete) a thread */
   archive_thread: (thread_id: string) => Promise<void>;
   /** Refresh thread list */
@@ -180,13 +186,13 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
    * @param role     - "user" or "assistant"
    * @param content  - Message content
    * @param metadata - Optional metadata (confidence, tools, etc.)
-   * @returns The created message ID, or null on error
+   * @returns The created message and thread IDs, or null on error.
    */
   const add_message = useCallback(async (
     role: 'user' | 'assistant',
     content: string,
     metadata?: any,
-  ): Promise<string | null> => {
+  ): Promise<AddedChatMessage | null> => {
     // Read from ref — NOT the stale closure — so assistant messages
     // in the same turn see the thread created by the user message.
     let thread_id = active_thread_id_ref.current || pending_thread_ref.current;
@@ -247,7 +253,7 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
       messages_query.refetch();
 
       console.log('[use_chat_threads] add_message — done', { messageId: result.id });
-      return result.id;
+      return { message_id: result.id, thread_id: thread_id! };
     } catch (error) {
       console.error('[use_chat_threads] add_message — error', error);
       return null;

@@ -15,6 +15,7 @@
  * @date 2026-07-15
  */
 
+import type { Permission } from "@rnd-ai/shared-types";
 import type { z } from "zod";
 
 /** Side-effect classification for a governed tool. */
@@ -23,23 +24,21 @@ export type SideEffectClass = "read" | "draft_write" | "commit";
 /** Declared approval requirement for a governed tool. */
 export type ApprovalRequirement = "none" | "manager";
 
-/**
- * Named permission string, e.g. "formula:confirm".
- * Will align with the shared auth Permission contract once G1/G2 land it
- * in packages/shared-types (tracked integration TODO).
- */
-export type ToolPermission = string;
+/** Shared authorization permission required to invoke a governed tool. */
+export type ToolPermission = Permission;
 
 /** Canonical permission names used by the governed tool catalogue. */
 export const TOOL_PERMISSIONS = {
   formula_read: "formula:read",
-  formula_draft: "formula:draft",
-  formula_revise: "formula:revise",
-  formula_comment: "formula:comment",
+  formula_draft: "formula:draft:create",
+  formula_revise: "formula:draft:update_own",
+  formula_comment: "formula:comment:create",
   formula_confirm: "formula:confirm",
-  knowledge_search: "knowledge:search",
-  web_search: "web:search",
-} as const;
+  knowledge_search: "tenant:knowledge:read",
+  // Web search is an operation within an authorized AI run; shared auth has
+  // no narrower web-specific permission.
+  web_search: "ai:run",
+} as const satisfies Readonly<Record<string, ToolPermission>>;
 
 /** Bounded retry policy for one tool call. */
 export interface ToolRetryPolicy {

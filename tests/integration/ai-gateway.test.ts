@@ -17,6 +17,7 @@ import { build_tenant_execution_context } from "../../apps/ai/server/auth/tenant
 import { TENANT_ROLE_PERMISSIONS } from "../../packages/shared-types/src/auth";
 import type { RequestPrincipal } from "../../packages/shared-types/src/auth";
 import type { TenantExecutionContext } from "../../packages/shared-types/src/tenant";
+import type { EffectiveAIPolicy } from "../../packages/shared-types/src/ai/policy";
 
 import { create_ai_run_repository } from "../../apps/ai/server/repositories/ai-run-repository";
 import { create_run_job_queue } from "../../apps/ai/server/services/ai-gateway/run-job-queue";
@@ -84,6 +85,27 @@ const PINS: CompiledRunPolicy["pins"] = {
   model: "gemini-2.5-flash",
 };
 
+const EFFECTIVE_POLICY: EffectiveAIPolicy = Object.freeze({
+  tenant_id: TENANT,
+  version: 1,
+  hash: "a".repeat(64),
+  enabled: true,
+  provider_models: { gemini: ["gemini-2.5-flash"] },
+  allowed_tools: ["formula.search"],
+  monthly_request_limit: 10_000n,
+  monthly_token_limit: 10_000_000n,
+  monthly_cost_limit_microusd: 100_000_000n,
+  per_user_monthly_request_limit: 1_000n,
+  per_user_monthly_token_limit: 1_000_000n,
+  per_user_monthly_cost_limit_microusd: 10_000_000n,
+  per_run_token_limit: 100_000n,
+  per_run_cost_limit_microusd: 1_000_000n,
+  max_concurrent_runs: 3,
+  default_locale: "en-US",
+  max_iterations: 8,
+  approval_rules: {},
+});
+
 class FakePolicySource implements GatewayPolicySource {
   public compiled = 0;
   constructor(private readonly enabled = true) {}
@@ -92,6 +114,7 @@ class FakePolicySource implements GatewayPolicySource {
     return {
       enabled: this.enabled,
       disabled_reason: this.enabled ? undefined : "AI is disabled for this tenant.",
+      effective_policy: { ...EFFECTIVE_POLICY, enabled: this.enabled },
       pins: PINS,
       budget_estimate: { tokens: 1000 },
       request_budget: { max_total_tokens: 200_000 },
@@ -107,8 +130,14 @@ class FakeContextSource implements GatewayContextSource {
 
 class FakeBudgetReserver implements GatewayBudgetReserver {
   public readonly reserves: string[] = [];
-  async reserve(_t: unknown, _e: unknown, idempotency_key: string): Promise<void> {
+  async reserve(
+    _tenant: unknown,
+    _policy: unknown,
+    _estimate: unknown,
+    idempotency_key: string,
+  ): Promise<{ reservation_id: string }> {
     this.reserves.push(idempotency_key);
+    return { reservation_id: "507f1f77bcf86cd79943b001" };
   }
 }
 
@@ -142,7 +171,10 @@ beforeAll(async () => {
   db = client.db("test_gateway");
   await db.collection("ai_runs").createIndex({ tenantId: 1, idempotencyKey: 1 }, { unique: true });
   await db.collection("ai_runs").createIndex({ correlationId: 1 }, { unique: true });
-  await db.collection("ai_run_jobs").createIndex({ runId: 1, command: 1 }, { unique: true });
+  await db.collection("ai_run_jobs").createIndex(
+    { runId: 1, command: 1, idempotencyKey: 1 },
+    { unique: true },
+  );
 }, 60_000);
 
 afterAll(async () => {
@@ -170,6 +202,7 @@ describe("ai-gateway create_run", () => {
     expect(run?.contextPackHash).toBe(PACK_HASH);
     expect(run?.policyVersion).toBe(1);
     expect(run?.status).toBe("queued");
+    expect(run?.input).toEqual(make_input("idem-run-0001"));
 
     expect(await db.collection("ai_run_jobs").countDocuments({})).toBe(1);
     expect(budget.reserves).toEqual(["idem-run-0001"]);

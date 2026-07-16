@@ -36,13 +36,26 @@ export interface ContextPackCard {
   readonly markdown: string;
 }
 
+/** Tool-card entries are keyed by name, so the value does not duplicate it. */
+export interface ContextPackToolCard {
+  readonly version: string;
+  readonly sha256: string;
+  readonly markdown: string;
+}
+
+/** Rendered policy digest pinned by its own content hash. */
+export interface ContextPackPolicyDigest {
+  readonly markdown: string;
+  readonly sha256: string;
+}
+
 /** ContextPackV1-shaped assembly result (validated again in G4.2's package). */
 export interface ContextPackV1 {
   readonly schema_version: typeof CONTEXT_PACK_SCHEMA_VERSION;
   readonly orchestrator_card: ContextPackCard;
   readonly agent_card: ContextPackCard;
-  readonly policy_digest: string;
-  readonly tool_cards: Readonly<Record<string, ContextPackCard>>;
+  readonly policy_digest: ContextPackPolicyDigest;
+  readonly tool_cards: Readonly<Record<string, ContextPackToolCard>>;
   readonly pack_hash: string;
 }
 
@@ -163,7 +176,7 @@ export class ContextAssembler {
       .map((definition) => definition.name)
       .filter((name) => !allowed_definitions.some((definition) => definition.name === name))
       .sort();
-    const tool_cards: Record<string, ContextPackCard> = {};
+    const tool_cards: Record<string, ContextPackToolCard> = {};
     for (const definition of [...allowed_definitions].sort((left, right) =>
       left.name < right.name ? -1 : 1,
     )) {
@@ -171,11 +184,15 @@ export class ContextAssembler {
     }
 
     const allowed_tool_names = Object.keys(tool_cards);
-    const policy_digest = render_policy_digest(
+    const policy_markdown = render_policy_digest(
       runtime.policy,
       allowed_tool_names,
       disallowed_tools,
     );
+    const policy_digest = {
+      markdown: policy_markdown,
+      sha256: sha256_hex(policy_markdown),
+    };
     const pack_hash = this.compute_pack_hash(
       orchestrator_card,
       agent_card,
@@ -239,7 +256,7 @@ export class ContextAssembler {
    * @returns Pinned ContextPackCard for the tool.
    * @throws ToolGovernanceError CONTEXT_CARD_MISSING or CONTEXT_CARD_DRIFT.
    */
-  private load_tool_card(definition: AnyToolDefinition): ContextPackCard {
+  private load_tool_card(definition: AnyToolDefinition): ContextPackToolCard {
     try {
       const card = load_capability_card(
         definition.capability_card_path,
@@ -258,7 +275,6 @@ export class ContextAssembler {
         );
       }
       return {
-        name: card.name,
         version: card.version,
         sha256: card.sha256,
         markdown: card.markdown,
@@ -275,22 +291,22 @@ export class ContextAssembler {
    * @param orchestrator_card - Pinned orchestrator card.
    * @param agent_card - Pinned agent card.
    * @param tool_cards - Pinned tool cards keyed by tool name.
-   * @param policy_digest - Rendered policy digest markdown.
+   * @param policy_digest - Rendered and hash-pinned policy digest.
    * @returns SHA-256 hex pack hash.
    */
   private compute_pack_hash(
     orchestrator_card: ContextPackCard,
     agent_card: ContextPackCard,
-    tool_cards: Readonly<Record<string, ContextPackCard>>,
-    policy_digest: string,
+    tool_cards: Readonly<Record<string, ContextPackToolCard>>,
+    policy_digest: ContextPackPolicyDigest,
   ): string {
     const lines = [
       `orchestrator:${orchestrator_card.sha256}`,
-      `agent:${agent_card.name}:${agent_card.sha256}`,
+      `agent:${agent_card.sha256}`,
+      `policy:${policy_digest.sha256}`,
       ...Object.entries(tool_cards)
         .sort(([left], [right]) => (left < right ? -1 : 1))
         .map(([name, card]) => `tool:${name}:${card.sha256}`),
-      `policy_digest:${sha256_hex(policy_digest)}`,
     ];
     return sha256_hex(lines.join("\n"));
   }

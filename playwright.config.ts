@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+const hosted_base_url = process.env.E2E_BASE_URL;
+
 /**
  * Playwright configuration for the commercial E2E suite (G1.7+).
  *
@@ -12,15 +14,25 @@ export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 60_000,
   retries: 0,
-  reporter: [["list"]],
+  workers: hosted_base_url ? undefined : 1,
+  reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
+    baseURL: hosted_base_url ?? "http://localhost:3000",
     trace: "retain-on-failure",
+    launchOptions: process.env.PLAYWRIGHT_EXECUTABLE_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+      : undefined,
   },
-  webServer: {
-    command: "npm run dev:web",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: hosted_base_url
+    ? undefined
+    : {
+        command: "npm run dev:web",
+        url: "http://localhost:3000",
+        reuseExistingServer: false,
+        timeout: 120_000,
+        env: {
+          ...process.env,
+          COMMERCIAL_TEST_ADAPTER_MODE: "credential_free",
+        },
+      },
 });

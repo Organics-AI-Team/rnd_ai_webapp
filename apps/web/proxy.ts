@@ -38,9 +38,14 @@ function log_proxy_event(
  * @returns True when the path is a public authentication route.
  */
 function is_public_path(pathname: string): boolean {
-  return PUBLIC_PATHS.some((public_path) => (
+  const configured_public_path = PUBLIC_PATHS.some((public_path) => (
     pathname === public_path || pathname.startsWith(`${public_path}/`)
   ));
+  const local_commercial_test_path =
+    process.env.NODE_ENV !== "production" &&
+    process.env.COMMERCIAL_TEST_ADAPTER_MODE === "credential_free" &&
+    (pathname === "/commercial-test" || pathname.startsWith("/commercial-test/"));
+  return configured_public_path || local_commercial_test_path;
 }
 
 /**
@@ -121,6 +126,10 @@ export async function proxy(
   request: NextRequest,
   event?: NextFetchEvent,
 ): Promise<Response> {
+  if (is_public_path(request.nextUrl.pathname)) {
+    log_proxy_event("decision", "allow", "public");
+    return NextResponse.next();
+  }
   if (is_clerk_enabled()) {
     const response = await clerk_proxy(request, event as NextFetchEvent);
     return response instanceof Response ? response : NextResponse.next();

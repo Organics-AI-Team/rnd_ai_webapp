@@ -17,13 +17,9 @@
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 import { ToolGovernanceError } from "../ai-control/errors";
 import {
-  PLATFORM_FILTER,
   payload_is_platform,
   payload_is_tenant_owned,
-  platform_collection,
-  tenant_collection,
-  tenant_filter,
-  type QdrantFilter,
+  type GovernedKnowledgeVectorPort,
 } from "./qdrant-collections";
 
 /** Retrieval scope a caller may request. */
@@ -37,17 +33,23 @@ export interface RawVectorResult {
 }
 
 /** Narrow port over the vector store (a QdrantService adapter in production). */
-export interface VectorSearchPort {
-  search(
-    collection_name: string,
-    vector: readonly number[],
-    options: { filter: QdrantFilter; limit: number },
-  ): Promise<readonly RawVectorResult[]>;
-}
+export interface VectorSearchPort
+  extends Pick<
+    GovernedKnowledgeVectorPort,
+    "search_platform" | "search_tenant"
+  > {}
 
 /** Narrow port producing a query embedding for a given embedding version. */
 export interface KnowledgeEmbeddingPort {
   embed(text: string, embedding_version: string): Promise<readonly number[]>;
+}
+
+/** Effective-policy seam evaluated before any query leaves the process. */
+export interface KnowledgeAccessPolicyPort {
+  authorize(
+    context: TenantExecutionContext,
+    scope: KnowledgeScope,
+  ): Promise<void>;
 }
 
 /** A single piece of retrieved evidence with provenance. */
@@ -58,6 +60,7 @@ export interface KnowledgeEvidence {
   readonly tenant_id: string | null;
   readonly content: string;
   readonly content_hash: string;
+  readonly locator: string;
   readonly score: number;
   readonly embedding_version: string;
 }
@@ -73,6 +76,7 @@ export interface KnowledgeSearchRequest {
 export interface KnowledgeGatewayDeps {
   readonly vector_port: VectorSearchPort;
   readonly embedding_port: KnowledgeEmbeddingPort;
+  readonly access_policy: KnowledgeAccessPolicyPort;
   readonly embedding_version: string;
 }
 
@@ -109,7 +113,7 @@ function read_string(payload: Record<string, unknown>, key: string): string | nu
 export function create_knowledge_gateway(
   deps: KnowledgeGatewayDeps,
 ): KnowledgeGateway {
-  const { vector_port, embedding_port, embedding_version } = deps;
+  const { vector_port, embedding_port, access_policy, embedding_version } = deps;
 
   /**
    * Map a validated raw hit to a KnowledgeEvidence row, or null if it lacks the
@@ -128,7 +132,8 @@ export function create_knowledge_gateway(
     const source_id = read_string(hit.payload, "source_id");
     const content_hash = read_string(hit.payload, "content_hash");
     const content = read_string(hit.payload, "content");
-    if (!source_id || !content_hash || !content) return null;
+    const locator = read_string(hit.payload, "locator");
+    if (!source_id || !content_hash || !content || !locator) return null;
     return {
       point_id: hit.id,
       source_id,
@@ -136,6 +141,7 @@ export function create_knowledge_gateway(
       tenant_id,
       content,
       content_hash,
+      locator,
       score: hit.score,
       embedding_version,
     };
@@ -149,6 +155,7 @@ export function create_knowledge_gateway(
           "A knowledge query is required.",
         );
       }
+      await access_policy.authorize(context, request.scope);
       const limit = Math.min(request.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
       const vector = await embedding_port.embed(request.query, embedding_version);
       const evidence: KnowledgeEvidence[] = [];
@@ -157,11 +164,7 @@ export function create_knowledge_gateway(
       const want_tenant = request.scope === "tenant" || request.scope === "both";
 
       if (want_platform) {
-        const hits = await vector_port.search(
-          platform_collection(embedding_version),
-          vector,
-          { filter: PLATFORM_FILTER, limit },
-        );
+        const hits = await vector_port.search_platform(vector, limit);
         for (const hit of hits) {
           // Defence in depth: drop any point whose payload is not a genuine
           // platform point, even if the backend returned it.
@@ -172,11 +175,7 @@ export function create_knowledge_gateway(
       }
 
       if (want_tenant) {
-        const hits = await vector_port.search(
-          tenant_collection(embedding_version),
-          vector,
-          { filter: tenant_filter(context.tenant_id), limit },
-        );
+        const hits = await vector_port.search_tenant(context, vector, limit);
         for (const hit of hits) {
           // Defence in depth: only surface points genuinely owned by THIS
           // tenant, never another tenant's or a mislabeled point.

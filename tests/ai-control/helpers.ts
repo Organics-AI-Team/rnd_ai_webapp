@@ -10,11 +10,16 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import {
+  formula_artifact_v1_schema,
+  type FormulaArtifactV1,
+} from "@rnd-ai/ai-orchestration";
 
 import type {
   ApprovalRequirement,
   SideEffectClass,
   ToolDefinition,
+  ToolPermission,
   TrustedToolContext,
 } from "../../apps/ai/server/services/ai-control/tool-definition";
 import type { EffectiveAIPolicy } from "../../apps/ai/server/services/ai-control/policy-types";
@@ -27,6 +32,53 @@ import type {
 /** Fixed tenant identifiers used across the suite. */
 export const tenant_a = "tenant_a_000000000000000000";
 export const tenant_b = "tenant_b_000000000000000000";
+
+/** Canonical evidence-bearing formula artifact shared by governed-tool tests. */
+export function governed_formula_artifact(): FormulaArtifactV1 {
+  return formula_artifact_v1_schema.parse({
+    name: "Evidence-backed synthetic serum",
+    product_type: "serum",
+    batch_size: "100",
+    batch_unit: "g",
+    ingredients: [
+      {
+        material_id: "water",
+        rm_code: "WATER",
+        phase: "A",
+        percentage: "95",
+        amount: "95",
+        unit: "g",
+        cost: "0",
+        source_ids: [],
+        rationale: "Water phase base.",
+        is_water: true,
+        external_unverified: false,
+      },
+      {
+        material_id: "rm-niacinamide",
+        rm_code: "RM-NIA",
+        phase: "A",
+        percentage: "5",
+        amount: "5",
+        unit: "g",
+        cost: "1.25",
+        source_ids: ["source-niacinamide"],
+        rationale: "Evidence-backed active at the supported usage level.",
+        is_water: false,
+        external_unverified: false,
+      },
+    ],
+    claims: [
+      {
+        text: "Supports a brightening positioning.",
+        source_ids: ["source-niacinamide"],
+      },
+    ],
+    warnings: [
+      "Laboratory, stability, safety, and regulatory review remain required before production.",
+    ],
+  });
+}
 
 /**
  * Build a complete EffectiveAIPolicy for tests.
@@ -83,12 +135,12 @@ export function make_context(
     actor_profile_id: "profile_0001",
     permissions: [
       "formula:read",
-      "formula:draft",
-      "formula:revise",
-      "formula:comment",
+      "formula:draft:create",
+      "formula:draft:update_own",
+      "formula:comment:create",
       "formula:confirm",
-      "knowledge:search",
-      "web:search",
+      "tenant:knowledge:read",
+      "ai:run",
       "tool:echo",
     ],
     policy: make_policy(),
@@ -235,7 +287,7 @@ export interface EchoToolOptions {
   readonly version?: string;
   readonly side_effect?: SideEffectClass;
   readonly approval_requirement?: ApprovalRequirement;
-  readonly required_permission?: string;
+  readonly required_permission?: ToolPermission;
   readonly timeout_ms?: number;
   readonly retry?: { max_attempts: number; backoff_ms: number };
   readonly capability_card_path?: string;
@@ -258,6 +310,10 @@ export function make_echo_tool(
   cards_root: string,
   options: EchoToolOptions = {},
 ): ToolDefinition<{ query: string }, { echoed: string }> {
+  // This synthetic-only permission exercises arbitrary test cards; production
+  // definitions cannot bypass the shared Permission union.
+  const required_permission =
+    options.required_permission ?? ("tool:echo" as ToolPermission);
   const definition: ToolDefinition<{ query: string }, { echoed: string }> = {
     name: options.name ?? "tool.echo",
     version: options.version ?? "1.0.0",
@@ -266,7 +322,7 @@ export function make_echo_tool(
       options.input_schema ?? z.object({ query: z.string().min(1) }).strict(),
     output_schema:
       options.output_schema ?? z.object({ echoed: z.string() }).strict(),
-    required_permission: options.required_permission ?? "tool:echo",
+    required_permission,
     side_effect: options.side_effect ?? "read",
     approval_requirement: options.approval_requirement ?? "none",
     timeout_ms: options.timeout_ms ?? 1_000,
@@ -278,7 +334,7 @@ export function make_echo_tool(
         version: options.version ?? "1.0.0",
         kind: "tool",
         side_effect: options.side_effect ?? "read",
-        required_permission: options.required_permission ?? "tool:echo",
+        required_permission,
       }),
     execute:
       options.execute ?? (async (args) => ({ echoed: args.query })),

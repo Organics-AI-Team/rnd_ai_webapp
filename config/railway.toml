@@ -31,7 +31,7 @@ restartPolicyMaxRetries = 10
 # healthcheckPath is the endpoint Railway pings to verify your app is healthy
 # Next.js automatically serves pages, so we check the root path
 # Railway will mark service as unhealthy if this endpoint fails
-healthcheckPath = "/"
+healthcheckPath = "/api/health"
 
 # healthcheckTimeout is how long to wait for healthcheck response (seconds)
 healthcheckTimeout = 100

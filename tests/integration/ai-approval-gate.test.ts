@@ -63,6 +63,17 @@ describe("create_ai_approval_gate", () => {
     expect(await gate.has_approved_artifact(query, CONTEXT)).toBe(true);
   });
 
+  it("accepts the exact approved graph checkpoint when the pending record predates the artifact link", async () => {
+    const checkpoint_id = `${RUN}:approval:formula.confirm:${"a".repeat(64)}`;
+    await seed_approval("approved", { artifactId: null, checkpointId: checkpoint_id });
+    expect(
+      await gate.has_approved_artifact(
+        { ...query, approval_checkpoint_id: checkpoint_id },
+        CONTEXT,
+      ),
+    ).toBe(true);
+  });
+
   it("is false for a pending or rejected approval", async () => {
     await seed_approval("pending");
     expect(await gate.has_approved_artifact(query, CONTEXT)).toBe(false);

@@ -18,7 +18,7 @@ import { z } from "zod";
 import { ToolGovernanceError } from "./errors";
 import { sha256_hex } from "./hashing";
 import { log_info } from "./logger";
-import type { SideEffectClass, ToolPermission } from "./tool-definition";
+import type { SideEffectClass } from "./tool-definition";
 
 const MODULE = "card-loader";
 
@@ -33,7 +33,8 @@ export interface CapabilityCard {
   readonly version: string;
   readonly kind: CapabilityCardKind;
   readonly side_effect: SideEffectClass | null;
-  readonly required_permission: ToolPermission | null;
+  /** Raw frontmatter value; registration compares it to a typed ToolDefinition. */
+  readonly required_permission: string | null;
   /** Full original markdown content including frontmatter. */
   readonly markdown: string;
   /** SHA-256 hex digest of the full markdown content. */

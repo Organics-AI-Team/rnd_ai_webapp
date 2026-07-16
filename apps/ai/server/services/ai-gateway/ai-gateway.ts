@@ -18,14 +18,21 @@
  * @date 2026-07-15
  */
 
-import type { Document, MongoClient, WithId } from "mongodb";
-import type { TenantExecutionContext } from "@rnd-ai/shared-types";
+import { createHash } from "node:crypto";
+import { ObjectId, type Document, type MongoClient, type WithId } from "mongodb";
+import type { EffectiveAIPolicy, TenantExecutionContext } from "@rnd-ai/shared-types";
 import { agent_run_input_v1_schema } from "@rnd-ai/shared-types/src/ai/contracts";
 import type { AgentRunInputV1 } from "@rnd-ai/shared-types/src/ai/contracts";
 
 import type { AIRunRepository } from "../../repositories/ai-run-repository";
 import type { RunJobQueue } from "./run-job-queue";
-import { select_run_executor, type RolloutConfig } from "./run-selector";
+import {
+  select_executor,
+  select_run_executor,
+  type ExecutorSelection,
+  type RolloutAssignmentSource,
+  type RolloutConfig,
+} from "./run-selector";
 
 /** Versions, hashes, and provider selection pinned onto the AIRun at creation. */
 export interface RunPolicyPins {
@@ -53,11 +60,16 @@ export interface CompiledRunPolicy {
   readonly budget_estimate: unknown;
   /** Request budget snapshot stored on the AIRun. */
   readonly request_budget: unknown;
+  /** Frozen compiled policy consumed by context assembly and budget admission. */
+  readonly effective_policy: EffectiveAIPolicy;
 }
 
 /** Compiles and pins the effective tenant AI policy for a run. */
 export interface GatewayPolicySource {
-  compile(tenant: TenantExecutionContext): Promise<CompiledRunPolicy>;
+  compile(
+    tenant: TenantExecutionContext,
+    input: AgentRunInputV1,
+  ): Promise<CompiledRunPolicy>;
 }
 
 /** Assembles and pins the run's context pack. */
@@ -65,6 +77,7 @@ export interface GatewayContextSource {
   assemble(
     tenant: TenantExecutionContext,
     input: AgentRunInputV1,
+    compiled: CompiledRunPolicy,
   ): Promise<{ pack_hash: string }>;
 }
 
@@ -72,9 +85,11 @@ export interface GatewayContextSource {
 export interface GatewayBudgetReserver {
   reserve(
     tenant: TenantExecutionContext,
+    policy: EffectiveAIPolicy,
     estimate: unknown,
     idempotency_key: string,
-  ): Promise<void>;
+    run_id: string,
+  ): Promise<{ reservation_id: string }>;
 }
 
 /** Injected collaborators and deterministic sources for the gateway. */
@@ -85,7 +100,10 @@ export interface AIGatewayDeps {
   readonly policy: GatewayPolicySource;
   readonly context: GatewayContextSource;
   readonly budget: GatewayBudgetReserver;
-  readonly rollout: RolloutConfig;
+  /** G5 tenant-stable assignment source used by production admission. */
+  readonly rollout_assignments?: RolloutAssignmentSource;
+  /** Credential-free compatibility source used by isolated G4 tests only. */
+  readonly rollout?: RolloutConfig;
   readonly now: () => Date;
   readonly correlation_id: () => string;
   readonly events_url: (run_id: string) => string;
@@ -116,6 +134,17 @@ export class AIDisabledError extends Error {
   constructor(reason: string) {
     super(reason);
     this.name = "AIDisabledError";
+  }
+}
+
+/** Thrown when a tenant has no safe, internally consistent rollout selection. */
+export class AIRolloutUnavailableError extends Error {
+  readonly code = "AI_ROLLOUT_UNAVAILABLE";
+  readonly cause?: unknown;
+  constructor(cause?: unknown) {
+    super("No approved rollout assignment is available for this tenant.");
+    this.name = "AIRolloutUnavailableError";
+    this.cause = cause;
   }
 }
 
@@ -150,17 +179,33 @@ export function create_ai_gateway(deps: AIGatewayDeps): AIGateway {
         return accepted(deps, existing, String(existing.executor ?? "agentic"), true);
       }
 
-      const compiled = await deps.policy.compile(tenant);
+      const compiled = await deps.policy.compile(tenant, input);
       if (!compiled.enabled) {
         throw new AIDisabledError(compiled.disabled_reason ?? "AI is disabled for this tenant.");
       }
 
-      const { pack_hash } = await deps.context.assemble(tenant, input);
-      const executor = select_run_executor(tenant.tenant_id, deps.rollout);
-      await deps.budget.reserve(tenant, compiled.budget_estimate, input.idempotency_key);
+      const selection = await resolve_executor_selection(tenant, compiled, deps);
+      const { pack_hash } = await deps.context.assemble(tenant, input, compiled);
+      const run_id = deterministic_run_id(tenant.tenant_id, input.idempotency_key);
+      const reservation = await deps.budget.reserve(
+        tenant,
+        compiled.effective_policy,
+        compiled.budget_estimate,
+        input.idempotency_key,
+        run_id,
+      );
 
       const now = deps.now();
-      const document = build_run_document(tenant, input, compiled, executor, pack_hash, deps.correlation_id());
+      const document = build_run_document(
+        tenant,
+        input,
+        compiled,
+        selection,
+        pack_hash,
+        deps.correlation_id(),
+        run_id,
+        reservation.reservation_id,
+      );
 
       const session = deps.client.startSession();
       try {
@@ -171,9 +216,14 @@ export function create_ai_gateway(deps: AIGatewayDeps): AIGateway {
             now,
             session,
           );
-          if (result.created && executor === "agentic") {
+          if (result.created) {
             await deps.jobs.enqueue(
-              { tenant_id: tenant.tenant_id, run_id: String(result.run._id), command: "start" },
+              {
+                tenant_id: tenant.tenant_id,
+                run_id: String(result.run._id),
+                command: "start",
+                idempotency_key: "start",
+              },
               now,
               session,
             );
@@ -181,12 +231,43 @@ export function create_ai_gateway(deps: AIGatewayDeps): AIGateway {
         });
         // withTransaction ran the callback, so `result` is always set here.
         const settled = result!;
-        return accepted(deps, settled.run, executor, !settled.created);
+        return accepted(deps, settled.run, selection.executor, !settled.created);
       } finally {
         await session.endSession();
       }
     },
   };
+}
+
+/** Resolve and validate the executor/deployment pins before reserving budget. */
+async function resolve_executor_selection(
+  tenant: TenantExecutionContext,
+  compiled: CompiledRunPolicy,
+  deps: AIGatewayDeps,
+): Promise<ExecutorSelection> {
+  if (deps.rollout_assignments) {
+    try {
+      const selection = await select_executor(tenant.tenant_id, deps.rollout_assignments);
+      if (
+        selection.executor === "agentic" &&
+        selection.deployment_id !== compiled.pins.deploymentId
+      ) {
+        throw new AIRolloutUnavailableError();
+      }
+      return selection;
+    } catch (error) {
+      if (error instanceof AIRolloutUnavailableError) throw error;
+      throw new AIRolloutUnavailableError(error);
+    }
+  }
+
+  if (!deps.rollout) throw new AIRolloutUnavailableError();
+  return Object.freeze({
+    executor: select_run_executor(tenant.tenant_id, deps.rollout),
+    deployment_id: compiled.pins.deploymentId,
+    assignment_id: "",
+    assignment_version: 0,
+  });
 }
 
 /**
@@ -195,7 +276,7 @@ export function create_ai_gateway(deps: AIGatewayDeps): AIGateway {
  * @param tenant - Verified tenant execution context.
  * @param input - Validated run input.
  * @param compiled - Compiled policy + pins.
- * @param executor - Selected executor.
+ * @param selection - Selected executor and immutable rollout pins.
  * @param context_pack_hash - Pinned context-pack hash.
  * @param correlation_id - Unique correlation id for the run.
  * @returns The AIRun document (tenantId is stamped by the repository).
@@ -204,15 +285,22 @@ function build_run_document(
   tenant: TenantExecutionContext,
   input: AgentRunInputV1,
   compiled: CompiledRunPolicy,
-  executor: string,
+  selection: ExecutorSelection,
   context_pack_hash: string,
   correlation_id: string,
+  run_id: string,
+  reservation_id: string,
 ): Record<string, unknown> {
+  const request_budget =
+    compiled.request_budget && typeof compiled.request_budget === "object"
+      ? { ...(compiled.request_budget as Record<string, unknown>), reservation_id }
+      : { snapshot: compiled.request_budget, reservation_id };
   return {
+    _id: new ObjectId(run_id),
     actorProfileId: tenant.actor_profile_id,
     threadId: input.thread_id,
     agentKey: input.agent_key,
-    deploymentId: compiled.pins.deploymentId,
+    deploymentId: selection.deployment_id,
     agentDefinitionVersion: compiled.pins.agentDefinitionVersion,
     orchestratorVersion: compiled.pins.orchestratorVersion,
     policyVersion: compiled.pins.policyVersion,
@@ -222,13 +310,31 @@ function build_run_document(
     outputSchemaVersion: compiled.pins.outputSchemaVersion,
     provider: compiled.pins.provider,
     model: compiled.pins.model,
-    executor,
+    executor: selection.executor,
+    ...(selection.assignment_id
+      ? {
+          rolloutAssignmentId: selection.assignment_id,
+          rolloutAssignmentVersion: selection.assignment_version,
+        }
+      : {}),
     contextPackHash: context_pack_hash,
-    requestBudget: compiled.request_budget,
+    // The validated public input is required by the private executor and an
+    // authorized shadow run; it contains no tenant/actor/provider identity.
+    input,
+    requestBudget: request_budget,
+    usageReservationId: reservation_id,
     status: "queued",
     correlationId: correlation_id,
     idempotencyKey: input.idempotency_key,
   };
+}
+
+/** Stable ObjectId for a tenant/idempotency pair, shared by retries and races. */
+function deterministic_run_id(tenant_id: string, idempotency_key: string): string {
+  return createHash("sha256")
+    .update(`${tenant_id}\u0000${idempotency_key}`, "utf8")
+    .digest("hex")
+    .slice(0, 24);
 }
 
 /**

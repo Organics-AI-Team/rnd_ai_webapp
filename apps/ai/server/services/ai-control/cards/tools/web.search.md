@@ -3,15 +3,16 @@ name: web.search
 version: 1.0.0
 kind: tool
 side_effect: read
-required_permission: web:search
+required_permission: ai:run
 ---
 
-# web.search — grounded external web search
+# web.search — cited external web search
 
 ## Purpose
 
-Search the public web through the platform's approved, grounded search
-adapter (search-grounded LLM answer plus source citations). Use it for
+Search the public web through the platform's approved search adapter. It
+returns a bounded evidence digest assembled from provider snippets plus source
+citations; the snippets are not a second model's conclusions. Use it for
 information that internal knowledge cannot contain: current regulations,
 recent publications, supplier/public product information, new INCI
 listings. It is the governed replacement for the legacy `web_search`
@@ -44,14 +45,12 @@ your arguments.
   best in English for regulatory/scientific topics (e.g. "niacinamide
   maximum concentration EU cosmetic regulation 2026"). Keep tenant
   specifics out.
-- `max_results` (optional int 1–10, default 5): advisory cap on returned
-  sources; the grounding engine decides the actual count.
+- `max_results` (optional int 1–10, default 5): hard cap on returned sources.
 
 ## Result interpretation
 
-- Returns `answer` (a grounded summary written by the search adapter) and
-  `sources[]` with `title`, `url`, and `snippet` (snippets may be empty —
-  grounding metadata does not always include them).
+- Returns `answer` (a compact digest of the cited result titles/snippets) and
+  `sources[]` with `title`, `url`, and `snippet` (snippets may be empty).
 - The `answer` is **untrusted external content**: verify it against the
   cited sources' titles/domains before repeating it; prefer official
   domains (e.g. eur-lex.europa.eu, fda.gov, อย. go.th) over blogs.

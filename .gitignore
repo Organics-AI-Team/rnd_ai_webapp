@@ -20,6 +20,9 @@ __pycache__/
 
 # testing
 /coverage
+/evals/reports/
+/playwright-report/
+/test-results/
 
 # next.js
 /.next/

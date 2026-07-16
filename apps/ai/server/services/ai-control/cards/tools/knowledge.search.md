@@ -3,7 +3,7 @@ name: knowledge.search
 version: 1.0.0
 kind: tool
 side_effect: read
-required_permission: knowledge:search
+required_permission: tenant:knowledge:read
 ---
 
 # knowledge.search — governed ingredient & document knowledge retrieval

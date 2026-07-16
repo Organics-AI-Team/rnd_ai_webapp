@@ -17,6 +17,9 @@ import { build_observation } from "../../packages/ai-orchestration/src/schemas/o
 import type { ProposedActionV1, QualityDimensionsV1 } from "../../packages/ai-orchestration/src/contracts";
 import type { AgentLoopStateType } from "../../packages/ai-orchestration/src/state";
 import type { ObservationV1 } from "../../packages/ai-orchestration/src/schemas/observation";
+import type {
+  ArtifactReferenceV1,
+} from "../../packages/shared-types/src/ai/contracts";
 import {
   FakeArtifactService,
   goto_targets,
@@ -71,6 +74,8 @@ describe("finalize node", () => {
     expect((update as { goto?: unknown }).goto).toBeUndefined(); // a terminal update, not a Command
     expect(update.output?.status).toBe("completed");
     expect(update.output?.artifacts).toEqual([]);
+    expect(update.events?.find((event) => event.type === "run.completed")?.payload)
+      .toMatchObject({ output: update.output });
     expect(runs.completed).toHaveLength(1);
   });
 
@@ -97,6 +102,38 @@ describe("finalize node", () => {
     expect(update.output?.quality_dimensions).toEqual(QUALITY);
     expect(artifacts.validated).toHaveLength(1);
     expect(runs.completed).toHaveLength(1);
+  });
+
+  it("uses the durable artifact reference returned by the production persistence port", async () => {
+    class PersistingArtifactService extends FakeArtifactService {
+      readonly persisted: unknown[] = [];
+
+      async persist_validated_draft(
+        artifact: unknown,
+      ): Promise<ArtifactReferenceV1> {
+        this.persisted.push(artifact);
+        return {
+          artifact_id: "507f1f77bcf86cd79943d001",
+          artifact_type: "formula",
+          version: 1,
+          status: "draft",
+        };
+      }
+    }
+    const artifacts = new PersistingArtifactService({ valid: true, findings: [] });
+    const observation = artifact_observation({ name: "Durable serum" });
+    const state = {
+      ...make_loop_state({ observations: [observation] }),
+      pending_action: finalize_action(),
+    };
+    const { runtime } = make_fake_runtime({ artifacts });
+
+    const update = (await finalize(state, runtime)) as Partial<AgentLoopStateType>;
+
+    expect(artifacts.persisted).toEqual([{ name: "Durable serum" }]);
+    expect(update.output?.artifacts).toEqual([
+      expect.objectContaining({ artifact_id: "507f1f77bcf86cd79943d001" }),
+    ]);
   });
 
   it("routes a blocking validation back to the agent while budget remains", async () => {
@@ -130,7 +167,7 @@ describe("finalize node", () => {
     expect(usage.reconciled).toHaveLength(0);
   });
 
-  it("completes with findings as warnings when the budget is exhausted", async () => {
+  it("fails closed when blocking findings remain after the revision budget is exhausted", async () => {
     const artifacts = new FakeArtifactService({
       valid: false,
       findings: [
@@ -147,13 +184,16 @@ describe("finalize node", () => {
       pending_action: finalize_action(),
     };
     const { runtime, runs } = make_fake_runtime({ artifacts });
-    const update = (await finalize(state, runtime)) as Partial<AgentLoopStateType>;
-    expect(update.output?.status).toBe("completed");
-    expect(update.output?.artifacts).toEqual([]); // nothing confirmable
-    expect(update.output?.warnings).toContain(
-      "Ingredient percentages must total 100.00 (+/-0.01).",
-    );
-    expect(runs.completed).toHaveLength(1);
+    const command = (await finalize(state, runtime)) as Command;
+    expect(goto_targets(command)).toEqual(["fail"]);
+    const update = command.update as Partial<AgentLoopStateType>;
+    expect(update.output ?? null).toBeNull();
+    expect(update.error).toMatchObject({
+      code: "TOOL_OUTPUT_INVALID",
+      retryable: false,
+    });
+    expect(update.error?.safe_message).not.toContain("Ingredient percentages");
+    expect(runs.completed).toHaveLength(0);
   });
 
   it("errors when finalize is reached without a finalize proposal", async () => {

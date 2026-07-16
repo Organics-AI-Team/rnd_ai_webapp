@@ -81,6 +81,7 @@ export const clarification_response_v1_schema = z
   .object({
     kind: z.literal("clarification"),
     answer: z.string().min(1).max(32_000),
+    idempotency_key: z.string().min(8).max(128),
   })
   .strict();
 export type ClarificationResponseV1 = z.infer<typeof clarification_response_v1_schema>;
@@ -93,7 +94,7 @@ export const approval_decision_v1_schema = z
     kind: z.literal("approval"),
     approval_id: z.string().min(1).max(128),
     decision: z.enum(["approve", "deny"]),
-    decided_by_profile_id: z.string().min(1).max(128),
+    idempotency_key: z.string().min(8).max(128),
   })
   .strict();
 export type ApprovalDecisionV1 = z.infer<typeof approval_decision_v1_schema>;
@@ -386,6 +387,9 @@ export const agent_run_event_v1_schema = z.discriminatedUnion("type", [
         .object({
           status: z.literal("completed"),
           output_schema_version: z.literal("1"),
+          // Optional only so persisted v1 events written before G4.10 remain
+          // replayable. Every current producer includes the terminal output.
+          output: agent_run_output_v1_schema.optional(),
         })
         .strict(),
     })

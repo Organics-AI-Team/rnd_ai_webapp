@@ -8,7 +8,11 @@
  * model-visible input.
  */
 
-import type { ApprovalResultV1, QualityDimensionsV1 } from "./contracts";
+import type {
+  ApprovalResultV1,
+  ArtifactReferenceV1,
+  QualityDimensionsV1,
+} from "./contracts";
 
 /**
  * Server-resolved identity and lineage for one run. Built exclusively from a
@@ -204,6 +208,17 @@ export interface ArtifactService {
     artifact: unknown,
     context: TrustedRuntimeContext,
   ): Promise<ArtifactValidationV1>;
+
+  /**
+   * Persist a deterministically validated draft and return its public
+   * reference. Optional for pure/test adapters; production implements it so a
+   * terminal output never points only at an in-memory content hash.
+   */
+  persist_validated_draft?(
+    artifact: unknown,
+    validation: ArtifactValidationV1,
+    context: TrustedRuntimeContext,
+  ): Promise<ArtifactReferenceV1>;
 }
 
 /** Persistence port for run lifecycle records owned by the gateway. */

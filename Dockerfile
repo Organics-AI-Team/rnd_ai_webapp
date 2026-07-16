@@ -4,7 +4,7 @@
 
 # Stage 1: Dependencies
 # Install all dependencies needed for building
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 
 # Add libc6-compat for compatibility with certain npm packages on Alpine Linux
 RUN apk add --no-cache libc6-compat
@@ -21,19 +21,19 @@ COPY packages/shared-config/package.json ./packages/shared-config/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/shared-database/package.json ./packages/shared-database/
 COPY packages/server-config/package.json ./packages/server-config/
+COPY packages/ai-orchestration/package.json ./packages/ai-orchestration/
 
 # Install all workspace dependencies
 RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder
 # Build the Next.js application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 
 # Copy workspace configuration
 COPY package.json package-lock.json ./
@@ -44,6 +44,11 @@ COPY apps/web ./apps/web
 
 # Copy AI service (needed for imports)
 COPY apps/ai ./apps/ai
+
+# Generate the Prisma client used by imported server repositories.
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN npx prisma generate
 
 # Set environment to production for optimized build
 ENV NODE_ENV=production
@@ -64,7 +69,7 @@ WORKDIR /app
 
 # Stage 3: Runner
 # Final stage with minimal size for running the app
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 
@@ -83,6 +88,10 @@ RUN adduser --system --uid 1001 nextjs
 # Set correct permissions for nextjs user
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+
+# Preserve Prisma's generated client and native engine in the standalone image.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 
 # Copy public assets if they exist
 RUN mkdir -p ./apps/web/public

@@ -5,8 +5,9 @@
  * with an atomic lease, heartbeats to renew it, and completes or releases it.
  * Claiming is a single `findOneAndUpdate` compare-and-set so two workers can
  * never own the same job, and an expired lease (crashed worker) is reclaimable
- * on the next claim. Enqueue is idempotent on `[runId, command]`, so a retried
- * gateway call never double-schedules. The worker is a platform process: this
+ * on the next claim. Enqueue is idempotent on
+ * `[runId, command, idempotencyKey]`, so a retried action never double-schedules
+ * while a later interrupt for the same run can enqueue a new resume job. The worker is a platform process: this
  * queue is deliberately not tenant-scoped — the worker rebuilds the tenant
  * context from the pinned AIRun after claiming.
  *
@@ -25,6 +26,8 @@ export interface ClaimedRunJob {
   readonly tenant_id: string;
   readonly run_id: string;
   readonly command: RunJobCommand;
+  /** Trusted graph resume value, present only for resume commands. */
+  readonly resume_payload?: unknown;
   readonly attempts: number;
 }
 
@@ -33,6 +36,10 @@ export interface EnqueueRunJobInput {
   readonly tenant_id: string;
   readonly run_id: string;
   readonly command: RunJobCommand;
+  /** Stable key for this start/resume action, reused only when that action is retried. */
+  readonly idempotency_key: string;
+  /** Server-normalized graph resume value; clients never write this directly. */
+  readonly resume_payload?: unknown;
 }
 
 /** Durable, leased run-job queue. */
@@ -61,6 +68,12 @@ export interface RunJobQueue {
     backoff_ms: number;
     error?: string;
   }): Promise<boolean>;
+  fail(args: {
+    job_id: string;
+    worker_id: string;
+    now: Date;
+    error: string;
+  }): Promise<boolean>;
 }
 
 /**
@@ -75,6 +88,7 @@ function to_claimed_job(document: WithId<Document>): ClaimedRunJob {
     tenant_id: String(document.tenantId),
     run_id: String(document.runId),
     command: document.command as RunJobCommand,
+    ...(document.resumePayload !== undefined ? { resume_payload: document.resumePayload } : {}),
     attempts: Number(document.attempts ?? 0),
   };
 }
@@ -90,16 +104,24 @@ export function create_run_job_queue(db: Db): RunJobQueue {
 
   return {
     async enqueue(input, now, session) {
-      // Idempotent on [runId, command]: the unique index plus $setOnInsert means
+      // Idempotent on [runId, command, idempotencyKey]: the unique index plus $setOnInsert means
       // a retried enqueue never double-schedules. `upsertedId` is set only when
       // this call performed the insert.
       const result = await jobs.updateOne(
-        { runId: input.run_id, command: input.command },
+        {
+          runId: input.run_id,
+          command: input.command,
+          idempotencyKey: input.idempotency_key,
+        },
         {
           $setOnInsert: {
             tenantId: input.tenant_id,
             runId: input.run_id,
             command: input.command,
+            idempotencyKey: input.idempotency_key,
+            ...(input.resume_payload !== undefined
+              ? { resumePayload: input.resume_payload }
+              : {}),
             status: "available",
             leaseOwner: null,
             leaseExpiresAt: null,
@@ -117,7 +139,11 @@ export function create_run_job_queue(db: Db): RunJobQueue {
         return { job_id: String(result.upsertedId), created: true };
       }
       const existing = await jobs.findOne(
-        { runId: input.run_id, command: input.command },
+        {
+          runId: input.run_id,
+          command: input.command,
+          idempotencyKey: input.idempotency_key,
+        },
         { projection: { _id: 1 }, session },
       );
       return { job_id: String(existing?._id), created: false };
@@ -175,6 +201,23 @@ export function create_run_job_queue(db: Db): RunJobQueue {
             leaseExpiresAt: null,
             availableAt: new Date(args.now.getTime() + args.backoff_ms),
             lastError: args.error ?? null,
+            updatedAt: args.now,
+          },
+        },
+      );
+      return result.matchedCount === 1;
+    },
+
+    async fail(args) {
+      const result = await jobs.updateOne(
+        { _id: object_id(args.job_id), status: "leased", leaseOwner: args.worker_id },
+        {
+          $set: {
+            status: "failed",
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            lastError: args.error,
+            failedAt: args.now,
             updatedAt: args.now,
           },
         },

@@ -25,9 +25,18 @@
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 
 import { AIRunNotFoundError } from "../../repositories/ai-run-repository";
-import { AIDisabledError, AIRunInputInvalidError, type AIGateway } from "./ai-gateway";
+import {
+  AIDisabledError,
+  AIRolloutUnavailableError,
+  AIRunInputInvalidError,
+  type AIGateway,
+} from "./ai-gateway";
 import type { EventStore } from "./event-store";
-import { ResumeRequestInvalidError, type ResumeAccepted } from "./resume-handler";
+import {
+  ResumeForbiddenError,
+  ResumeRequestInvalidError,
+  type ResumeAccepted,
+} from "./resume-handler";
 import { SSE_HEARTBEAT, format_sse_frame, parse_last_event_id } from "./sse";
 
 /**
@@ -63,7 +72,11 @@ export interface RunApiCollaborators {
   /** Tenant-scoped run authorization; throws AIRunNotFoundError for cross-tenant/missing. */
   readonly authorize_run: (tenant_id: string, run_id: string) => Promise<void>;
   /** Validates + persists a resume payload and enqueues a resume job. */
-  readonly submit_resume: (args: { tenant_id: string; run_id: string; payload: unknown }) => Promise<ResumeAccepted>;
+  readonly submit_resume: (args: {
+    tenant: TenantExecutionContext;
+    run_id: string;
+    payload: unknown;
+  }) => Promise<ResumeAccepted>;
   /** SSE heartbeat / tail-poll cadence; defaults to DEFAULT_HEARTBEAT_MS. */
   readonly heartbeat_ms?: number;
   /** Injectable timer so the tail loop is deterministic in tests. */
@@ -117,6 +130,7 @@ export async function handle_create_run(
   } catch (error) {
     if (error instanceof AIRunInputInvalidError) return error_json(400, error);
     if (error instanceof AIDisabledError) return error_json(403, error);
+    if (error instanceof AIRolloutUnavailableError) return error_json(503, error);
     if (error instanceof RunApiNotWiredError) return error_json(503, error);
     console.error({ boundary: "run-api", op: "create_run", phase: "error", tenant_id: tenant.tenant_id }, error);
     throw error;
@@ -141,11 +155,12 @@ export async function handle_resume_run(
 ): Promise<Response> {
   console.info({ boundary: "run-api", op: "resume_run", phase: "start", tenant_id: tenant.tenant_id, run_id });
   try {
-    const accepted = await deps.submit_resume({ tenant_id: tenant.tenant_id, run_id, payload: body });
+    const accepted = await deps.submit_resume({ tenant, run_id, payload: body });
     console.info({ boundary: "run-api", op: "resume_run", phase: "accepted", run_id });
     return json(202, accepted);
   } catch (error) {
     if (error instanceof ResumeRequestInvalidError) return error_json(400, error);
+    if (error instanceof ResumeForbiddenError) return error_json(403, error);
     if (error instanceof AIRunNotFoundError) return error_json(404, error);
     console.error({ boundary: "run-api", op: "resume_run", phase: "error", run_id }, error);
     throw error;

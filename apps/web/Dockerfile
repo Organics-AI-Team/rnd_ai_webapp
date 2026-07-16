@@ -3,7 +3,7 @@
 
 # Stage 1: Dependencies
 # Install all dependencies needed for building
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 
 # Add libc6-compat for compatibility with certain npm packages on Alpine Linux
 RUN apk add --no-cache libc6-compat
@@ -21,13 +21,14 @@ COPY packages/shared-config/package.json ./packages/shared-config/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/shared-database/package.json ./packages/shared-database/
 COPY packages/server-config/package.json ./packages/server-config/
+COPY packages/ai-orchestration/package.json ./packages/ai-orchestration/
 
 # Install all workspace dependencies
 RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder
 # Build the Next.js application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -67,7 +68,7 @@ RUN npm run build
 
 # Stage 3: Runner
 # Final stage with minimal size for running the app
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 

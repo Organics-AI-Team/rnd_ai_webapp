@@ -11,6 +11,8 @@ import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import type { Permission } from "@rnd-ai/shared-types";
+
 import {
   get_card_size_budget_chars,
   load_capability_card,
@@ -41,6 +43,17 @@ const DELEGATION_CARD_NAMES = [
   "delegate.sales_rnd",
 ] as const;
 
+const EXPECTED_PERMISSION_BY_TOOL = {
+  "formula.comment": "formula:comment:create",
+  "formula.confirm": "formula:confirm",
+  "formula.draft": "formula:draft:create",
+  "formula.revise": "formula:draft:update_own",
+  "formula.search": "formula:read",
+  "knowledge.search": "tenant:knowledge:read",
+  // No narrower web-specific permission exists; web search runs inside ai:run.
+  "web.search": "ai:run",
+} as const satisfies Readonly<Record<string, Permission>>;
+
 /**
  * Build all governed tool definitions with fail-closed NOT_WIRED ports.
  *
@@ -67,6 +80,16 @@ describe("governed tool capability cards", () => {
       "knowledge.search",
       "web.search",
     ]);
+  });
+
+  it("uses the canonical shared-auth permission for every governed tool", () => {
+    const actual = Object.fromEntries(
+      governed_definitions().map((definition) => [
+        definition.name,
+        definition.required_permission,
+      ]),
+    );
+    expect(actual).toEqual(EXPECTED_PERMISSION_BY_TOOL);
   });
 
   it("has exactly one card file per registered tool plus the delegation cards, no orphans", () => {
@@ -167,7 +190,7 @@ describe("card enforcement at registration", () => {
         version: "9.9.9",
         kind: "tool",
         side_effect: "read",
-        required_permission: "tool:echo",
+        required_permission: "formula:read",
       },
     );
     const definition = make_echo_tool(cards_root, {

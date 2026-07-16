@@ -15,8 +15,9 @@ import type { Db, Document, WithId } from "mongodb";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 
 import {
+  assert_no_security_fields,
   get_scoped_document,
-  insert_scoped_document,
+  tenant_scope,
   update_scoped_document,
 } from "./tenant-repository-base";
 
@@ -81,12 +82,39 @@ export function create_ai_artifact_repository(db: Db): AIArtifactRepository {
   const artifacts = db.collection("ai_artifacts");
   return {
     async persist_draft(context, input) {
-      return insert_scoped_document(
-        artifacts,
-        context,
-        { revision: 1, ...input, status: "draft" },
-        "owner",
+      assert_no_security_fields(input);
+      const run_id = input.runId;
+      const content_hash = input.contentHash;
+      if (
+        typeof run_id !== "string" ||
+        run_id.length === 0 ||
+        typeof content_hash !== "string" ||
+        !/^[a-f0-9]{64}$/.test(content_hash)
+      ) {
+        throw new Error("AI artifact draft identity is invalid.");
+      }
+      const now = new Date();
+      const document = await artifacts.findOneAndUpdate(
+        {
+          ...tenant_scope(context),
+          runId: run_id,
+          contentHash: content_hash,
+        },
+        {
+          $setOnInsert: {
+            revision: 1,
+            ...input,
+            status: "draft",
+            ...tenant_scope(context),
+            ownerProfileId: context.actor_profile_id,
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+        { upsert: true, returnDocument: "after" },
       );
+      if (!document) throw new Error("AI artifact draft could not be persisted.");
+      return document;
     },
 
     async get_artifact(context, artifact_id) {

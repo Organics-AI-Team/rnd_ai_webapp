@@ -104,6 +104,12 @@ export async function build_citations(
         `Evidence ${item.point_id} is not traceable to a citable ${item.scope} source.`,
       );
     }
+    if (source.scope !== item.scope) {
+      throw new ToolGovernanceError(
+        "CARD_INVALID",
+        `Evidence ${item.point_id} source scope does not match.`,
+      );
+    }
     // A tenant citation's source must belong to the same tenant as the evidence.
     if (item.scope === "tenant" && source.tenant_id !== item.tenant_id) {
       throw new ToolGovernanceError(
@@ -115,7 +121,7 @@ export async function build_citations(
       source_id: source.source_id,
       source_name: source.source_name,
       content_hash: item.content_hash,
-      locator: `${item.scope}:${source.source_id}#${item.point_id}`,
+      locator: item.locator,
       excerpt: cap_excerpt(item.content, excerpt_max),
       retrieved_at,
       scope: item.scope,

@@ -318,7 +318,12 @@ describe("ai-policy-repository (in-memory MongoDB)", () => {
   });
 
   beforeEach(async () => {
-    for (const name of ["tenant_ai_profiles", "agent_deployments", "ai_runs"]) {
+    for (const name of [
+      "tenant_ai_profiles",
+      "agent_deployments",
+      "ai_runs",
+      "platform_ai_state",
+    ]) {
       await db.collection(name).deleteMany({});
     }
   });
@@ -388,5 +393,29 @@ describe("ai-policy-repository (in-memory MongoDB)", () => {
     await expect(
       repo.compile_for_tenant(TENANT, "formulation"),
     ).rejects.toMatchObject({ code: "POLICY_DISABLED" });
+  });
+
+  it("disables new admissions while the platform emergency control is active", async () => {
+    await db.collection("tenant_ai_profiles").insertOne({
+      tenantId: new ObjectId(TENANT),
+      status: "active",
+      planKey: "growth",
+      policyVersion: 4,
+      allowedProviders: ["google"],
+      allowedModels: ["gemini-2.5-flash"],
+      allowedTools: ["formula.search"],
+    });
+    await db.collection("platform_ai_state").insertOne({
+      key: "singleton",
+      emergencyDisabled: true,
+    });
+
+    const compiled = await create_ai_policy_repository(db).compile_for_tenant(
+      TENANT,
+      "formulation",
+    );
+
+    expect(compiled.policy.enabled).toBe(false);
+    expect(compiled.constraint_trace.enabled).toBe("platform");
   });
 });

@@ -32,11 +32,19 @@ import {
 const PROFILES_COLLECTION = "tenant_ai_profiles";
 const DEPLOYMENTS_COLLECTION = "agent_deployments";
 const RUNS_COLLECTION = "ai_runs";
+const PLATFORM_STATE_COLLECTION = "platform_ai_state";
+const PLATFORM_STATE_KEY = "singleton";
 
 /** Compilation result plus the deployment/prompt pins to record on the run. */
 export interface CompiledTenantPolicy extends PolicyCompilationResult {
   readonly deployment_id: string | null;
   readonly prompt_version_id: string | null;
+  readonly deployment_pins: {
+    readonly agent_definition_version: string;
+    readonly orchestrator_version: string;
+    readonly input_schema_version: string;
+    readonly output_schema_version: string;
+  } | null;
 }
 
 /**
@@ -259,7 +267,16 @@ export function create_ai_policy_repository(db: Db): AIPolicyRepository {
         { sort: { revision: -1 } },
       );
 
-      const platform = build_platform_layer();
+      const platform_state = await db
+        .collection(PLATFORM_STATE_COLLECTION)
+        .findOne({ key: PLATFORM_STATE_KEY });
+      const configured_platform = build_platform_layer();
+      const platform: PlatformPolicyLayer = {
+        ...configured_platform,
+        enabled:
+          configured_platform.enabled &&
+          !Boolean(platform_state?.emergencyDisabled),
+      };
       const plan = build_plan_layer(String(profile.planKey), true);
       const tenant = map_profile_to_layer(profile, platform);
       const deployment_layer = map_deployment_to_layer(deployment, platform);
@@ -280,6 +297,14 @@ export function create_ai_policy_repository(db: Db): AIPolicyRepository {
         deployment_id: deployment ? String(deployment._id) : null,
         prompt_version_id: deployment
           ? String(deployment.promptVersionId)
+          : null,
+        deployment_pins: deployment
+          ? {
+              agent_definition_version: String(deployment.agentDefinitionVersion ?? ""),
+              orchestrator_version: String(deployment.orchestratorVersion ?? ""),
+              input_schema_version: String(deployment.inputSchemaVersion ?? ""),
+              output_schema_version: String(deployment.outputSchemaVersion ?? ""),
+            }
           : null,
       };
     },

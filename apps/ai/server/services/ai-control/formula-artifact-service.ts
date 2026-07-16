@@ -135,7 +135,12 @@ export interface FormulaApprovalGate {
    * @returns True when an approved AIApproval covers the commit.
    */
   has_approved_artifact(
-    query: { tenant_id: string; artifact_id: string; run_id: string },
+    query: {
+      tenant_id: string;
+      artifact_id: string;
+      run_id: string;
+      approval_checkpoint_id?: string;
+    },
     context: TenantExecutionContext,
   ): Promise<boolean>;
 }
@@ -159,6 +164,8 @@ export interface CommitConfirmedArgs {
   readonly run_id: string;
   /** Stable key making the confirm version-log write replay-safe. */
   readonly idempotency_key: string;
+  /** Exact graph approval key for this tool name + canonical arguments. */
+  readonly approval_checkpoint_id?: string;
 }
 
 /**
@@ -212,7 +219,44 @@ export class FormulaArtifactService implements ArtifactService {
     private readonly constraint_provider?: FormulaConstraintProvider,
     private readonly artifact_repository?: AIArtifactRepository,
     private readonly formula_repository?: FormulaRepository,
+    private readonly tenant_context?: TenantExecutionContext,
   ) {}
+
+  /** Persist a validated production-loop draft and return its public reference. */
+  async persist_validated_draft(
+    artifact: unknown,
+    validation: ArtifactValidationV1,
+    context: TrustedRuntimeContext,
+  ): Promise<{
+    artifact_id: string;
+    artifact_type: "formula";
+    version: number;
+    status: "draft";
+  }> {
+    if (
+      !this.tenant_context ||
+      context.tenant_id !== this.tenant_context.tenant_id ||
+      context.actor_profile_id !== this.tenant_context.actor_profile_id
+    ) {
+      throw new Error("Formula artifact persistence context is unavailable.");
+    }
+    const parsed = formula_artifact_v1_schema.safeParse(artifact);
+    if (!parsed.success || !validation.valid) {
+      throw new Error("Only a valid formula artifact can be persisted.");
+    }
+    const persisted = await this.persist_draft(
+      this.tenant_context,
+      parsed.data,
+      validation,
+      context.run_id,
+    );
+    return {
+      artifact_id: persisted.artifact_id,
+      artifact_type: "formula",
+      version: 1,
+      status: "draft",
+    };
+  }
 
   /**
    * Validate a draft formula artifact deterministically with tenant evidence.
@@ -343,7 +387,14 @@ export class FormulaArtifactService implements ArtifactService {
     }
 
     const approved = await approval_gate.has_approved_artifact(
-      { tenant_id: context.tenant_id, artifact_id: args.artifact_id, run_id: args.run_id },
+      {
+        tenant_id: context.tenant_id,
+        artifact_id: args.artifact_id,
+        run_id: args.run_id,
+        ...(args.approval_checkpoint_id
+          ? { approval_checkpoint_id: args.approval_checkpoint_id }
+          : {}),
+      },
       context,
     );
     if (!approved) {

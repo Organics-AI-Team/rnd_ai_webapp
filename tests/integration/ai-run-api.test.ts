@@ -21,12 +21,16 @@ import type { AgentRunEventV1 } from "@rnd-ai/shared-types/src/ai/contracts";
 import { AIRunNotFoundError } from "../../apps/ai/server/repositories/ai-run-repository";
 import {
   AIDisabledError,
+  AIRolloutUnavailableError,
   AIRunInputInvalidError,
   type AcceptedRun,
   type AIGateway,
 } from "../../apps/ai/server/services/ai-gateway/ai-gateway";
 import type { EventStore, RunRef } from "../../apps/ai/server/services/ai-gateway/event-store";
-import { ResumeRequestInvalidError } from "../../apps/ai/server/services/ai-gateway/resume-handler";
+import {
+  ResumeForbiddenError,
+  ResumeRequestInvalidError,
+} from "../../apps/ai/server/services/ai-gateway/resume-handler";
 import { SSE_HEARTBEAT } from "../../apps/ai/server/services/ai-gateway/sse";
 import {
   handle_create_run,
@@ -178,14 +182,35 @@ describe("handle_create_run", () => {
     expect(response.status).toBe(503);
     expect((await response.json()).error).toBe("RUN_API_NOT_WIRED");
   });
+
+  it("maps a missing or inconsistent rollout assignment to 503", async () => {
+    const gateway: AIGateway = {
+      async create_run() {
+        throw new AIRolloutUnavailableError();
+      },
+    };
+    const response = await handle_create_run(tenant, VALID_INPUT, collaborators({ gateway }));
+    expect(response.status).toBe(503);
+    expect((await response.json()).error).toBe("AI_ROLLOUT_UNAVAILABLE");
+  });
 });
 
 describe("handle_resume_run", () => {
   it("returns 202 for an accepted resume", async () => {
-    const submit_resume = async () => ({ run_id: "run_1", status: "accepted" as const });
-    const response = await handle_resume_run(tenant, "run_1", { kind: "clarification", answer: "Oily skin." }, collaborators({ submit_resume }));
+    let submitted_actor = "";
+    const submit_resume: RunApiCollaborators["submit_resume"] = async ({ tenant: submitted }) => {
+      submitted_actor = submitted.actor_profile_id;
+      return { run_id: "run_1", status: "accepted" as const };
+    };
+    const response = await handle_resume_run(
+      tenant,
+      "run_1",
+      { kind: "clarification", answer: "Oily skin.", idempotency_key: "resume-key-0001" },
+      collaborators({ submit_resume }),
+    );
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ run_id: "run_1", status: "accepted" });
+    expect(submitted_actor).toBe("profile_1");
   });
 
   it("maps an invalid resume payload to 400 RESUME_REQUEST_INVALID", async () => {
@@ -197,9 +222,31 @@ describe("handle_resume_run", () => {
 
   it("maps a cross-tenant run to 404 AI_RUN_NOT_FOUND", async () => {
     const submit_resume = async () => { throw new AIRunNotFoundError(); };
-    const response = await handle_resume_run(tenant, "run_x", { kind: "clarification", answer: "hi" }, collaborators({ submit_resume }));
+    const response = await handle_resume_run(
+      tenant,
+      "run_x",
+      { kind: "clarification", answer: "hi", idempotency_key: "resume-key-0002" },
+      collaborators({ submit_resume }),
+    );
     expect(response.status).toBe(404);
     expect((await response.json()).error).toBe("AI_RUN_NOT_FOUND");
+  });
+
+  it("maps an unauthorized resume to 403 RESUME_FORBIDDEN", async () => {
+    const submit_resume = async () => { throw new ResumeForbiddenError(); };
+    const response = await handle_resume_run(
+      tenant,
+      "run_1",
+      {
+        kind: "approval",
+        approval_id: "a1",
+        decision: "approve",
+        idempotency_key: "resume-key-0001",
+      },
+      collaborators({ submit_resume }),
+    );
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe("RESUME_FORBIDDEN");
   });
 });
 

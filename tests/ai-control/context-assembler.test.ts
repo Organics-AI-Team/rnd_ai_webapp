@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { ContextAssembler } from "../../apps/ai/server/services/ai-control/context-assembler";
 import { ToolCatalogue } from "../../apps/ai/server/services/ai-control/tool-catalogue";
+import { validate_context_pack } from "../../packages/ai-orchestration/src/context/context-pack";
 import {
   create_all_governed_tool_definitions,
   create_not_wired_governed_tool_ports,
@@ -85,6 +86,7 @@ describe("context assembler", () => {
     });
     expect(pack.orchestrator_card.markdown.length).toBeGreaterThan(0);
     expect(pack.agent_card).toMatchObject({ name: "raw_material_research" });
+    expect(() => validate_context_pack(pack)).not.toThrow();
     expect(Object.keys(pack.tool_cards).sort()).toEqual([
       "formula.comment",
       "formula.confirm",
@@ -150,16 +152,16 @@ describe("context assembler", () => {
       allowed_tools: ["formula.search", "formula.confirm"],
     });
     const pack = await assembler.assemble({ agent_key: "sales_rnd", policy });
-    expect(pack.policy_digest).toContain(String(policy.max_iterations));
-    expect(pack.policy_digest).toContain(policy.per_run_token_limit.toString());
-    expect(pack.policy_digest).toContain(
+    expect(pack.policy_digest.markdown).toContain(String(policy.max_iterations));
+    expect(pack.policy_digest.markdown).toContain(policy.per_run_token_limit.toString());
+    expect(pack.policy_digest.markdown).toContain(
       policy.per_run_cost_limit_microusd.toString(),
     );
-    expect(pack.policy_digest).toContain(policy.tenant_id);
-    expect(pack.policy_digest).toContain("formula.confirm");
-    expect(pack.policy_digest).toContain("manager");
-    expect(pack.policy_digest).toContain("web.search");
-    expect(pack.policy_digest).toContain("not available");
+    expect(pack.policy_digest.markdown).toContain(policy.tenant_id);
+    expect(pack.policy_digest.markdown).toContain("formula.confirm");
+    expect(pack.policy_digest.markdown).toContain("manager");
+    expect(pack.policy_digest.markdown).toContain("web.search");
+    expect(pack.policy_digest.markdown).toContain("not available");
   });
 
   it("fails closed when the agent card is missing", async () => {

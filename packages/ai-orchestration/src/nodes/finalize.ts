@@ -7,9 +7,9 @@
  * public run output, reconciles usage, and records completion. A blocking
  * validation finding is NOT silently accepted: while budget remains the node
  * routes back to the agent with a typed validation_finding observation so the
- * model can revise; only when the iteration budget is exhausted does it complete
- * with the findings surfaced as warnings and no confirmable artifact. The model
- * can never pass a failed deterministic check.
+ * model can revise. If the iteration budget is exhausted, finalization fails
+ * closed instead of publishing an invalid artifact. The model can never pass a
+ * failed deterministic check.
  */
 import { Command } from "@langchain/langgraph";
 import type { ArtifactReferenceV1, ValidationResultV1 } from "../contracts";
@@ -18,7 +18,7 @@ import type { ArtifactValidationFindingV1, AgentLoopRuntime } from "../ports";
 import { log_loop_event } from "../ports";
 import { build_output_document } from "../output";
 import type { BuildOutputArgs } from "../output";
-import { LOOP_NODE, build_run_error } from "../routing";
+import { LOOP_NODE, build_run_error, fail_command } from "../routing";
 import { build_observation } from "../schemas/observation";
 import type { AgentLoopStateType, AgentLoopStateUpdate } from "../state";
 
@@ -113,7 +113,7 @@ async function complete_run(
       { clock: runtime.ports.clock, ids: runtime.ports.ids },
       0,
       "run.completed",
-      { status: "completed", output_schema_version: "1" },
+      { status: "completed", output_schema_version: "1", output },
     ),
   ];
   log_loop_event(runtime, "info", "finalize.finish");
@@ -228,25 +228,39 @@ export async function finalize(
     if (remaining > 0) {
       return route_finalize_revision(state, runtime, blocking);
     }
-    // Budget exhausted: complete honestly with the blocking findings surfaced
-    // as warnings and NO confirmable artifact reference.
+    // Budget exhausted: fail closed. A deterministic blocking finding can never
+    // become a successful terminal artifact merely because retries ran out.
     log_loop_event(runtime, "warn", "finalize.blocking_budget_exhausted", {
       blocking_count: blocking.length,
     });
-    return complete_run(state, runtime, {
-      ...base_args,
-      quality_dimensions: validation.quality_dimensions,
-      validation_results,
-      extra_warnings: blocking.map((finding) => finding.safe_message),
-    });
+    return fail_command(
+      build_run_error(
+        runtime,
+        "TOOL_OUTPUT_INVALID",
+        "The generated artifact failed deterministic validation and could not be safely finalized.",
+      ),
+      {
+        pending_action: null,
+        warnings: blocking.map((finding) => finding.safe_message),
+      },
+    );
   }
 
-  const artifact_reference: ArtifactReferenceV1 = {
-    artifact_id: candidate.content_hash,
-    artifact_type: "formula",
-    version: 1,
-    status: "draft",
-  };
+  const artifact_reference: ArtifactReferenceV1 =
+    runtime.ports.artifacts.persist_validated_draft
+      ? await runtime.ports.artifacts.persist_validated_draft(
+          candidate.artifact,
+          validation,
+          runtime.context,
+        )
+      : {
+          // Pure/test adapters may omit persistence. Production always
+          // supplies it and returns the durable Mongo artifact identifier.
+          artifact_id: candidate.content_hash,
+          artifact_type: "formula",
+          version: 1,
+          status: "draft",
+        };
   return complete_run(state, runtime, {
     ...base_args,
     quality_dimensions: validation.quality_dimensions,

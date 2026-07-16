@@ -10,7 +10,7 @@
 
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { MongoClient, type Db, type Document, type WithId } from "mongodb";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { create_ai_run_repository } from "../../apps/ai/server/repositories/ai-run-repository";
 import { create_run_job_queue } from "../../apps/ai/server/services/ai-gateway/run-job-queue";
@@ -42,6 +42,13 @@ class FakeExecutor implements RunExecutor {
   }
 }
 
+class DelayedExecutor implements RunExecutor {
+  async execute(): Promise<RunExecutionResult> {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return { status: "completed", events: [] };
+  }
+}
+
 /** An event for the given sequence. */
 function event(run_id: string, sequence: number, type: string, payload: unknown): AgentRunEventV1 {
   return {
@@ -67,12 +74,16 @@ async function seed_run(key: string, correlation: string): Promise<string> {
         actorProfileId: "507f1f77bcf86cd79943a001",
         agentKey: "formulation",
         executor: "agentic",
+        input: { schema_version: "1", message: "Synthetic primary input" },
       },
     },
     T0,
   );
   const run_id = String(run._id);
-  await create_run_job_queue(db).enqueue({ tenant_id: TENANT, run_id, command: "start" }, T0);
+  await create_run_job_queue(db).enqueue(
+    { tenant_id: TENANT, run_id, command: "start", idempotency_key: "start" },
+    T0,
+  );
   return run_id;
 }
 
@@ -97,7 +108,10 @@ beforeAll(async () => {
   db = client.db("test_worker");
   await db.collection("ai_runs").createIndex({ tenantId: 1, idempotencyKey: 1 }, { unique: true });
   await db.collection("ai_runs").createIndex({ correlationId: 1 }, { unique: true });
-  await db.collection("ai_run_jobs").createIndex({ runId: 1, command: 1 }, { unique: true });
+  await db.collection("ai_run_jobs").createIndex(
+    { runId: 1, command: 1, idempotencyKey: 1 },
+    { unique: true },
+  );
 });
 
 afterAll(async () => {
@@ -118,6 +132,7 @@ describe("process_one_job", () => {
       status: "completed",
       events: [event(run_id, 0, "run.completed", { status: "completed", output_schema_version: "1" })],
       usage_summary: { total_tokens: 42 },
+      output: { schema_version: "1", run_id, answer: "Grounded final answer." },
     });
     const outcome = await process_one_job(make_deps(executor));
 
@@ -125,8 +140,41 @@ describe("process_one_job", () => {
     const run = await db.collection("ai_runs").findOne({ _id: { $exists: true } });
     expect(run?.status).toBe("completed");
     expect(run?.usageSummary).toEqual({ total_tokens: 42 });
+    expect(run?.output).toEqual({
+      schema_version: "1",
+      run_id,
+      answer: "Grounded final answer.",
+    });
     expect(await db.collection("ai_run_events").countDocuments({ runId: run_id })).toBe(1);
     expect(await db.collection("ai_run_jobs").countDocuments({ status: "completed" })).toBe(1);
+  });
+
+  it("starts isolated shadow work only after the primary run and job are committed", async () => {
+    const run_id = await seed_run("idem-w-shadow", "corr-w-shadow");
+    const executor = new FakeExecutor({
+      status: "completed",
+      events: [event(run_id, 0, "run.completed", { status: "completed", output_schema_version: "1" })],
+      output: { schema_version: "1", run_id, answer: "Primary answer." },
+    });
+    const statuses_seen: string[] = [];
+    const shadow = {
+      run_after_primary: vi.fn(async () => {
+        const run = await db.collection("ai_runs").findOne({});
+        const job = await db.collection("ai_run_jobs").findOne({});
+        statuses_seen.push(String(run?.status), String(job?.status));
+        throw new Error("shadow must not alter primary");
+      }),
+    };
+    const outcome = await process_one_job({ ...make_deps(executor), shadow });
+
+    expect(outcome).toEqual({ processed: true, run_id, status: "completed" });
+    expect(statuses_seen).toEqual(["completed", "completed"]);
+    expect(shadow.run_after_primary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        run: expect.objectContaining({ input: expect.any(Object) }),
+        result: expect.objectContaining({ status: "completed" }),
+      }),
+    );
   });
 
   it("reports no work when the queue is empty", async () => {
@@ -135,15 +183,83 @@ describe("process_one_job", () => {
     });
   });
 
-  it("releases the job with a backoff on a handled executor failure", async () => {
+  it("releases an explicitly retryable executor failure with a backoff", async () => {
     await seed_run("idem-w-0002", "corr-w-2");
-    const outcome = await process_one_job(make_deps(new FakeExecutor(new Error("provider timeout"))));
+    const failure = Object.assign(new Error("provider timeout"), {
+      code: "MODEL_PROVIDER_ERROR",
+      retryable: true,
+    });
+    const outcome = await process_one_job(make_deps(new FakeExecutor(failure)));
     expect(outcome.status).toBe("released");
     const job = await db.collection("ai_run_jobs").findOne({});
     expect(job?.status).toBe("available"); // reclaimable after the backoff
-    expect(job?.lastError).toContain("provider timeout");
+    expect(job?.lastError).toBe("MODEL_PROVIDER_ERROR");
     const run = await db.collection("ai_runs").findOne({});
     expect(run?.status).toBe("running"); // not marked completed
+  });
+
+  it("retires a non-retryable runtime failure and marks the run failed", async () => {
+    const run_id = await seed_run("idem-w-poison", "corr-w-poison");
+    const failure = Object.assign(new Error("safe runtime failure"), {
+      code: "RUN_RUNTIME_UNAVAILABLE",
+      retryable: false,
+    });
+
+    const outcome = await process_one_job(make_deps(new FakeExecutor(failure)));
+
+    expect(outcome).toEqual({ processed: true, run_id, status: "failed" });
+    expect(await db.collection("ai_run_jobs").findOne({ runId: run_id })).toMatchObject({
+      status: "failed",
+      lastError: "RUN_RUNTIME_UNAVAILABLE",
+    });
+    expect(await db.collection("ai_runs").findOne({ correlationId: "corr-w-poison" }))
+      .toMatchObject({ status: "failed", errorCode: "RUN_RUNTIME_UNAVAILABLE" });
+  });
+
+  it("retires a retryable failure after its bounded attempt budget", async () => {
+    const run_id = await seed_run("idem-w-exhausted", "corr-w-exhausted");
+    const failure = Object.assign(new Error("provider unavailable"), {
+      code: "MODEL_PROVIDER_ERROR",
+      retryable: true,
+    });
+    const deps = {
+      ...make_deps(new FakeExecutor(failure)),
+      max_attempts: 1,
+    };
+
+    const outcome = await process_one_job(deps);
+
+    expect(outcome).toEqual({ processed: true, run_id, status: "failed" });
+    expect(await db.collection("ai_run_jobs").findOne({ runId: run_id })).toMatchObject({
+      status: "failed",
+      attempts: 1,
+    });
+  });
+
+  it("uses bounded exponential backoff with deterministic injected jitter", async () => {
+    const run_id = await seed_run("idem-w-exponential", "corr-w-exponential");
+    const failure = Object.assign(new Error("provider unavailable"), {
+      code: "MODEL_PROVIDER_ERROR",
+      retryable: true,
+    });
+    let current = T0;
+    const deps: RunWorkerDeps = {
+      ...make_deps(new FakeExecutor(failure)),
+      now: () => current,
+      backoff_ms: 100,
+      max_backoff_ms: 1_000,
+      max_attempts: 3,
+      retry_jitter: () => 0.5,
+    };
+
+    expect((await process_one_job(deps)).status).toBe("released");
+    let stored = await db.collection("ai_run_jobs").findOne({ runId: run_id });
+    expect(stored?.availableAt).toEqual(new Date(T0.getTime() + 100));
+
+    current = new Date(T0.getTime() + 101);
+    expect((await process_one_job(deps)).status).toBe("released");
+    stored = await db.collection("ai_run_jobs").findOne({ runId: run_id });
+    expect(stored?.availableAt).toEqual(new Date(current.getTime() + 200));
   });
 
   it("pauses the run and completes the job on an interrupt", async () => {
@@ -160,10 +276,32 @@ describe("process_one_job", () => {
     expect(await db.collection("ai_run_jobs").countDocuments({ status: "completed" })).toBe(1);
   });
 
+  it("renews the job lease while a long execution turn is in flight", async () => {
+    await seed_run("idem-w-heartbeat", "corr-w-heartbeat");
+    const jobs = create_run_job_queue(db);
+    const heartbeat = vi.spyOn(jobs, "heartbeat");
+    const deps = {
+      ...make_deps(new DelayedExecutor()),
+      jobs,
+      lease_ms: 60,
+      heartbeat_interval_ms: 5,
+    };
+
+    const outcome = await process_one_job(deps);
+
+    expect(outcome.status).toBe("completed");
+    expect(heartbeat).toHaveBeenCalled();
+  });
+
   it("retires a job whose run has vanished", async () => {
     // Enqueue a job for a run id that does not exist.
     await create_run_job_queue(db).enqueue(
-      { tenant_id: TENANT, run_id: "507f1f77bcf86cd79943dead", command: "start" },
+      {
+        tenant_id: TENANT,
+        run_id: "507f1f77bcf86cd79943dead",
+        command: "start",
+        idempotency_key: "start",
+      },
       T0,
     );
     const outcome = await process_one_job(make_deps(new FakeExecutor({ status: "completed", events: [] })));

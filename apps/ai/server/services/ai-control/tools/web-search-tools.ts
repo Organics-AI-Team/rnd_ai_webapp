@@ -1,10 +1,9 @@
 /**
  * Governed web search tool (G3 Task 4, Step 7).
  *
- * Replaces the legacy web_search ReAct handler (Gemini Google-Search
- * grounding) with a governed web.search definition. Provider credentials
- * and model choice live entirely inside the injected WebSearchPort adapter;
- * the model only ever supplies a query.
+ * Replaces the legacy web_search ReAct handler with a governed web.search
+ * definition. Provider credentials live entirely inside the injected
+ * WebSearchPort adapter; the model only ever supplies a public query.
  *
  * @author AI Management System
  * @date 2026-07-15
@@ -74,7 +73,7 @@ export function create_web_search_tool_definitions(
       name: "web.search",
       version: "1.0.0",
       description:
-        "Grounded external web search for public cosmetic-science and regulatory information.",
+        "Cited external web search for public cosmetic-science and regulatory information.",
       input_schema: web_search_input_schema,
       output_schema: web_search_output_schema,
       required_permission: TOOL_PERMISSIONS.web_search,

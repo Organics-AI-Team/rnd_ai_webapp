@@ -18,6 +18,8 @@
  *    directly instead of through the AI gateway (G4.11).
  *  - LEGACY_ENTRY_POINT_IMPORT: the governed orchestration path (orchestration
  *    package + AI gateway) imports the legacy AI executor tree (G4.11).
+ *  - AI_CONTROL_PLANE_BYPASS: provider/Qdrant SDKs, tool implementations, or
+ *    AIRun creation are used outside their one sanctioned adapter/gateway.
  *  - IGNORED_TYPE_ERRORS: ignoreBuildErrors enabled in build configuration.
  *
  * Run directly (npm run security:scan) to scan the repository and exit
@@ -45,6 +47,7 @@ export type SecurityFindingCode =
   | "TENANT_REPOSITORY_BYPASS"
   | "OODA_GATEWAY_BYPASS"
   | "LEGACY_ENTRY_POINT_IMPORT"
+  | "AI_CONTROL_PLANE_BYPASS"
   | "IGNORED_TYPE_ERRORS";
 
 /** One deterministic policy violation with its location. */
@@ -143,6 +146,40 @@ const GOVERNED_ORCHESTRATION_PATHS = [
  * resolve, while unrelated words like `subagents` never trip the check.
  */
 const LEGACY_AI_ENTRY_POINT_FRAGMENTS = ["/agents/"] as const;
+
+const PROVIDER_MODULES = new Set([
+  "openai",
+  "@anthropic-ai/sdk",
+  "@google/generative-ai",
+  "@google/genai",
+]);
+
+const PROVIDER_ADAPTER_PATHS = [
+  "apps/ai/services/providers/",
+  "apps/ai/services/embeddings/",
+  "apps/ai/server/services/ai-control/providers/",
+  "apps/ai/server/services/ai-gateway/providers/",
+] as const;
+
+const QDRANT_ADAPTER_PATHS = [
+  "apps/ai/services/vector/",
+  "apps/ai/server/services/knowledge/",
+] as const;
+
+/**
+ * Bounded legacy exceptions, all removed by G5.10. They are never reachable
+ * from the governed gateway because LEGACY_ENTRY_POINT_IMPORT separately
+ * rejects that dependency direction.
+ */
+const G5_LEGACY_AI_BOUNDARY_EXCEPTIONS = [
+  "apps/ai/agents/",
+  "apps/ai/services/rag/",
+  "apps/web/lib/services/embedding.ts",
+  "apps/web/app/api/ai-chat/",
+  "apps/web/app/api/ai/enhanced-chat/",
+  "apps/web/app/api/ai/cosmetic-enhanced/",
+  "apps/web/app/api/ai/raw-materials-agent/",
+] as const;
 
 /**
  * Normalize a path to forward slashes for rule matching.
@@ -263,6 +300,9 @@ function find_unguarded_route_handlers(
   const path = normalize_path(file.path);
   if (!/app\/api\/.*route\.ts$/.test(path)) return [];
   if (path.includes("/api/trpc/")) return [];
+  // The exact public liveness probe returns only a constant status and is
+  // required for Railway to receive HTTP 200 before routing a deployment.
+  if (path.endsWith("/app/api/health/route.ts")) return [];
   // Webhook ingress authenticates by signature verification (svix), not by
   // a session principal; handle_clerk_webhook rejects unsigned requests.
   if (path.includes("/api/webhooks/")) return [];
@@ -790,6 +830,124 @@ export function reject_legacy_entry_point_import(file: SourceFile): SecurityFind
   return find_legacy_entry_point_imports(file, parse(file));
 }
 
+function path_has_any(path: string, fragments: readonly string[]): boolean {
+  const normalized = normalize_path(path);
+  return fragments.some((fragment) => normalized.includes(fragment));
+}
+
+function is_provider_sdk_reference(node: ts.Node): boolean {
+  const specifier = module_specifier_of(node);
+  if (specifier !== null && PROVIDER_MODULES.has(specifier)) return true;
+  if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
+    return new Set([
+      "OpenAI",
+      "Anthropic",
+      "GoogleGenerativeAI",
+      "GoogleGenAI",
+    ]).has(node.expression.text);
+  }
+  return false;
+}
+
+function is_qdrant_sdk_reference(node: ts.Node): boolean {
+  const specifier = module_specifier_of(node);
+  if (specifier === "@qdrant/js-client-rest") return true;
+  return (
+    ts.isNewExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "QdrantClient"
+  );
+}
+
+function is_tool_implementation_call(node: ts.Node): boolean {
+  if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) {
+    return false;
+  }
+  if (node.expression.name.text !== "execute") return false;
+  const receiver = node.expression.expression.getText();
+  return /(^|\.)(definition|tool_definition)$/.test(receiver);
+}
+
+function is_ai_run_create_call(node: ts.Node): boolean {
+  if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) {
+    return false;
+  }
+  if (node.expression.name.text !== "create") return false;
+  const receiver = node.expression.expression.getText();
+  return /(^|\.)(runs|ai_runs|run_repository)$/.test(receiver);
+}
+
+/**
+ * Find direct control-plane dependencies outside their approved adapters.
+ * Each category emits at most one finding per file to keep scanner output
+ * actionable even when an import, constructor, and method call co-occur.
+ */
+function find_ai_control_plane_bypasses(
+  file: SourceFile,
+  source: ts.SourceFile,
+): SecurityFinding[] {
+  const path = normalize_path(file.path);
+  if (/\.(test|spec)\.[jt]sx?$/.test(path)) return [];
+  if (path_has_any(path, G5_LEGACY_AI_BOUNDARY_EXCEPTIONS)) return [];
+
+  const allow_provider = path_has_any(path, PROVIDER_ADAPTER_PATHS);
+  const allow_qdrant = path_has_any(path, QDRANT_ADAPTER_PATHS);
+  const allow_tool =
+    path.endsWith("apps/ai/server/services/ai-control/tool-executor.ts") ||
+    path.includes("packages/ai-orchestration/");
+  const allow_run_create = path.includes("apps/ai/server/services/ai-gateway/");
+  const seen = new Set<string>();
+  const findings: SecurityFinding[] = [];
+
+  const add_once = (node: ts.Node, category: string, detail: string): void => {
+    if (seen.has(category)) return;
+    seen.add(category);
+    findings.push(
+      finding_at(file, source, node, "AI_CONTROL_PLANE_BYPASS", detail),
+    );
+  };
+  const visit = (node: ts.Node): void => {
+    if (!allow_provider && is_provider_sdk_reference(node)) {
+      add_once(
+        node,
+        "provider",
+        "provider SDKs may be used only by approved provider adapters",
+      );
+    }
+    if (!allow_qdrant && is_qdrant_sdk_reference(node)) {
+      add_once(
+        node,
+        "qdrant",
+        "Qdrant SDK access may occur only in the vector/knowledge adapters",
+      );
+    }
+    if (!allow_tool && is_tool_implementation_call(node)) {
+      add_once(
+        node,
+        "tool",
+        "tool implementations may be invoked only by ToolExecutor",
+      );
+    }
+    if (!allow_run_create && is_ai_run_create_call(node)) {
+      add_once(
+        node,
+        "run",
+        "AIRun creation may occur only in the authenticated AI gateway",
+      );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return findings;
+}
+
+/** Reject provider/tool/vector/run admission bypasses outside approved paths. */
+export function reject_ai_control_plane_bypass(
+  file: SourceFile,
+): SecurityFinding[] {
+  return find_ai_control_plane_bypasses(file, parse(file));
+}
+
 /**
  * Find ignored TypeScript build errors in configuration.
  *
@@ -851,6 +1009,7 @@ export function scan_private_boundaries(
       ...(is_legacy_entry_point_scanned(file.path)
         ? find_legacy_entry_point_imports(file, source)
         : []),
+      ...find_ai_control_plane_bypasses(file, source),
       ...find_ignored_type_errors(file, source),
     ];
   });

@@ -11,10 +11,14 @@
  * @date 2026-07-15
  */
 
-import type { Db } from "mongodb";
+import { ObjectId, type Db } from "mongodb";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 
 import type { FormulaApprovalGate } from "../services/ai-control/formula-artifact-service";
+
+function identifier_values(value: string): Array<string | ObjectId> {
+  return ObjectId.isValid(value) ? [value, new ObjectId(value)] : [value];
+}
 
 /**
  * Create the ai_approvals-backed approval gate.
@@ -31,14 +35,26 @@ export function create_ai_approval_gate(db: Db): FormulaApprovalGate {
      * @returns True when an approved AIApproval covers the commit.
      */
     async has_approved_artifact(
-      query: { tenant_id: string; artifact_id: string; run_id: string },
-      _context: TenantExecutionContext,
+      query: {
+        tenant_id: string;
+        artifact_id: string;
+        run_id: string;
+        approval_checkpoint_id?: string;
+      },
+      context: TenantExecutionContext,
     ): Promise<boolean> {
+      if (context.tenant_id !== query.tenant_id) return false;
+      const approved_scope: Record<string, unknown>[] = [
+        { artifactId: { $in: identifier_values(query.artifact_id) } },
+      ];
+      if (query.approval_checkpoint_id) {
+        approved_scope.push({ checkpointId: query.approval_checkpoint_id });
+      }
       const approval = await approvals.findOne({
-        tenantId: query.tenant_id,
-        runId: query.run_id,
-        artifactId: query.artifact_id,
+        tenantId: { $in: identifier_values(query.tenant_id) },
+        runId: { $in: identifier_values(query.run_id) },
         status: "approved",
+        $or: approved_scope,
       });
       return approval !== null;
     },

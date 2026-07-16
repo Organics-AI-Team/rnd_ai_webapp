@@ -15,6 +15,7 @@ export { AILoadingIndicator } from './ai_loading_indicator';
 export { AIFeedbackButtons } from './ai_feedback_buttons';
 export { AIEmptyState } from './ai_empty_state';
 export { AIAuthGuard } from './ai_auth_guard';
+export { AiRunView } from './ai_run_view';
 
 // Area composite components
 export { AIChatMessagesArea } from './ai_chat_messages_area';

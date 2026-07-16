@@ -26,8 +26,12 @@ import {
 } from "../../packages/shared-types/src/auth";
 import { build_tenant_execution_context } from "../../apps/ai/server/auth/tenant-execution-context";
 import { create_formula_repository } from "../../apps/ai/server/repositories/formula-repository";
+import { create_ai_artifact_repository } from "../../apps/ai/server/repositories/ai-artifact-repository";
+import { create_ai_approval_gate } from "../../apps/ai/server/repositories/ai-approval-gate";
+import { FormulaArtifactService } from "../../apps/ai/server/services/ai-control/formula-artifact-service";
 import { create_repository_backed_tool_ports } from "../../apps/ai/server/services/ai-control/tools/repository-adapters";
 import type { TrustedToolContext } from "../../apps/ai/server/services/ai-control/tool-definition";
+import { governed_formula_artifact } from "./helpers";
 
 const TENANT_A = "507f1f77bcf86cd7994390a1";
 const TENANT_B = "507f1f77bcf86cd7994390b1";
@@ -100,6 +104,8 @@ beforeEach(async () => {
   await db.collection("formulas").deleteMany({});
   await db.collection("formula_comments").deleteMany({});
   await db.collection("formula_version_logs").deleteMany({});
+  await db.collection("ai_artifacts").deleteMany({});
+  await db.collection("ai_approvals").deleteMany({});
   await db.collection("formulas").insertMany([
     {
       _id: new ObjectId(FORMULA_A),
@@ -130,10 +136,40 @@ beforeEach(async () => {
 });
 
 function ports_for(tenant_id: string, profile_id = MANAGER_A) {
+  const tenant_context = manager_context(tenant_id, profile_id);
+  const formula_repository = create_formula_repository(db);
   return create_repository_backed_tool_ports({
-    tenant_context: manager_context(tenant_id, profile_id),
-    formula_repository: create_formula_repository(db),
+    tenant_context,
+    formula_repository,
+    formula_commit: {
+      service: new FormulaArtifactService(
+        { async load_evidence() { return {}; } },
+        undefined,
+        create_ai_artifact_repository(db),
+        formula_repository,
+        tenant_context,
+      ),
+      approval_gate: create_ai_approval_gate(db),
+    },
   });
+}
+
+async function seed_artifact(
+  tenant_id: string,
+  profile_id: string,
+  hash_character: string,
+): Promise<string> {
+  const context = manager_context(tenant_id, profile_id);
+  const document = await create_ai_artifact_repository(db).persist_draft(context, {
+    runId: "run-1",
+    artifactType: "formula",
+    schemaVersion: "1",
+    content: governed_formula_artifact(),
+    contentHash: hash_character.repeat(64),
+    validationResult: { valid: true, findings: [] },
+    sourceEvidenceIds: ["source-niacinamide"],
+  });
+  return String(document._id);
 }
 
 describe("formula_search adapter", () => {
@@ -173,22 +209,72 @@ describe("formula_comment adapter", () => {
 });
 
 describe("formula_confirm adapter", () => {
-  it("confirms a tenant-A draft and bumps the version", async () => {
+  it("commits a tenant-A validated artifact after durable manager approval", async () => {
+    const artifact_id = await seed_artifact(TENANT_A, MANAGER_A, "a");
+    await db.collection("ai_approvals").insertOne({
+      tenantId: TENANT_A,
+      runId: "run-1",
+      artifactId: artifact_id,
+      status: "approved",
+    });
     const ports = ports_for(TENANT_A);
     const out = await ports.formula_confirm.confirm_formula(
-      { formula_id: FORMULA_A },
+      { artifact_id },
       trusted(TENANT_A),
     );
     expect(out.status).toBe("confirmed");
-    expect(out.new_version).toBe(1);
-    expect(out.version_label).toBe("v01");
+    expect(out.artifact_id).toBe(artifact_id);
+    expect(out.formula_id).toMatch(/^[a-f0-9]{24}$/);
+    expect(out.already_committed).toBe(false);
   });
 
-  it("cannot confirm a tenant-B formula (FORMULA_NOT_FOUND)", async () => {
+  it("cannot confirm a tenant-B artifact", async () => {
+    const artifact_id = await seed_artifact(
+      TENANT_B,
+      "507f1f77bcf86cd79943b003",
+      "b",
+    );
     const ports = ports_for(TENANT_A);
     await expect(
       ports.formula_confirm.confirm_formula(
-        { formula_id: FORMULA_B },
+        { artifact_id },
+        trusted(TENANT_A),
+      ),
+    ).rejects.toMatchObject({ code: "AI_ARTIFACT_NOT_FOUND" });
+  });
+});
+
+describe("formula artifact draft/revision adapters", () => {
+  it("returns the canonical artifact for a governed draft", async () => {
+    const ports = ports_for(TENANT_A);
+    const artifact = governed_formula_artifact();
+
+    await expect(
+      ports.formula_draft.create_draft_formula({ artifact }, trusted(TENANT_A)),
+    ).resolves.toEqual(artifact);
+  });
+
+  it("requires an owned tenant draft before returning a revised artifact", async () => {
+    const ports = ports_for(TENANT_A);
+    const artifact = governed_formula_artifact();
+
+    await expect(
+      ports.formula_revise.revise_formula(
+        {
+          formula_id: FORMULA_A,
+          artifact,
+          revision_summary: "Apply the reviewed evidence constraints.",
+        },
+        trusted(TENANT_A),
+      ),
+    ).resolves.toEqual(artifact);
+    await expect(
+      ports.formula_revise.revise_formula(
+        {
+          formula_id: FORMULA_B,
+          artifact,
+          revision_summary: "Must not reveal a foreign formula.",
+        },
         trusted(TENANT_A),
       ),
     ).rejects.toMatchObject({ code: "FORMULA_NOT_FOUND" });
@@ -203,16 +289,13 @@ describe("tenant guard and unwired ports", () => {
     ).rejects.toMatchObject({ code: "TOOL_INPUT_INVALID" });
   });
 
-  it("keeps draft/revise/knowledge/web ports fail-closed NOT_WIRED", async () => {
+  it("keeps knowledge/web ports fail-closed NOT_WIRED", async () => {
     const ports = ports_for(TENANT_A);
     await expect(
       ports.knowledge_search.search_knowledge({ query: "x" } as never, trusted(TENANT_A)),
     ).rejects.toMatchObject({ code: "NOT_WIRED" });
     await expect(
       ports.web_search.search_web({ query: "x" } as never, trusted(TENANT_A)),
-    ).rejects.toMatchObject({ code: "NOT_WIRED" });
-    await expect(
-      ports.formula_draft.create_draft_formula({} as never, trusted(TENANT_A)),
     ).rejects.toMatchObject({ code: "NOT_WIRED" });
   });
 });

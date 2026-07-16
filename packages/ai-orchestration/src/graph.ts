@@ -11,7 +11,7 @@
  *   agent -> { gate, request_clarification, finalize, fail }
  *   gate  -> { act, request_approval, agent (typed denial), fail (loop trip) }
  *   act -> agent; request_clarification -> agent; request_approval -> gate
- *   finalize -> END (or -> agent when a blocking validation still has budget)
+ *   finalize -> END (or -> agent while validation has budget; -> fail when exhausted)
  *   fail -> END
  *
  * finalize authoritatively validates any produced artifact and, while budget
@@ -66,7 +66,7 @@ export function build_agent_loop_graph(runtime: AgentLoopRuntime) {
     .addNode(
       LOOP_NODE.finalize,
       (state: AgentLoopStateType) => finalize(state, runtime),
-      { ends: ["agent"] },
+      { ends: ["agent", "fail"] },
     )
     .addNode(LOOP_NODE.fail, (state: AgentLoopStateType) =>
       fail(state, runtime),

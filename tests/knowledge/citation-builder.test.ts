@@ -49,7 +49,23 @@ function tenant_evidence(source_id: string, content: string): KnowledgeEvidence 
     tenant_id: TENANT_A,
     content,
     content_hash: `h-${source_id}`,
+    locator: "page:4",
     score: 0.8,
+    embedding_version: "v1",
+  };
+}
+
+/** Build a shared platform evidence row. */
+function platform_evidence(source_id: string): KnowledgeEvidence {
+  return {
+    point_id: `pt-${source_id}`,
+    source_id,
+    scope: "platform",
+    tenant_id: null,
+    content: "platform content",
+    content_hash: `h-${source_id}`,
+    locator: "section:2",
+    score: 0.9,
     embedding_version: "v1",
   };
 }
@@ -69,7 +85,7 @@ describe("build_citations", () => {
     expect(citation.scope).toBe("tenant");
     expect(citation.excerpt.length).toBe(100);
     expect(citation.retrieved_at).toBe(RETRIEVED_AT.toISOString());
-    expect(citation.locator).toContain("s1");
+    expect(citation.locator).toBe("page:4");
   });
 
   it("rejects evidence not traceable to a citable source", async () => {
@@ -94,6 +110,21 @@ describe("build_citations", () => {
     });
     await expect(
       build_citations([tenant_evidence("s1", "content")], lookup),
+    ).rejects.toMatchObject({ code: "CARD_INVALID" });
+  });
+
+  it("rejects a source whose stored scope does not match the evidence scope", async () => {
+    const lookup = make_lookup({
+      s1: {
+        source_id: "s1",
+        source_name: "mislabeled tenant source",
+        status: "ready",
+        scope: "tenant",
+        tenant_id: TENANT_A,
+      },
+    });
+    await expect(
+      build_citations([platform_evidence("s1")], lookup),
     ).rejects.toMatchObject({ code: "CARD_INVALID" });
   });
 });

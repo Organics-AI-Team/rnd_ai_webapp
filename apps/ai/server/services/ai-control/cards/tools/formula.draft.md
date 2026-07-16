@@ -1,84 +1,59 @@
 ---
 name: formula.draft
-version: 1.0.0
+version: 2.0.0
 kind: tool
 side_effect: draft_write
-required_permission: formula:draft
+required_permission: formula:draft:create
 ---
 
-# formula.draft — generate a new draft formula from a concept brief
+# formula.draft — submit an evidence-bearing formula candidate
 
 ## Purpose
 
-Create a new cosmetic formula as a **draft** from a product concept: the
-formulation engine selects raw materials phase-by-phase (water / oil /
-active / emulsifier / preservative / pH adjuster), allocates percentages
-within phase budgets, runs regulatory and compatibility validation, and
-persists the result with status `draft`. Drafts are proposals — they never
-become official until a manager confirms them with `formula.confirm`.
+Submit a complete `FormulaArtifactV1` candidate after gathering material
+evidence. Decimal strings, material IDs, source IDs, amounts, costs, claims,
+warnings, and the mandatory laboratory-review statement are required so the
+deterministic artifact service can validate the candidate. The model proposes;
+the validator decides. This tool never confirms a formula.
 
 ## When to use
 
-- The user asks to create/แนะนำสูตรใหม่: "ช่วยคิดสูตรเซรั่มลดริ้วรอย",
-  "formulate a brightening toner under 800 THB/kg".
-- Brainstorming product concepts where a concrete ingredient table with
-  percentages is more useful than prose.
+- After `knowledge.search` returned retrievable usage/source evidence for each
+  non-water material.
+- The user supplied enough constraints to construct a complete candidate.
 - After `formula.search` confirmed no suitable existing formula.
 
 ## When NOT to use
 
 - To modify an existing formula — use `formula.revise` (it preserves
   lineage and reads the comment thread).
-- When required inputs are missing: if you do not know the product type or
-  the target benefits, ask the user (request clarification) instead of
-  guessing.
+- When product requirements or evidence are missing: clarify or search first.
 - To make a formula official — that is `formula.confirm` (manager-approved
   commit), never this tool.
 
 ## Arguments
 
-- `product_type` (required enum): `serum` | `cream` | `lotion` | `toner` |
-  `cleanser` | `mask` | `sunscreen` | `shampoo`. Map Thai product words
-  (เซรั่ม → serum, ครีม → cream, โทนเนอร์ → toner) before calling.
-- `target_benefits` (required string[], 1–10): desired benefits, Thai or
-  English — e.g. ["anti-aging", "ความชุ่มชื้น", "brightening"].
-- `constraints` (optional object):
-  - `budget_per_kg_thb` (number, THB per kg): raw-material cost ceiling.
-  - `excluded_ingredients` (string[], max 30): INCI names to avoid
-    (allergies, client bans).
-  - `max_ingredients` (int 3–20): cap on ingredient count (engine default
-    is around 12).
-- `batch_size_grams` (optional number, default 100): lab sample size used
-  to compute per-ingredient gram amounts.
-- `reference_notes` (optional string, ≤500 chars): texture/positioning
-  notes, e.g. "lightweight gel texture, for sensitive skin".
+- `artifact` (required strict `FormulaArtifactV1`): `name`, `product_type`,
+  decimal-string `batch_size`, `batch_unit`, and `ingredients[]` containing
+  `material_id`, `rm_code`, `phase`, decimal-string `percentage`/`amount`,
+  unit, dated cost when required, `source_ids`, rationale, and water/external
+  flags. Include evidence-backed claims and the mandatory review warning.
 
 ## Result interpretation
 
-- Returns the created draft: `formula_id`, `status: "draft"`,
-  `formula_name`, `batch_size_grams`, `total_percentage`, and
-  `ingredients[]` with `rm_code`, `inci_name`, `trade_name`, `phase`,
-  `percentage`, `amount_grams`, and a per-ingredient `rationale`.
-- `total_percentage` should be 100; small rounding drift is normalized by
-  the engine.
-- `warnings[]` is the regulatory/compatibility report. Severity `critical`
-  (e.g. an ingredient over its legal usage limit, incompatible pair)
-  **must** be surfaced to the user prominently and usually warrants an
-  immediate revision; `warning` should be mentioned; `info` is advisory.
-- Always present the draft as a proposal awaiting human review — cite the
-  `formula_id` so the user can comment, revise, or confirm.
+- Returns the canonical artifact unchanged. The loop then checks exact total
+  percentage (100 +/- 0.01), amounts, evidence, usage bounds, phases,
+  incompatibilities, cost, claims, and mandatory warnings. Blocking findings
+  return to the agent for revision; a validated final draft receives a durable
+  artifact reference.
 
 ## Failure modes
 
-- `TOOL_INPUT_INVALID`: unknown product type, empty benefits, or stray
-  fields. Re-map the user's words to the enum and retry once with fixed
-  arguments.
+- `TOOL_INPUT_INVALID`: incomplete artifact, numeric values instead of decimal
+  strings, missing material/source IDs, or stray fields.
 - `TOOL_APPROVAL_REQUIRED`: tenant policy escalated drafting to manager
   approval — tell the user approval is pending; do not work around it.
-- `TOOL_EXECUTION_FAILED` / `TOOL_TIMEOUT` (30 s budget): the engine could
-  not complete (e.g. no candidate ingredients under the budget). Relax the
-  tightest constraint (usually `budget_per_kg_thb`) only with the user's
-  agreement.
+- `TOOL_OUTPUT_INVALID`: the candidate did not match the canonical artifact.
 - Drafts are idempotent per step: repeating the identical call in the same
   step returns the already-created draft, not a second one.
 
@@ -89,16 +64,8 @@ User: "ขอสูตรเซรั่มหน้าใส งบไม่เ
 Call:
 
 ```json
-{
-  "product_type": "serum",
-  "target_benefits": ["brightening", "ความชุ่มชื้น"],
-  "constraints": {
-    "budget_per_kg_thb": 1500,
-    "excluded_ingredients": ["Fragrance", "Parfum"]
-  },
-  "batch_size_grams": 100
-}
+{"artifact":{"name":"Brightening serum","product_type":"serum","batch_size":"100","batch_unit":"g","ingredients":[{"material_id":"water","rm_code":"WATER","phase":"A","percentage":"95","amount":"95","unit":"g","cost":"0","source_ids":[],"rationale":"Water base","is_water":true,"external_unverified":false},{"material_id":"rm-nia","rm_code":"RM-NIA","phase":"A","percentage":"5","amount":"5","unit":"g","cost":"1.25","source_ids":["src-nia"],"rationale":"Evidence-backed active","is_water":false,"external_unverified":false}],"claims":[],"warnings":["Laboratory, stability, safety, and regulatory review remain required before production."]}}
 ```
 
-Present the ingredient table grouped by phase, lead with any `critical`
-warnings, and note the draft's `formula_id` for follow-up.
+Present the ingredient table and the deterministic findings; never claim the
+draft is production-ready.

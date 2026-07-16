@@ -3,7 +3,7 @@ name: formula.comment
 version: 1.0.0
 kind: tool
 side_effect: draft_write
-required_permission: formula:comment
+required_permission: formula:comment:create
 ---
 
 # formula.comment — record a note in a formula's discussion thread

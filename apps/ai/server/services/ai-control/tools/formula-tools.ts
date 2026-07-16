@@ -13,6 +13,10 @@
  */
 
 import { z } from "zod";
+import {
+  formula_artifact_v1_schema,
+  type FormulaArtifactV1,
+} from "../../../../../../packages/ai-orchestration/src/artifacts/formula-schema";
 
 import { log_info } from "../logger";
 import {
@@ -25,15 +29,6 @@ const MODULE = "formula-tools";
 
 /** MongoDB ObjectId string shape used for formula identifiers. */
 const object_id_schema = z.string().regex(/^[a-f0-9]{24}$/i, "must be a 24-hex id");
-
-/** Validation warning emitted by draft/revision engines (legacy Layer 2). */
-const formula_warning_schema = z
-  .object({
-    type: z.string(),
-    severity: z.enum(["info", "warning", "critical"]),
-    message: z.string(),
-  })
-  .strict();
 
 // ---------------------------------------------------------------------------
 // formula.search
@@ -90,59 +85,15 @@ export interface FormulaSearchPort {
 
 export const formula_draft_input_schema = z
   .object({
-    product_type: z.enum([
-      "serum",
-      "cream",
-      "lotion",
-      "toner",
-      "cleanser",
-      "mask",
-      "sunscreen",
-      "shampoo",
-    ]),
-    target_benefits: z.array(z.string().min(1).max(80)).min(1).max(10),
-    constraints: z
-      .object({
-        budget_per_kg_thb: z.number().positive().optional(),
-        excluded_ingredients: z.array(z.string().min(1).max(120)).max(30).optional(),
-        max_ingredients: z.number().int().min(3).max(20).optional(),
-      })
-      .strict()
-      .optional(),
-    batch_size_grams: z.number().positive().max(100_000).optional(),
-    reference_notes: z.string().max(500).optional(),
+    /** Model-proposed candidate; deterministic validation remains authoritative. */
+    artifact: formula_artifact_v1_schema,
   })
   .strict();
 
-export const formula_draft_output_schema = z
-  .object({
-    formula_id: z.string(),
-    status: z.literal("draft"),
-    formula_name: z.string(),
-    product_type: z.string(),
-    batch_size_grams: z.number(),
-    total_percentage: z.number(),
-    ingredients: z
-      .array(
-        z
-          .object({
-            rm_code: z.string(),
-            inci_name: z.string(),
-            trade_name: z.string().nullable(),
-            phase: z.string(),
-            percentage: z.number(),
-            amount_grams: z.number(),
-            rationale: z.string(),
-          })
-          .strict(),
-      )
-      .min(1),
-    warnings: z.array(formula_warning_schema),
-  })
-  .strict();
+export const formula_draft_output_schema = formula_artifact_v1_schema;
 
 export type FormulaDraftInput = z.infer<typeof formula_draft_input_schema>;
-export type FormulaDraftOutput = z.infer<typeof formula_draft_output_schema>;
+export type FormulaDraftOutput = FormulaArtifactV1;
 
 /** Narrow draft-write port creating tenant-scoped draft formulas. */
 export interface FormulaDraftPort {
@@ -159,40 +110,15 @@ export interface FormulaDraftPort {
 export const formula_revise_input_schema = z
   .object({
     formula_id: object_id_schema,
-    revision_focus: z.enum(["cost", "performance", "safety", "all"]).optional(),
-    additional_notes: z.string().max(500).optional(),
+    artifact: formula_artifact_v1_schema,
+    revision_summary: z.string().min(1).max(1_000),
   })
   .strict();
 
-export const formula_revise_output_schema = z
-  .object({
-    draft_formula_id: z.string(),
-    parent_formula_id: z.string(),
-    status: z.literal("draft"),
-    changelog: z
-      .array(
-        z
-          .object({
-            action: z.enum([
-              "replaced",
-              "adjusted_percentage",
-              "added",
-              "removed",
-              "modified",
-            ]),
-            ingredient: z.string(),
-            detail: z.string(),
-            driven_by_comment: z.string().nullable(),
-          })
-          .strict(),
-      )
-      .min(1),
-    warnings: z.array(formula_warning_schema),
-  })
-  .strict();
+export const formula_revise_output_schema = formula_artifact_v1_schema;
 
 export type FormulaReviseInput = z.infer<typeof formula_revise_input_schema>;
-export type FormulaReviseOutput = z.infer<typeof formula_revise_output_schema>;
+export type FormulaReviseOutput = FormulaArtifactV1;
 
 /** Narrow draft-write port producing comment-driven revision drafts. */
 export interface FormulaRevisePort {
@@ -242,19 +168,17 @@ export interface FormulaCommentPort {
 
 export const formula_confirm_input_schema = z
   .object({
-    formula_id: object_id_schema,
+    artifact_id: object_id_schema,
     remarks: z.string().max(500).optional(),
   })
   .strict();
 
 export const formula_confirm_output_schema = z
   .object({
+    artifact_id: z.string(),
     formula_id: z.string(),
-    formula_code: z.string().nullable(),
-    previous_version: z.number().int().min(0),
-    new_version: z.number().int().min(1),
-    version_label: z.string().regex(/^v\d{2,}$/),
     status: z.literal("confirmed"),
+    already_committed: z.boolean(),
   })
   .strict();
 
@@ -312,9 +236,9 @@ export function create_formula_tool_definitions(
     },
     {
       name: "formula.draft",
-      version: "1.0.0",
+      version: "2.0.0",
       description:
-        "Generate a new draft cosmetic formula from a concept brief; never commits.",
+        "Submit a complete evidence-bearing formula candidate for deterministic validation; never commits.",
       input_schema: formula_draft_input_schema,
       output_schema: formula_draft_output_schema,
       required_permission: TOOL_PERMISSIONS.formula_draft,
@@ -328,9 +252,9 @@ export function create_formula_tool_definitions(
     },
     {
       name: "formula.revise",
-      version: "1.0.0",
+      version: "2.0.0",
       description:
-        "Produce an improved draft revision of an existing formula from its comment feedback.",
+        "Submit a revised evidence-bearing candidate linked to an owned tenant formula.",
       input_schema: formula_revise_input_schema,
       output_schema: formula_revise_output_schema,
       required_permission: TOOL_PERMISSIONS.formula_revise,
@@ -360,9 +284,9 @@ export function create_formula_tool_definitions(
     },
     {
       name: "formula.confirm",
-      version: "1.0.0",
+      version: "2.0.0",
       description:
-        "Confirm a draft formula as an official version. Commit-class; requires manager approval.",
+        "Commit a validated AI formula artifact. Commit-class; requires exact manager approval.",
       input_schema: formula_confirm_input_schema,
       output_schema: formula_confirm_output_schema,
       required_permission: TOOL_PERMISSIONS.formula_confirm,
