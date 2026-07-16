@@ -24,11 +24,11 @@ manager-approval checkpoints for all three agent keys.
   emergency disable.
 - Added Playwright HTML evidence and automatic pinned Chromium installation to
   the commercial verifier.
-- Repaired the Railway Docker image for npm workspace hoisting, Node 24,
+- Repaired the droplet deployment image for npm workspace hoisting, Node 24,
   Prisma generation/runtime packaging, and the `@rnd-ai/ai-orchestration`
-  workspace; added default config-as-code plus a public constant `/api/health`
-  endpoint that returns the HTTP 200 Railway requires.
-- Made the exact verifier build the real Railway Docker image after the web
+  workspace; added a public constant `/api/health` endpoint for Docker Compose,
+  Nginx, and external liveness checks.
+- Made the exact verifier build the real droplet deployment image after the web
   build, so deploy-artifact regressions fail the same credential-free gate.
 
 ### Verification
@@ -42,7 +42,7 @@ manager-approval checkpoints for all three agent keys.
 - Exact `COMMERCIAL_TEST_ADAPTER_MODE=credential_free npm run
   verify:commercial`: exit 0; 99 files / 901 tests, 8 resilience assertions,
   three 50-stream load runs, zero boundary findings, 6 agentic browser cases,
-  production web build, and Railway Docker image build all passed. The 7 Clerk
+  production web build, and droplet Docker image build all passed. The 7 Clerk
   staging-only browser cases correctly skipped without hosted credentials.
 - GitHub-hosted commercial verification passed on commit `fa849f2` in 7m13s:
   [run 29501948770](https://github.com/Organics-AI-Team/rnd_ai_webapp/actions/runs/29501948770).
@@ -51,7 +51,7 @@ manager-approval checkpoints for all three agent keys.
   `9f0796f47f9d42c967481d1056bffdd10baf77b40d8b1753275a52c595483244`
   and agentic
   `f2c046876e83870f56956ba5c5cc61876c3c45ce45eb56d34e881bbe49ac33b0`.
-- Built and ran the Railway image locally; `/api/health` returned HTTP 200 with
+- Built and ran the droplet image locally; `/api/health` returned HTTP 200 with
   `{"status":"ok"}`.
 
 ### Release boundary
@@ -59,8 +59,8 @@ manager-approval checkpoints for all three agent keys.
 Credential-free reports remain local/CI regression evidence. Clerk/provider
 staging credentials, signed tagged-executor reports, hosted canaries, rollout,
 restore-window observation, dependency-advisory remediation/review, and legacy
-retirement remain external gates. No Railway deployment was claimed without a
-linked authenticated project.
+retirement remain external gates. No DigitalOcean droplet deployment was
+claimed; the branch was not copied to or started on the remote host.
 
 ---
 

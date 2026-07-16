@@ -30,21 +30,23 @@ check_prerequisites() {
         exit 1
     fi
 
-    if ! command -v docker compose &> /dev/null && ! command -v docker-compose &> /dev/null; then
+    if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
         log_error "Docker Compose is not installed."
         exit 1
     fi
 
     if [ ! -f "$ENV_FILE" ]; then
-        log_error ".env file not found. Copy .env.production to .env and fill in values:"
-        log_error "  cp .env.production .env && nano .env"
+        log_error ".env file not found. Copy .env.example to .env and fill in values:"
+        log_error "  cp .env.example .env && nano .env"
         exit 1
     fi
 
     # Validate required env vars
-    local required_vars=("MONGODB_URI" "GEMINI_API_KEY" "ADMIN_EMAIL" "ADMIN_PASSWORD")
+    local required_vars=("MONGODB_URI" "GEMINI_API_KEY" "NEXT_PUBLIC_API_URL")
     for var in "${required_vars[@]}"; do
-        if ! grep -q "^${var}=" "$ENV_FILE" || grep -q "^${var}=your-" "$ENV_FILE" || grep -q "^${var}=change" "$ENV_FILE"; then
+        local value
+        value="$(grep -E "^${var}=" "$ENV_FILE" | tail -n 1 | cut -d'=' -f2-)"
+        if [ -z "$value" ] || [[ "$value" == *"replace-with"* ]] || [[ "$value" == *"username:password"* ]] || [[ "$value" == your-* ]] || [[ "$value" == change* ]]; then
             log_error "Required variable ${var} is not set or still has placeholder value in .env"
             exit 1
         fi
@@ -55,7 +57,7 @@ check_prerequisites() {
 
 # Determine docker compose command
 get_compose_cmd() {
-    if command -v docker compose &> /dev/null; then
+    if docker compose version &> /dev/null; then
         echo "docker compose"
     else
         echo "docker-compose"
@@ -82,7 +84,7 @@ setup_droplet() {
 
     # Copy env template if not exists
     if [ ! -f "$ENV_FILE" ]; then
-        cp "${PROJECT_DIR}/.env.production" "$ENV_FILE"
+        cp "${PROJECT_DIR}/.env.example" "$ENV_FILE"
         log_warn ".env created from template. Edit it with your real credentials:"
         log_warn "  nano ${ENV_FILE}"
     fi
@@ -142,16 +144,17 @@ logs() {
 health() {
     log_info "Checking service health..."
 
-    local services=("web:3000" "qdrant:6333")
-    for svc in "${services[@]}"; do
-        local name="${svc%%:*}"
-        local port="${svc##*:}"
-        if curl -sf "http://localhost:${port}/" > /dev/null 2>&1; then
-            log_info "${name} (port ${port}): UP"
-        else
-            log_warn "${name} (port ${port}): DOWN or unreachable"
-        fi
-    done
+    if curl -sf "http://localhost:3000/api/health" > /dev/null 2>&1; then
+        log_info "web (port 3000): UP"
+    else
+        log_warn "web (port 3000): DOWN or unreachable"
+    fi
+
+    if curl -sf "http://localhost:6333/healthz" > /dev/null 2>&1; then
+        log_info "qdrant (port 6333): UP"
+    else
+        log_warn "qdrant (port 6333): DOWN or unreachable"
+    fi
 }
 
 # Re-index data into Qdrant
@@ -180,7 +183,7 @@ case "${1:-}" in
         echo "  --build    Build Docker images"
         echo "  --up       Build and start all services"
         echo "  --down     Stop all services"
-        echo "  --logs     Show logs (optionally: --logs web|ai|qdrant)"
+        echo "  --logs     Show logs (optionally: --logs web|qdrant)"
         echo "  --health   Check service health"
         echo "  --restart  Restart all services"
         echo "  --index    Re-index data into Qdrant vector database"

@@ -1,7 +1,5 @@
-version: '3.8'
-
 # R&D AI Management - Docker Compose Configuration
-# This file allows you to run both web and AI services together locally
+# Production stack for the DigitalOcean droplet; also usable for local checks.
 
 services:
   # Web Frontend Application
@@ -17,7 +15,7 @@ services:
       - "3000:3000"
     environment:
       # Database
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${DATABASE_URL:-${MONGODB_URI}}
       - MONGODB_URI=${MONGODB_URI}
       - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI}
 
@@ -37,10 +35,6 @@ services:
       # Public API URL (inlined at build time)
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
 
-      # Admin
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-
       # Node Environment
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
@@ -56,7 +50,7 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://0.0.0.0:3000/login"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://0.0.0.0:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -100,25 +94,23 @@ volumes:
 # ------
 # 1. Copy .env.example to .env and fill in your values
 # 2. Build and start all services:
-#    docker-compose up -d
+#    docker compose up -d
 #
 # 3. View logs:
-#    docker-compose logs -f web
-#    docker-compose logs -f ai
-#    docker-compose logs -f qdrant
+#    docker compose logs -f web
+#    docker compose logs -f qdrant
 #
 # 4. Stop all services:
-#    docker-compose down
+#    docker compose down
 #
 # 5. Stop and remove volumes:
-#    docker-compose down -v
+#    docker compose down -v
 #
 # 6. Rebuild after code changes:
-#    docker-compose up -d --build
+#    docker compose up -d --build
 #
 # Access:
 # -------
 # Web App: http://localhost:3000
-# AI Service: http://localhost:3001
 # Qdrant: http://localhost:6333
 # Qdrant gRPC: http://localhost:6334

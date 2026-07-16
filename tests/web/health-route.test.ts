@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GET } from "../../apps/web/app/api/health/route";
 
-describe("Railway health route", () => {
+describe("public deployment health route", () => {
   it("returns a cache-free 200 response without credentials or tenant data", async () => {
     const response = await GET();
 

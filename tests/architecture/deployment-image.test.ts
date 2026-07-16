@@ -9,7 +9,7 @@ async function read(relative_path: string): Promise<string> {
   return readFile(path.join(root, relative_path), "utf8");
 }
 
-describe("Railway web deployment image", () => {
+describe("droplet deployment images", () => {
   for (const dockerfile_path of ["Dockerfile", "apps/web/Dockerfile"]) {
     it(`${dockerfile_path} builds the complete Node 24 monorepo runtime`, async () => {
       const dockerfile = await read(dockerfile_path);
@@ -26,25 +26,12 @@ describe("Railway web deployment image", () => {
     });
   }
 
-  it("keeps both Railway config variants pinned to the reviewed web images", async () => {
-    const default_config = JSON.parse(await read("railway.json")) as {
-      build: { dockerfilePath: string };
-      deploy: { healthcheckPath: string };
-    };
-    const root_config = JSON.parse(await read("config/railway.json")) as {
-      build: { dockerfilePath: string };
-      deploy: { healthcheckPath: string };
-    };
-    const web_config = JSON.parse(await read("config/railway.web.json")) as {
-      build: { dockerfilePath: string };
-      deploy: { healthcheckPath: string };
-    };
+  it("keeps the droplet compose file pinned to the reviewed web image", async () => {
+    const compose = await read("docker-compose.yml");
 
-    expect(default_config.build.dockerfilePath).toBe("Dockerfile");
-    expect(root_config.build.dockerfilePath).toBe("Dockerfile");
-    expect(web_config.build.dockerfilePath).toBe("apps/web/Dockerfile");
-    expect(default_config.deploy.healthcheckPath).toBe("/api/health");
-    expect(root_config.deploy.healthcheckPath).toBe("/api/health");
-    expect(web_config.deploy.healthcheckPath).toBe("/api/health");
+    expect(compose).toContain("dockerfile: apps/web/Dockerfile");
+    expect(compose).toContain('"3000:3000"');
+    expect(compose).toContain("QDRANT_URL=http://qdrant:6333");
+    expect(compose).toContain("/api/health");
   });
 });

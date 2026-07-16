@@ -300,8 +300,8 @@ function find_unguarded_route_handlers(
   const path = normalize_path(file.path);
   if (!/app\/api\/.*route\.ts$/.test(path)) return [];
   if (path.includes("/api/trpc/")) return [];
-  // The exact public liveness probe returns only a constant status and is
-  // required for Railway to receive HTTP 200 before routing a deployment.
+  // The exact public liveness probe returns only a constant status and lets
+  // Docker Compose and the droplet reverse proxy verify the web container.
   if (path.endsWith("/app/api/health/route.ts")) return [];
   // Webhook ingress authenticates by signature verification (svix), not by
   // a session principal; handle_clerk_webhook rejects unsigned requests.
