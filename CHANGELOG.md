@@ -1,5 +1,58 @@
 # Changelog
 
+## [2026-07-17] ops: Deploy v2/dev to the droplet with Clerk login enabled (G6.8 + G6.9 wiring)
+
+### Summary
+
+`v2/dev` (commit `8c7702f`) is deployed and serving on the DigitalOcean
+droplet (`rnd-ai-droplet`, 165.245.181.97, behind Cloudflare at
+rndai.erporganics.com). The governed AI worker runs in production for the
+first time, and Clerk authentication is enabled end-to-end with a staged
+development instance.
+
+### Deployment record (G6.8)
+
+- Droplet checked out `v2/dev`; `.env` gained `GEMINI_MODEL=gemini-3.5-flash`,
+  the required worker pricing variables (official July-2026 rates:
+  1,500,000 / 9,000,000 micro-USD per million tokens), and the rate card.
+- The previous image is tagged `rnd-ai-web:rollback-main-5d43312` for
+  instant rollback; nginx/Cloudflare routing untouched.
+- First deploy attempt failed in the worker image on the corrupt lockfile
+  (see previous entry) — the failure never touched running containers;
+  the redeploy after the lock repair succeeded.
+- Verified: `/api/health` 200 locally and via the public domain; worker
+  container `worker.started`, 0 restarts; web healthy.
+
+### Clerk staging wiring (G6.9, dev instance)
+
+- Clerk application "RND AI Management"
+  (`app_3Gbz01w3E8rYjZbdbqVEfPTPmoi`, dev instance
+  `resolved-gelding-68`) created via the Clerk CLI; `clerk init`
+  detected the existing integration (middleware, provider, auth pages
+  all SKIP) and wrote keys to `apps/web/.env.local` only.
+- Webhook endpoint `ep_3Gc2v5KNqC6NVNwbpEiVhhx9AsW` →
+  `https://rndai.erporganics.com/api/webhooks/clerk` created
+  programmatically through the Svix API (one-time-token exchange); the
+  signing secret was transferred to the droplet without ever entering
+  the transcript or the repository.
+- Droplet `.env` now carries the full five-variable Clerk contract with
+  `CLERK_CUTOVER=true`; the web image was rebuilt so the publishable key
+  is inlined (the deploy script's cutover validation gate passed on a
+  real deployment for the first time).
+- Verified on the public domain: `/sign-in` renders the Clerk surface
+  (200), protected `/dashboard` 307-redirects to the Clerk-hosted
+  sign-in with the correct return URL, `/api/health` unaffected.
+
+### Remaining staged-validation steps
+
+First user sign-up + one-time super-admin bootstrap, webhook delivery
+receipt check (`clerk_webhook_receipts`), university provisioning, the
+seven staged Playwright Clerk cases, and eventually a production Clerk
+instance (custom domain DNS) before commercial rollout. The dev-instance
+keys are staging credentials, not launch credentials.
+
+---
+
 ## [2026-07-17] fix: Repair the dependency lockfile for clean installs; correct the G6.7 audit claim
 
 ### Summary
