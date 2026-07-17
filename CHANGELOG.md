@@ -1,5 +1,55 @@
 # Changelog
 
+## [2026-07-17] fix: Repair the dependency lockfile for clean installs; correct the G6.7 audit claim
+
+### Summary
+
+The G6.7 lockfile was incomplete: surgically deleted `uuid`/`langsmith`
+entries were never written back by npm, so any clean `npm ci` consumer —
+including the droplet worker image — failed to resolve them (the local
+tree only worked because Node walked up into the parent repository's
+`node_modules`). This also means the earlier "0 vulnerabilities" claim
+was partly an artifact of the missing lock entries. Both are corrected
+here.
+
+### Root cause
+
+- npm 11.6 does not restore hand-deleted lock entries on install when
+  `node_modules` still satisfies the tree, and regenerating the lock
+  **inside this git worktree (nested under another npm project)** kept
+  dropping exactly those package nodes while keeping their edges.
+  Regenerating the identical manifests outside the nesting resolves
+  correctly — the complete lock generated there is now committed.
+- The `langsmith`/`uuid` overrides were removed: they cannot apply
+  reliably here, and the affected packages live only in the legacy
+  0.3-era langchain tree (rollback executor, deletion-scheduled G5.10).
+- A full regeneration floated root `mongodb` to 7.5.0 against the
+  project-wide 6.21.0 pins (110 test failures, split `Db` types); a root
+  override now pins `mongodb` to 6.21.0 so one copy dedupes everywhere.
+- recharts floated to 3.9.2 whose `PieLabelRenderProps` no longer carries
+  custom datum fields; the feedback-analytics pie label now narrows the
+  props explicitly (runtime unchanged).
+
+### Honest audit position (supersedes the previous entry's "0")
+
+`npm audit --omit=dev`: **10 advisories — 1 high, 9 moderate, 0 critical,
+0 low** (down from 48 / 3 critical / 22 high). All ten sit in the legacy
+0.3-era langchain tree: `langsmith` SSRF-via-tracing-headers (high;
+tracing is not enabled in any production environment contract) plus the
+`@langchain/*`/`uuid` moderates. That tree is the pinned rollback-only
+legacy executor scheduled for deletion at G5.10; the advisories retire
+with it. The governed orchestration path uses core 1.2.3 /
+langgraph 1.4.8 / langsmith 0.8.x — not affected.
+
+### Verification
+
+- `npm ci --legacy-peer-deps` from the committed lock — clean; `uuid`
+  and `langsmith` physically install (Docker-equivalent proof).
+- Full suite 102 files / 926 tests passed; `tsc -p apps/web` clean;
+  boundary scan 0; worker bundle builds; production web build passed.
+
+---
+
 ## [2026-07-17] fix: Clear all 48 production npm audit advisories (G6.7)
 
 ### Summary
