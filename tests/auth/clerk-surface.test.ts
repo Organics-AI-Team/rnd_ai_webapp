@@ -81,6 +81,29 @@ describe("Clerk authentication surface (G1.1)", () => {
     }
   });
 
+  it("onboarding activates the sole organization membership on the session", () => {
+    // Clerk sessions start with no active organization; without activation a
+    // freshly-invited user sees "Invitation pending" forever.
+    const onboarding = read_source("apps/web/app/onboarding/page.tsx");
+    expect(onboarding).toContain("OrganizationActivator");
+    const activator = read_source("apps/web/components/organization_activator.tsx");
+    expect(activator).toContain("useOrganizationList");
+    expect(activator).toContain("setActive");
+  });
+
+  it("every invitation path redirects invitees to our onboarding page", () => {
+    const member_ports = read_source(
+      "apps/ai/server/services/provisioning/production-member-ports.ts",
+    );
+    expect(member_ports).toContain("invitation_redirect_url");
+    // Both the student and the manager invitation calls carry the redirect.
+    expect(member_ports.match(/redirectUrl: invitation_redirect_url\(\)/g)).toHaveLength(2);
+    const provisioning_ports = read_source(
+      "apps/ai/server/services/provisioning/production-ports.ts",
+    );
+    expect(provisioning_ports).toContain("redirectUrl: process.env.NEXT_PUBLIC_APP_URL");
+  });
+
   it("onboarding resolves the internal membership projection, not just the session", () => {
     const onboarding = read_source("apps/web/app/onboarding/page.tsx");
     expect(onboarding).toContain("resolve_clerk_principal");

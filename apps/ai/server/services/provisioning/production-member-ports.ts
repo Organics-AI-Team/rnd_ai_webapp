@@ -8,6 +8,19 @@ import type { AppointManagerPorts } from "./appoint-manager";
 import type { ManagerInvitation } from "./provisioning-types";
 
 /**
+ * Invitation redirect target: invited users land on our onboarding page,
+ * not Clerk's default hosted page. Undefined when the app origin is not
+ * configured (Clerk then uses its instance default).
+ *
+ * @returns Absolute onboarding URL, or undefined without NEXT_PUBLIC_APP_URL.
+ */
+function invitation_redirect_url(): string | undefined {
+  return process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL}/onboarding`
+    : undefined;
+}
+
+/**
  * Map a Clerk invitation role onto the internal projection role. Manager
  * roles differ by CLERK_ORG_ROLE_MODE (org:manager custom, org:admin
  * built-in); everything else projects as a tenant user.
@@ -106,6 +119,7 @@ export function create_production_member_ports(
           organizationId: clerk_organization_id,
           emailAddress: email,
           role,
+          redirectUrl: invitation_redirect_url(),
         });
         return {
           id: created.id,
@@ -136,6 +150,7 @@ export function create_production_member_ports(
           organizationId: clerk_organization_id,
           emailAddress: email,
           role: manager_clerk_role(),
+          redirectUrl: invitation_redirect_url(),
         });
         return {
           id: created.id,

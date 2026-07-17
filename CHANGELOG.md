@@ -1,5 +1,48 @@
 # Changelog
 
+## [2026-07-17] fix: Second sweep — journey-blocking session/invitation/sign-up gaps (G6.9)
+
+### Summary
+
+Walked the full remaining user journey (accept invitation → land in app →
+invite students → run AI → upload knowledge) and audited each step's
+external-state assumptions before users hit them. Three more members of
+the runtime-assumption class found and fixed.
+
+### Fixes
+
+- **Organization activation** (would have blocked the very next user
+  step): Clerk sessions start with no active organization, so a
+  freshly-invited user would see "Invitation pending" forever and every
+  tenant-scoped page would stay empty. New `OrganizationActivator`
+  client component (mounted on onboarding) activates the sole membership
+  via `useOrganizationList().setActive` and refreshes server resolution.
+- **Invitation redirect targets**: student and manager invitations from
+  the shared member ports carried no `redirectUrl`, stranding invitees
+  on Clerk's hosted default page. Both now redirect to
+  `NEXT_PUBLIC_APP_URL/onboarding` (matching initial-manager
+  provisioning).
+- **Public sign-up closed**: the instance now runs
+  `restricted_to_allowlist: true` — sign-up is invitation-only, matching
+  the commercial design; invited users are unaffected.
+
+### Known follow-ups (flagged, fail-closed today)
+
+- Qdrant on the droplet has only the legacy `raw_materials_myskin`
+  collection; governed knowledge retrieval stays empty (fail-closed)
+  until the G3.5 collections are ingested for the first tenant.
+- Platform AI is enabled by default (`AI_PLATFORM_DISABLED` unset) —
+  verified, no action needed.
+
+### Verification
+
+- Auth + architecture + provisioning tests 18 files / 212 passed
+  (new surface locks: activator mounted, both invitation redirects).
+- `apps/web` tsc clean; production web build passed; redeployed to the
+  droplet through the instance preflight.
+
+---
+
 ## [2026-07-17] fix: Close the whole class of runtime instance/config assumptions (G6.9 hardening)
 
 ### Summary

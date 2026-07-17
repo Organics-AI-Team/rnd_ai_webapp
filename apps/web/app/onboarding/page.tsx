@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import client_promise from "@rnd-ai/shared-database";
 
+import { OrganizationActivator } from "@/components/organization_activator";
 import { is_clerk_enabled } from "@/lib/server/clerk-config";
 import { AuthorizationError } from "@/server/auth/errors";
 import { resolve_clerk_principal } from "@/server/auth/clerk-principal-resolver";
@@ -112,6 +113,10 @@ export default async function OnboardingPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
+      {/* A freshly-invited user has a membership but no active organization
+          on the Clerk session; the activator selects it and refreshes so the
+          server-side resolution above flips to the ready state. */}
+      <OrganizationActivator />
       <div className="max-w-md text-center space-y-4">
         <h1 className="text-xl font-semibold">{title}</h1>
         <p className="text-sm text-muted-foreground">{body}</p>
