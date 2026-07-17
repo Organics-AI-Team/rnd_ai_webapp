@@ -1,5 +1,75 @@
 # Changelog
 
+## [2026-07-17] fix: First-sign-up incident — unprovisioned organization collapsed to a generic 401 (G6.9 staged validation)
+
+### Incident and root cause
+
+The first commercial user signed up on the public domain and every tRPC
+call returned `401 "Authentication is required."` — the frontend looked
+unable to reach the database. Actual chain: the Clerk instance runs
+`force_organization_selection` with self-serve organization creation
+enabled, so after sign-up the user was pushed into creating
+"Leo's Organization" through the Clerk widget. That organization has no
+tenant projection, so `resolve_clerk_principal` rejected every request
+with FORBIDDEN ("The organization is not an active tenant."), which
+`failed_context` collapsed — silently, nothing logged for typed
+rejections — into UNAUTHENTICATED. An authorization/provisioning problem
+was indistinguishable from a missing session.
+
+### Production remediation (droplet + Clerk Backend API)
+
+- Enabled organization slugs (`slug_disabled=false`): provisioning's
+  create-or-get-by-slug requires them; the first run had parked the
+  tenant `repair_required`.
+- Allowlisted the platform owner's email: `restricted_to_allowlist`
+  sign-up mode also blocks organization invitations to non-allowlisted
+  identifiers (Clerk `not_allowed_access`).
+- Provisioned the first university via `provision_university` with the
+  bootstrapped super_admin as actor: tenant `6a59b2ec7c1edaad69c8b7b8`
+  "Organics AI" (slug `organics-ai`, plan `enterprise`, region `bkk`),
+  active, Clerk org `org_3GcGUvFVMtQqDYOmx2UybJzdji9`.
+- Created the owner's `org:manager` membership; the webhook pipeline
+  projected it end-to-end (`tenant_membership_projections`
+  active/manager) — first live validation of G1.5 receipts/projections.
+  Revoked the now-redundant manager invitation.
+- Deleted the empty rogue organization; disabled self-serve organization
+  creation instance-wide (`organization_creation_defaults.enabled=false`)
+  and per-user, matching the platform-provisions-universities design.
+- Verified end-to-end with a single-use sign-in token in a headless
+  browser: `/products` renders authenticated and `products.list`
+  returns 200.
+
+### Code fix (diagnosability of the incident class)
+
+- `apps/ai/server/trpc.ts`: `failed_context` now logs every typed
+  rejection (boundary, resolver, code, safe message) and preserves
+  FORBIDDEN with its reason (`auth_error_message`) instead of collapsing
+  it to UNAUTHENTICATED; the authenticated middleware surfaces it as
+  FORBIDDEN with the resolver's message.
+- `apps/web/lib/server/with-request-principal.ts`: same mapping for
+  direct routes — FORBIDDEN resolution failures now return
+  `403 FORBIDDEN` with the safe reason and are logged.
+- `tests/auth/trpc-procedures.test.ts`: two new surface locks — the
+  FORBIDDEN reason passes through, and a safe fallback message applies
+  when the resolver gave none.
+
+### Verification
+
+- `vitest tests/auth tests/architecture`: 13 files, 175 passed.
+- `auth_error` consumers (`tenant-router-isolation`,
+  `ai-control-authorization`, `tenant-lifecycle`): 34 passed.
+- `apps/ai` tsc error count unchanged against baseline (120 pre-existing
+  legacy errors, none in the touched files).
+
+### Known follow-up
+
+- Legacy business data (10 products, 10 legacy organizations) still has
+  no tenant provenance; the tenant-scoped repositories correctly return
+  empty sets. Run the audited `tenant:audit` → `tenant:backfill` once
+  the legacy-organization → tenant mapping decision is made.
+
+---
+
 ## [2026-07-17] fix: Second sweep — journey-blocking session/invitation/sign-up gaps (G6.9)
 
 ### Summary

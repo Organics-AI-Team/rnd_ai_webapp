@@ -164,9 +164,25 @@ export async function with_request_principal(
     principal = await resolve_request_principal(request);
   } catch (error) {
     if (error instanceof AuthorizationError) {
-      return error.code === "MEMBERSHIP_INACTIVE"
-        ? error_response(403, "MEMBERSHIP_INACTIVE", "Membership is not active.")
-        : error_response(401, "UNAUTHENTICATED", "Authentication is required.");
+      // Typed rejections were previously silent and FORBIDDEN collapsed to a
+      // generic 401, hiding authorization causes (e.g. an unprovisioned
+      // organization) behind "Authentication is required.".
+      console.warn({
+        boundary: "route-guard",
+        auth_error: error.code,
+        message: error.message,
+      });
+      if (error.code === "MEMBERSHIP_INACTIVE") {
+        return error_response(403, "MEMBERSHIP_INACTIVE", "Membership is not active.");
+      }
+      if (error.code === "FORBIDDEN") {
+        return error_response(
+          403,
+          "FORBIDDEN",
+          error.message || "Access to this resource is forbidden.",
+        );
+      }
+      return error_response(401, "UNAUTHENTICATED", "Authentication is required.");
     }
     console.error("[route-guard] principal resolution failed:", error);
     return error_response(401, "UNAUTHENTICATED", "Authentication is required.");

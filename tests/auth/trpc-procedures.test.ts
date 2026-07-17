@@ -20,15 +20,18 @@ const routers_dir = resolve(
  *
  * @param principal - Verified principal, or null when unauthenticated.
  * @param auth_error - Stable resolution failure code when principal is null.
+ * @param auth_error_message - Safe rejection reason carried by the resolver.
  * @returns A context object matching createTRPCContext's shape.
  */
 function build_ctx(
   principal: RequestPrincipal | null,
-  auth_error: "UNAUTHENTICATED" | "MEMBERSHIP_INACTIVE" | null,
+  auth_error: TRPCContext["auth_error"],
+  auth_error_message: string | null = null,
 ): TRPCContext {
   return {
     principal,
     auth_error,
+    auth_error_message,
     resolver_used: "legacy",
     legacy_user: principal
       ? {
@@ -163,6 +166,26 @@ describe("suspended membership", () => {
     const suspended = create_caller(build_ctx(null, "MEMBERSHIP_INACTIVE"));
     await expect(suspended.users.list()).rejects.toMatchObject({
       code: "FORBIDDEN",
+    });
+  });
+});
+
+describe("forbidden principal resolution", () => {
+  it("surfaces the resolver's FORBIDDEN reason instead of a generic 401", async () => {
+    const unprovisioned = create_caller(
+      build_ctx(null, "FORBIDDEN", "The organization is not an active tenant."),
+    );
+    await expect(unprovisioned.users.list()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "The organization is not an active tenant.",
+    });
+  });
+
+  it("falls back to a safe FORBIDDEN message when the resolver gave none", async () => {
+    const unprovisioned = create_caller(build_ctx(null, "FORBIDDEN"));
+    await expect(unprovisioned.users.list()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "Access to this resource is forbidden.",
     });
   });
 });

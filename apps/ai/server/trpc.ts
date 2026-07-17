@@ -44,7 +44,14 @@ import { create_identity_projection_repositories } from "./auth/identity-reposit
  */
 export interface TRPCContext {
   principal: RequestPrincipal | null;
-  auth_error: "UNAUTHENTICATED" | "MEMBERSHIP_INACTIVE" | null;
+  auth_error: "UNAUTHENTICATED" | "MEMBERSHIP_INACTIVE" | "FORBIDDEN" | null;
+  /**
+   * Safe human-readable rejection reason from the resolver (never secrets),
+   * surfaced so an authorization failure such as "The organization is not
+   * an active tenant." is distinguishable from a missing session. Optional
+   * so existing context builders stay source-compatible.
+   */
+  auth_error_message?: string | null;
   legacy_user: LegacyUserRecord | null;
   resolver_used: "clerk" | "legacy";
 }
@@ -72,12 +79,22 @@ function failed_context(
   error: unknown,
 ): TRPCContext {
   if (error instanceof AuthorizationError) {
+    // Typed rejections were previously silent and all collapsed to
+    // UNAUTHENTICATED, which made the 2026-07-17 unprovisioned-organization
+    // incident (FORBIDDEN at the resolver) look like a broken session.
+    console.warn({
+      boundary: "trpc-context",
+      resolver_used,
+      auth_error: error.code,
+      message: error.message,
+    });
     return {
       principal: null,
       auth_error:
-        error.code === "MEMBERSHIP_INACTIVE"
-          ? "MEMBERSHIP_INACTIVE"
+        error.code === "MEMBERSHIP_INACTIVE" || error.code === "FORBIDDEN"
+          ? error.code
           : "UNAUTHENTICATED",
+      auth_error_message: error.message || null,
       legacy_user: null,
       resolver_used,
     };
@@ -86,6 +103,7 @@ function failed_context(
   return {
     principal: null,
     auth_error: "UNAUTHENTICATED",
+    auth_error_message: null,
     legacy_user: null,
     resolver_used,
   };
@@ -200,12 +218,22 @@ function to_trpc_error(error: AuthorizationError): TRPCError {
 
 const authenticated_middleware = t.middleware(({ ctx, next }) => {
   if (!ctx.principal) {
+    if (ctx.auth_error === "MEMBERSHIP_INACTIVE") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Membership is not active.",
+      });
+    }
+    if (ctx.auth_error === "FORBIDDEN") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message:
+          ctx.auth_error_message || "Access to this resource is forbidden.",
+      });
+    }
     throw new TRPCError({
-      code: ctx.auth_error === "MEMBERSHIP_INACTIVE" ? "FORBIDDEN" : "UNAUTHORIZED",
-      message:
-        ctx.auth_error === "MEMBERSHIP_INACTIVE"
-          ? "Membership is not active."
-          : "Authentication is required.",
+      code: "UNAUTHORIZED",
+      message: "Authentication is required.",
     });
   }
   const principal = ctx.principal;
