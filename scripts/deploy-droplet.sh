@@ -81,11 +81,57 @@ check_prerequisites() {
         for var in "${clerk_vars[@]}"; do
             require_env_value "$var"
         done
+        check_clerk_instance
     else
         log_warn "CLERK_CUTOVER is not 'true' — deploying with Clerk authentication disabled"
     fi
 
+    # Knowledge upload authorization signs with an HMAC secret and fails
+    # closed below 24 characters — catch that before users hit a 500
+    local upload_secret
+    upload_secret="$(env_value KNOWLEDGE_UPLOAD_AUTH_SECRET)"
+    if [ "${#upload_secret}" -lt 24 ]; then
+        log_warn "KNOWLEDGE_UPLOAD_AUTH_SECRET is missing or shorter than 24 chars — knowledge uploads will fail closed"
+    fi
+
     log_info "Prerequisites OK"
+}
+
+# Verify the Clerk INSTANCE is actually configured for this deployment:
+# the secret key must be valid, the organizations feature enabled, and the
+# custom org roles present when CLERK_ORG_ROLE_MODE is not built_in. These
+# are runtime instance settings that no amount of env validation catches.
+check_clerk_instance() {
+    log_info "Checking Clerk instance configuration..."
+    local secret
+    secret="$(env_value CLERK_SECRET_KEY)"
+
+    local orgs_status
+    orgs_status="$(curl -s -o /tmp/clerk-orgs-check.json -w "%{http_code}" \
+        -H "Authorization: Bearer ${secret}" \
+        "https://api.clerk.com/v1/organizations?limit=1")"
+    if [ "$orgs_status" != "200" ]; then
+        log_error "Clerk instance check failed (HTTP ${orgs_status}). Common causes:"
+        log_error "  - invalid CLERK_SECRET_KEY"
+        log_error "  - organizations feature disabled on the instance (enable with: clerk enable orgs)"
+        grep -o '"code":"[^"]*"' /tmp/clerk-orgs-check.json 2>/dev/null | head -1 || true
+        exit 1
+    fi
+
+    if [ "$(env_value CLERK_ORG_ROLE_MODE)" != "built_in" ]; then
+        local roles
+        roles="$(curl -s -H "Authorization: Bearer ${secret}" \
+            "https://api.clerk.com/v1/organization_roles?limit=50")"
+        for role_key in "org:manager" "org:user"; do
+            if ! printf '%s' "$roles" | grep -q "\"key\":\"${role_key}\""; then
+                log_error "Custom org role ${role_key} does not exist on the Clerk instance."
+                log_error "Create it (POST /organization_roles) or set CLERK_ORG_ROLE_MODE=built_in."
+                exit 1
+            fi
+        done
+    fi
+
+    log_info "Clerk instance OK (key valid, organizations enabled, roles consistent)"
 }
 
 # Determine docker compose command
@@ -138,7 +184,8 @@ build() {
     # provider secrets stay runtime-only.
     $compose_cmd --env-file "$ENV_FILE" build \
         --build-arg NEXT_PUBLIC_API_URL="$(env_value NEXT_PUBLIC_API_URL)" \
-        --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$(env_value NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)"
+        --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$(env_value NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)" \
+        --build-arg NEXT_PUBLIC_APP_URL="$(env_value NEXT_PUBLIC_APP_URL)"
 
     log_info "Build complete"
 }

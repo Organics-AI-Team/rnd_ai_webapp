@@ -33,6 +33,13 @@ describe("droplet deployment images", () => {
         "ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
       );
     });
+
+    it(`${dockerfile_path} inlines the public app origin at build time`, async () => {
+      const dockerfile = await read(dockerfile_path);
+
+      expect(dockerfile).toContain("ARG NEXT_PUBLIC_APP_URL");
+      expect(dockerfile).toContain("ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL");
+    });
   }
 
   it("builds the governed run worker as a bundled non-root Node 24 image", async () => {
@@ -92,6 +99,33 @@ describe("droplet deployment images", () => {
     expect(script).toContain("AI_GEMINI_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS");
     expect(script).toContain(
       '--build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$(env_value NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)"',
+    );
+    expect(script).toContain(
+      '--build-arg NEXT_PUBLIC_APP_URL="$(env_value NEXT_PUBLIC_APP_URL)"',
+    );
+  });
+
+  it("verifies live Clerk instance configuration before a cutover deploy", async () => {
+    const script = await read("scripts/deploy-droplet.sh");
+
+    // The instance checks catch what env validation cannot: a disabled
+    // organizations feature, an invalid secret key, and missing custom org
+    // roles — each observed as a runtime provisioning failure before this.
+    expect(script).toContain("check_clerk_instance");
+    expect(script).toContain("api.clerk.com/v1/organizations?limit=1");
+    expect(script).toContain("organization_roles");
+    expect(script).toContain('"org:manager"');
+    expect(script).toContain("KNOWLEDGE_UPLOAD_AUTH_SECRET");
+  });
+
+  it("injects the app origin and upload secret into the web service", async () => {
+    const compose = await read("docker-compose.yml");
+
+    expect(compose).toContain(
+      "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://rndai.erporganics.com}",
+    );
+    expect(compose).toContain(
+      "KNOWLEDGE_UPLOAD_AUTH_SECRET=${KNOWLEDGE_UPLOAD_AUTH_SECRET:-}",
     );
   });
 });

@@ -11,6 +11,8 @@ services:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
         # Clerk publishable key is public and inlined by Next.js at build time
         - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+        # Public app origin: invitation redirect targets and client base URL
+        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://rndai.erporganics.com}
     container_name: rnd-ai-web
     mem_limit: 1536m
     ports:
@@ -48,6 +50,13 @@ services:
       # Public API URL (inlined at build time)
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
 
+      # Public app origin (invitation redirect targets; also inlined at build)
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://rndai.erporganics.com}
+
+      # Knowledge upload authorization HMAC secret (>=24 chars; uploads
+      # fail closed without it)
+      - KNOWLEDGE_UPLOAD_AUTH_SECRET=${KNOWLEDGE_UPLOAD_AUTH_SECRET:-}
+
       # Node Environment
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
@@ -82,6 +91,7 @@ services:
       # Database (same Mongo as web; worker rebuilds tenant context per job)
       - DATABASE_URL=${DATABASE_URL:-${MONGODB_URI}}
       - MONGODB_URI=${MONGODB_URI}
+      - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI:-}
 
       # AI provider (required; worker fails closed at boot without it)
       - GEMINI_API_KEY=${GEMINI_API_KEY}

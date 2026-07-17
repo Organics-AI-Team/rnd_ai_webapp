@@ -1,5 +1,57 @@
 # Changelog
 
+## [2026-07-17] fix: Close the whole class of runtime instance/config assumptions (G6.9 hardening)
+
+### Summary
+
+The ABAC provisioning failure ("repair required; external state is
+unprovable") was one instance of a class: code assuming external state
+(Clerk instance features, custom roles, env vars) that a real deployment
+does not have, discovered only at runtime. Swept the entire class and
+fixed every member.
+
+### Instance-state fixes (applied to the live Clerk instance)
+
+- Organizations feature enabled (root cause of the ABAC failure:
+  `organization_not_enabled_in_instance`).
+- Custom org roles `org:manager` and `org:user` created on the instance —
+  the plan-preferred custom role mode now actually works; the droplet was
+  reverted from the temporary `built_in` fallback to custom mode.
+- The stuck `repair_required` ABAC stub was deleted (audited; it had no
+  Clerk organization attached).
+
+### Preventive gates (so this class cannot recur silently)
+
+- `deploy-droplet.sh` now verifies the LIVE Clerk instance before any
+  cutover deploy: secret key validity + organizations feature via
+  `GET /v1/organizations`, and — when `CLERK_ORG_ROLE_MODE` is custom —
+  the presence of `org:manager`/`org:user` via `GET /v1/organization_roles`.
+  It also warns when `KNOWLEDGE_UPLOAD_AUTH_SECRET` is missing/short.
+- Environment-contract sweep of every `process.env` read against the
+  compose file surfaced two real gaps, both fixed:
+  `NEXT_PUBLIC_APP_URL` (invitation redirect target + client base URL —
+  now a build arg in both web Dockerfiles, compose build+runtime env, and
+  documented) and `KNOWLEDGE_UPLOAD_AUTH_SECRET` (uploads fail closed
+  below 24 chars — now in compose and `.env.example` with generation
+  instructions). Worker gains `RAW_MATERIALS_REAL_STOCK_MONGODB_URI`
+  passthrough parity.
+- Operator runbook gaps closed as committed scripts:
+  `scripts/ops/bootstrap-first-admin.ts` (one-time first super admin,
+  refuses when one exists, audited) and
+  `scripts/ops/repair-tenant-provisioning.ts` (replays provisioning with
+  the tenant's ORIGINAL idempotency key so repair reuses the exact
+  production code path instead of hand-written writes).
+- `tests/architecture/deployment-image.test.ts` locks the new build args,
+  compose entries, and instance preflight markers (74/74).
+
+### Verification
+
+- Architecture tests 74/74; `bash -n` clean; compose config valid;
+  apps/web tsc clean; ops scripts typecheck standalone.
+- Redeployed to the droplet through the new preflight (record below).
+
+---
+
 ## [2026-07-17] fix: Gate the Clerk Frontend API proxy behind an env flag (staging handshake fix)
 
 ### Summary
