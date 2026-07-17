@@ -117,7 +117,16 @@ const clerk_proxy = clerkMiddleware(
     }
     return legacy_guidance(request);
   },
-  { frontendApiProxy: { enabled: true } },
+  {
+    // Proxying the Frontend API through /__clerk/* is only valid on a Clerk
+    // PRODUCTION instance that has this domain registered as its proxy.
+    // Development instances handshake against *.clerk.accounts.dev directly
+    // and answer host_invalid when proxied, so this stays off unless the
+    // deployment explicitly enables it alongside a production instance.
+    frontendApiProxy: {
+      enabled: process.env.CLERK_FRONTEND_API_PROXY === "true",
+    },
+  },
 );
 
 /**

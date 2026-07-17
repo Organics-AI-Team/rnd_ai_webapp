@@ -1,5 +1,27 @@
 # Changelog
 
+## [2026-07-17] fix: Gate the Clerk Frontend API proxy behind an env flag (staging handshake fix)
+
+### Summary
+
+The first real sign-in on the droplet failed at the Clerk handshake with
+`host_invalid`: the middleware unconditionally enabled
+`frontendApiProxy`, which routes clerk-js through `/__clerk/*` on our
+domain — valid only for a Clerk PRODUCTION instance with a registered
+proxy domain. The staged development instance handshakes against
+`*.clerk.accounts.dev` and rejects the proxied host. The proxy is now
+opt-in via `CLERK_FRONTEND_API_PROXY=true` (documented in
+`.env.example`), to be enabled together with the production instance.
+The user's Clerk-side sign-up itself succeeded (active session in the
+failing handshake token), confirming the sign-up surface works.
+
+### Verification
+
+- Auth tests and `apps/web` typecheck pass; droplet web image rebuilt
+  with the flag unset and the handshake retested end-to-end.
+
+---
+
 ## [2026-07-17] ops: Deploy v2/dev to the droplet with Clerk login enabled (G6.8 + G6.9 wiring)
 
 ### Summary
