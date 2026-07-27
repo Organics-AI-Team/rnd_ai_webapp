@@ -1,5 +1,48 @@
 # Changelog
 
+## [2026-07-27] ops: Provision dedicated production infra in the IT DigitalOcean account
+
+### Summary
+
+Provisioned a separated production stack for this project in the drjel IT
+DigitalOcean account (it@organicscosme.com), replacing the shared drjel-ai
+account placement. All created via CLI (doctl) per product-owner direction.
+
+### Resources (all sgp1)
+
+- Droplet `rnd-ai-prod` (587869665) — s-2vcpu-4gb, Ubuntu 24.04, IP
+  178.128.27.61; Docker 29.6.2 + Compose v5.3.1 + nginx 1.24 via cloud-init.
+- Managed MongoDB 8 `rnd-ai-mongo` (ccd5e50c-8202-4e4a-97d2-50f01737abe4) —
+  db-s-1vcpu-1gb single node; trusted sources locked to the new droplet only.
+- Cloud firewall `rnd-ai-prod-fw` — inbound 22/80/443 only (port-3000 lesson
+  applied from day one).
+- SSH key `rnd-ai-leo-mbp` imported so the operator workstation can manage
+  the droplet (the old droplet only authorized a decommissioned machine).
+- Redis intentionally NOT provisioned: zero redis/ioredis usage in the
+  codebase; add managed Valkey only when shared queue/rate-limit state exists.
+
+### Staged on the droplet (not yet serving)
+
+- `/opt/rnd-ai` — v2/dev working tree at 485898e (includes localhost-only
+  web port binding).
+- `/opt/rnd-ai/.env` (mode 600) — new Mongo URIs pre-filled; Clerk keys,
+  KNOWLEDGE_UPLOAD_AUTH_SECRET, and AI provider keys left blank on purpose.
+- nginx site `rnd-ai` proxying 80 → 127.0.0.1:3000 (default site removed).
+
+### Cutover remaining (in order)
+
+1. Create the Clerk PRODUCTION instance (dashboard, user-gated) and fill the
+   blank secrets in `/opt/rnd-ai/.env`.
+2. Migrate data from the old cluster (run mongodump/mongorestore ON a droplet
+   — both clusters are trusted-source firewalled; laptop cannot connect).
+3. `docker compose up -d --build` on rnd-ai-prod; verify localhost health.
+4. Flip Cloudflare DNS `rndai.erporganics.com` → 178.128.27.61 (zone lives in
+   the drjel Cloudflare account; API token verified working); decide origin
+   TLS (Cloudflare origin certificate on 443) before or at flip.
+5. Decommission the old drjel-ai droplet after a soak window.
+
+---
+
 ## [2026-07-27] ops: Close public port 3000; live production E2E trace (G6.9 continued)
 
 ### Root cause
