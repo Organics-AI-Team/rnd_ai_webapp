@@ -1,5 +1,49 @@
 # Changelog
 
+## [2026-07-27] ops: Close public port 3000; live production E2E trace (G6.9 continued)
+
+### Root cause
+
+The DigitalOcean cloud firewall `rnd-ai-firewall` carried an explicit
+`tcp/3000 from 0.0.0.0/0` inbound rule, and `docker-compose.yml` published
+the web container as `"3000:3000"` (all interfaces). Result: the Next.js
+app was reachable directly at `http://<droplet-ip>:3000`, bypassing
+Cloudflare TLS/WAF. Auth middleware still enforced the Clerk wall on that
+path (verified 307 → hosted sign-in), so exposure was transport-level, not
+data-level.
+
+### Fixes
+
+- Removed the `tcp/3000` inbound rule from `rnd-ai-firewall` via the
+  DigitalOcean API (surgical rule DELETE; 22/80/443 untouched). Verified:
+  port 3000 closed from the internet, site health 200, SSH intact.
+- `docker-compose.yml`: web port mapping changed to `"127.0.0.1:3000:3000"`
+  so future stacks are localhost-only regardless of cloud-firewall state.
+  Safe because the droplet's nginx and the deploy script's health check
+  both reach the container via `localhost:3000`.
+
+### Live production E2E trace (credential-free, 2026-07-27)
+
+- DNS → Cloudflare proxy → origin → `/api/health` 200.
+- Unauthenticated pages and APIs (`products.list` tRPC, `POST /api/ai/runs`,
+  `POST /api/ai-chat`) all fail closed: 307 to Clerk hosted sign-in, no data.
+- Real sign-up attempt with a non-allowlisted email was rejected by Clerk
+  ("not allowed to access this application") — `restricted_to_allowlist`
+  verified live; no account was created.
+- ai:3001, qdrant:6333, mongo:27017 unreachable from the internet.
+
+### Remaining production-readiness gates (unchanged, user-gated)
+
+- Clerk production-instance cutover (live keys + custom domain); the hosted
+  pages still show the "Development mode" badge.
+- Legacy data backfill (`tenant:audit` → `tenant:backfill`) pending the
+  legacy-organization → tenant mapping decision.
+- Qdrant G3.5 tenant knowledge ingestion for the first tenant.
+- Authenticated-journey E2E (needs an allowlisted identity or a single-use
+  sign-in token minted on the authorized machine).
+
+---
+
 ## [2026-07-17] fix: First-sign-up incident — unprovisioned organization collapsed to a generic 401 (G6.9 staged validation)
 
 ### Incident and root cause

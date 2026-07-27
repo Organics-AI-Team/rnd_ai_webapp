@@ -16,7 +16,10 @@ services:
     container_name: rnd-ai-web
     mem_limit: 1536m
     ports:
-      - "3000:3000"
+      # Localhost-only: nginx on the droplet proxies 80/443 -> 127.0.0.1:3000.
+      # Publishing on all interfaces exposed the app on the public IP,
+      # bypassing Cloudflare TLS/WAF (found + firewalled 2026-07-27).
+      - "127.0.0.1:3000:3000"
     environment:
       # Database
       - DATABASE_URL=${DATABASE_URL:-${MONGODB_URI}}
