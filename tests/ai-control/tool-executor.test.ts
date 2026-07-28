@@ -529,7 +529,7 @@ describe("tool executor governance", () => {
     )) {
       catalogue.register(definition);
     }
-    expect(catalogue.list()).toHaveLength(7);
+    expect(catalogue.list()).toHaveLength(8);
     const executor = new ToolExecutor(catalogue, make_ports());
     await expect(
       executor.execute(

@@ -127,6 +127,7 @@ fails CI if the card directory and the registered set diverge).
 | `formula.comment` | draft | `formula:comment:create` | Record structured notes on a formula |
 | `formula.confirm` | commit | `formula:confirm` | Commit a validated draft — durable manager approval required |
 | `knowledge.search` | read | `tenant:knowledge:read` | Tenant-partitioned Qdrant knowledge retrieval with citations |
+| `material.search` | read | `formula:read` | Structured filter search of the tenant's raw-material catalog (price, stock, INCI exclusions) |
 | `web.search` | read | `ai:run` | Bounded cited external search (optional, credential-gated) |
 | `delegate.raw_material_research` | read | `ai:run` | Sub-loop: raw material evidence gathering |
 | `delegate.formulation` | read | `ai:run` | Sub-loop: draft/revise proposals with rationale |

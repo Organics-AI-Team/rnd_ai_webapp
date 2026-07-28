@@ -11,7 +11,7 @@
  * @date 2026-07-28
  */
 
-import { formula_artifact_v1_schema } from "@rnd-ai/ai-orchestration";
+import { formula_artifact_v1_schema } from "@rnd-ai/ai-orchestration/artifacts";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 import type { Document, WithId } from "mongodb";
 
