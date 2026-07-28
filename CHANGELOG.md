@@ -1,5 +1,66 @@
 # Changelog
 
+## [2026-07-29] feat: Member management, invitations, and multi-org membership live (Plan 3 complete)
+
+### Summary
+
+Executed all of Plan 3 (`docs/superpowers/plans/2026-07-29-member-management-multi-org.md`,
+spec adversarially reviewed before writing) — 13 implementation tasks via
+phased subagents + review/fix rounds — and deployed to production.
+**1,059/1,059 tests green (137 files), `npm run typecheck` exit 0.**
+
+### What shipped
+
+- **Multi-org membership**: the three single-membership guards are lifted
+  (invite, appoint-manager, webhook suspension); a second membership now
+  writes a `membership_multi_org` audit and touches nothing else. Webhook
+  membership projection re-keyed to `(tenantId, userProfileId)` with REVIVE
+  semantics — remove→re-invite works (was an E11000 dead-end). Webhook
+  receipts are now claim→apply→complete with `fail()` + atomic reclaim, so
+  failed applies are svix-retryable instead of silently lost.
+- **Member lifecycle (tenant managers, full UI at `/settings/members`)**:
+  Members/Invitations tabs — invite, revoke + resend invitation (expired
+  display state derived from the 30-day Clerk TTL, `CLERK_INVITATION_TTL_DAYS`
+  overridable), suspend, reactivate, remove (new manager-only permission
+  `tenant:members:remove_user`); users-only target guard; duplicate-invite
+  → friendly CONFLICT.
+- **Manager lifecycle (platform)**: `/platform/tenants/[tenantId]` detail
+  page — member list, appoint manager (existing mutation finally has UI),
+  demote manager; last-active-manager invariant enforced transactionally
+  with a write-skew guard (concurrent-demote test on MongoMemoryReplSet);
+  webhook-side `tenant_zero_managers` detector for Clerk-originated losses.
+- **Org switching**: Clerk `OrganizationSwitcher` (Clerk-mode-gated, manage
+  surfaces hidden) with `queryClient.clear()` on switch (no cross-org cache
+  bleed); generalized activator (auto-activate single membership, explicit
+  picker for several); onboarding gains `access_suspended` /
+  `membership_removed` / `choose_organization` states; global membership-loss
+  error routing to `/onboarding`; cross-org NOT_FOUND hint; role-gated
+  Members/Platform navigation backed by the new display-only `auth.me`.
+- **Post-review fix**: `find_memberships_by_email` queried a nonexistent
+  `emailNormalized` field — now matches `primaryEmail` with case-insensitive
+  collation (19e2798).
+
+### Rollout (rnd-ai-prod)
+
+- Repair script dry-run: **0 candidates** — no profiles were ever suspended
+  by the old rule; nothing to repair.
+- Clerk instance hardening via API: `admin_delete_enabled=false` (org admins
+  can no longer delete orgs from Clerk surfaces). Member-leave gating is not
+  API-exposed; in-app switcher hides Clerk manage surfaces and the
+  zero-manager detector is the backstop.
+- Web + worker images rebuilt and deployed; web healthy, public site and
+  health endpoint 200.
+
+### Live verification checklist (operator)
+
+Invite an allowlisted email into a second org → accept → switch orgs via the
+sidebar switcher (cache clears) → exercise suspend/reactivate/remove +
+invitation revoke/resend on `/settings/members` → appoint + demote a manager
+on `/platform/tenants/[id]` → confirm audits (`membership_multi_org`,
+`tenant_zero_managers` never fires during normal ops).
+
+---
+
 ## [2026-07-29] ops: Clerk webhook secret provisioned programmatically; deploy preflight silent-death fixed
 
 ### Summary
