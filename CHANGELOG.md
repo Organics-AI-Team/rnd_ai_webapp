@@ -1,5 +1,53 @@
 # Changelog
 
+## [2026-07-28] feat: Load the real 3,049-item raw-material catalog into production
+
+### Summary
+
+The 24-item starter catalog was a placeholder. Located the authoritative
+source and imported the full internal raw-material master so the
+`/formulas/create` ingredient picker shows the real thousands.
+
+### Source discovery
+
+The original catalog DB (Atlas `stockmanagement.crbiufo.mongodb.net`) is
+deleted, and the old droplet's DB was unreachable. Found the authoritative
+export in the sibling project `client_projects/organics_group/rnd_ai/`:
+`internal_raw/sql_raw/rm_lines.csv` — the legacy R&D SQL dump of raw
+materials (`rm_code`, `trade_name`, `inci_name`, `supplier`, `rm_cost`,
+`company_name`), 3,070 rows. (Also present there: `rd_formulas.csv` 5,844,
+`formula_masters.csv` 474, CosIng INCI dataset, myskin scrape — candidates
+for a later formulas/knowledge import.)
+
+### Import
+
+- Added `apps/ai/scripts/import-rm-catalog.ts` with `map_rm_line_to_product()`
+  mapping the CSV columns onto the canonical tenant product schema
+  (`productCode`/`rm_code`, `productName`/`trade_name`, `INCI_name`,
+  `supplier`, `price`/`rm_cost`, `company_name`). Idempotent: replaces the
+  tenant's products with the provided set.
+- Transformed `rm_lines.csv` → 3,049 unique products (dedup by rm_code,
+  dropped rows missing code/name) and imported into tenant `6a68a51a…`
+  (Organics AI), replacing the 24 placeholders. Removed the throwaway
+  `seed-products.ts`.
+
+### Verified live (rndai.erporganics.com, authenticated manager)
+
+- `products.list` 200; the "เพิ่มสาร" picker renders the real catalog —
+  RC00A001 "ALCOHOL…", ACE PEP, ACULYN™, ALPHA ARBUTIN, etc. with true
+  INCI strings. Picker loads the first 1,000 (its `limit: 1000`) and is
+  searchable across all 3,049.
+
+### Follow-ups (not blocking)
+
+- Benefits/Use-Case columns show "-" (rm_lines has no such fields); could
+  enrich from the CosIng function data later.
+- To show >1,000 without search, raise `FormulaForm`'s products.list limit
+  or paginate. Importing the historical formulas (`rd_formulas.csv`) is a
+  separate task.
+
+---
+
 ## [2026-07-28] fix: /formulas/create had no ingredients — traced to empty catalog, seeded
 
 ### Trace (data flow, no code bug found)
