@@ -29,7 +29,8 @@
     "import:reference": "tsx scripts/import/import-reference.ts",
     "import:materials": "tsx scripts/import/import-materials.ts",
     "import:formulas": "tsx scripts/import/import-formulas.ts",
-    "import:all": "tsx scripts/import/import-all.ts"
+    "import:all": "tsx scripts/import/import-all.ts",
+    "grant:tool": "tsx scripts/grant-tool-allowlist.ts"
   },
   "dependencies": {
     "@clerk/backend": "3.11.5",

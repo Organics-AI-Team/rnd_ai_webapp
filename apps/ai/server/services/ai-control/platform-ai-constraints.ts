@@ -81,6 +81,7 @@ export const PLATFORM_TOOL_UNIVERSE: readonly string[] = Object.freeze([
   "formula.comment",
   "formula.confirm",
   "knowledge.search",
+  "material.search",
   "web.search",
 ]);
 

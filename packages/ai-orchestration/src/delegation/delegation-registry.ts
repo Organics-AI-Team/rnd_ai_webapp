@@ -33,14 +33,19 @@ export interface SpecialistDefinition {
 }
 
 /** Read-only tools (no draft/commit); used to permit parallel delegation. */
-const READ_ONLY_TOOLS = new Set(["knowledge.search", "formula.search", "web.search"]);
+const READ_ONLY_TOOLS = new Set([
+  "knowledge.search",
+  "formula.search",
+  "material.search",
+  "web.search",
+]);
 
 const DEFINITIONS: Readonly<Record<SpecialistKey, SpecialistDefinition>> =
   Object.freeze({
     raw_material_research: {
       key: "raw_material_research",
       agent_card: "raw_material_research",
-      tool_allowlist: ["knowledge.search", "formula.search", "web.search"],
+      tool_allowlist: ["knowledge.search", "formula.search", "material.search", "web.search"],
       max_iterations: 6,
       budget_fraction: 0.3,
     },
@@ -53,6 +58,7 @@ const DEFINITIONS: Readonly<Record<SpecialistKey, SpecialistDefinition>> =
         "formula.revise",
         "formula.comment",
         "knowledge.search",
+        "material.search",
       ],
       max_iterations: 8,
       budget_fraction: 0.4,
