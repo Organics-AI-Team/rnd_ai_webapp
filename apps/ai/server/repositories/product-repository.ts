@@ -35,6 +35,14 @@ const SEARCHABLE_PRODUCT_FIELDS = [
   "usecase_cached",
 ] as const;
 
+/** Fields matched by the case-insensitive exclusion filter (INCI + names). */
+const EXCLUDABLE_PRODUCT_FIELDS = [
+  "INCI_name",
+  "inci_name",
+  "productName",
+  "trade_name",
+] as const;
+
 /** Options accepted by the paginated tenant product search. */
 export interface ProductSearchOptions {
   /** Case-insensitive free-text term matched across product/search fields. */
@@ -47,6 +55,14 @@ export interface ProductSearchOptions {
   readonly skip?: number;
   /** Maximum number of documents to return. */
   readonly limit?: number;
+  /** Inclusive price ceiling (THB/kg) applied to the canonical price field. */
+  readonly max_price?: number;
+  /** When true, only products with stockQuantity > 0. */
+  readonly in_stock_only?: boolean;
+  /** Case-insensitive terms; a product matching ANY term in its INCI/name fields is excluded. */
+  readonly exclude_terms?: readonly string[];
+  /** When true, exclude products explicitly flagged isActive: false. */
+  readonly active_only?: boolean;
 }
 
 /** One page of tenant products plus the total scoped match count. */
@@ -76,6 +92,22 @@ function build_product_search_filter(search_term?: string): Document {
   if (!search_term) return {};
   const pattern = { $regex: escape_regex(search_term), $options: "i" };
   return { $or: SEARCHABLE_PRODUCT_FIELDS.map((field) => ({ [field]: pattern })) };
+}
+
+/**
+ * Build the optional $nor exclusion filter for a product search.
+ *
+ * @param exclude_terms - Terms to exclude; empty/undefined yields no filter.
+ * @returns Filter fragment excluding any product whose INCI or name fields
+ *          match any term (case-insensitive, regex-escaped).
+ */
+function build_product_exclusion_filter(exclude_terms?: readonly string[]): Document {
+  if (!exclude_terms || exclude_terms.length === 0) return {};
+  const clauses = exclude_terms.flatMap((term) => {
+    const pattern = { $regex: escape_regex(term), $options: "i" };
+    return EXCLUDABLE_PRODUCT_FIELDS.map((field) => ({ [field]: pattern }));
+  });
+  return { $nor: clauses };
 }
 
 /**
@@ -148,8 +180,12 @@ export function create_product_repository(db: Db): ProductRepository {
     async search_products(context, options) {
       const filter: Document = {
         ...build_product_search_filter(options.search_term),
+        ...build_product_exclusion_filter(options.exclude_terms),
         ...tenant_scope(context),
       };
+      if (typeof options.max_price === "number") filter.price = { $lte: options.max_price };
+      if (options.in_stock_only) filter.stockQuantity = { $gt: 0 };
+      if (options.active_only) filter.isActive = { $ne: false };
       const sort_field = options.sort_field || "_id";
       const direction = options.sort_direction === "desc" ? -1 : 1;
       const sort: Sort =
