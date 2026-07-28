@@ -62,6 +62,10 @@ export interface ClerkWebhookDependencies {
     ): Promise<ApplyOutcome>;
     /** Active memberships across ALL tenants for one profile (multi-org audit). */
     count_active_memberships(user_profile_id: string): Promise<number>;
+    /** Tenant of a projected membership, by Clerk membership id (deleted events carry only the id). */
+    find_membership_tenant_id(clerk_membership_id: string): Promise<string | null>;
+    /** Active managers within one tenant (zero-manager detector). */
+    count_active_managers(tenant_id: string): Promise<number>;
   };
   readonly audit: {
     record(event: Record<string, unknown> & { action: string }): Promise<void>;
@@ -240,11 +244,47 @@ export async function apply_clerk_event(
             occurred_at,
           });
         }
+        // Zero-manager detector: a dashboard-side demotion cannot be
+        // blocked — detect and alert for platform repair instead.
+        if (
+          role_of(data.role) === "user" &&
+          (await deps.projections.count_active_managers(tenant_id)) === 0
+        ) {
+          await deps.audit.record({
+            action: "tenant_zero_managers",
+            tenantId: tenant_id,
+            trigger: "membership_role_change",
+            clerkMembershipId: String(data.id),
+            occurred_at,
+          });
+        }
       }
       return;
     }
     case "organizationMembership.deleted": {
-      await deps.projections.revoke_membership(String(data.id), occurred_at);
+      // Resolve the tenant BEFORE revoking (the payload carries only the
+      // Clerk membership id, and the row still exists at this point).
+      const tenant_id = await deps.projections.find_membership_tenant_id(
+        String(data.id),
+      );
+      const outcome = await deps.projections.revoke_membership(
+        String(data.id),
+        occurred_at,
+      );
+      if (outcome === "applied" && tenant_id) {
+        const managers = await deps.projections.count_active_managers(tenant_id);
+        if (managers === 0) {
+          // Clerk-originated removals cannot be blocked; detect and alert
+          // for platform repair instead of silently absorbing (spec §4.3).
+          await deps.audit.record({
+            action: "tenant_zero_managers",
+            tenantId: tenant_id,
+            trigger: "membership_deleted",
+            clerkMembershipId: String(data.id),
+            occurred_at,
+          });
+        }
+      }
       return;
     }
     default: {

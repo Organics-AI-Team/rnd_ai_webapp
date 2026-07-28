@@ -211,6 +211,19 @@ function production_deps(db: Db): ClerkWebhookDependencies {
           status: "active",
         });
       },
+      async find_membership_tenant_id(clerk_membership_id) {
+        const membership = await db
+          .collection("tenant_membership_projections")
+          .findOne({ clerkMembershipId: clerk_membership_id });
+        return membership ? String(membership.tenantId) : null;
+      },
+      async count_active_managers(tenant_id) {
+        return db.collection("tenant_membership_projections").countDocuments({
+          tenantId: tenant_id,
+          tenantRole: "manager",
+          status: "active",
+        });
+      },
     },
     audit: {
       async record(event) {

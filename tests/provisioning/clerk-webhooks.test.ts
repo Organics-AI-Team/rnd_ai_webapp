@@ -147,6 +147,20 @@ function fake_world() {
           (m) => m.userProfileId === user_profile_id && m.status === "active",
         ).length;
       },
+      async find_membership_tenant_id(clerk_membership_id) {
+        const existing = [...memberships.values()].find(
+          (m) => m.clerkMembershipId === clerk_membership_id,
+        );
+        return existing ? existing.tenantId : null;
+      },
+      async count_active_managers(tenant_id) {
+        return [...memberships.values()].filter(
+          (m) =>
+            m.tenantId === tenant_id &&
+            m.tenantRole === "manager" &&
+            m.status === "active",
+        ).length;
+      },
     },
     audit: {
       async record(event) {
@@ -420,5 +434,133 @@ describe("handle_clerk_webhook", () => {
     );
     expect(response.status).toBe(200);
     expect(world.invitations.get("inv_1")?.status).toBe("active");
+  });
+});
+
+describe("zero-manager detector", () => {
+  it("audits tenant_zero_managers when the last manager membership is deleted", async () => {
+    const world = fake_world();
+    world.profiles.set("user_mgr", {
+      clerkUserId: "user_mgr",
+      status: "active",
+      clerkSyncedAt: new Date(0),
+    });
+    await handle_clerk_webhook(
+      signed_request({
+        payload: membership_created_payload({
+          id: "orgmem_mgr",
+          public_user_data: { user_id: "user_mgr" },
+          role: "org:admin",
+        }),
+      }),
+      world.deps,
+    );
+    const response = await handle_clerk_webhook(
+      signed_request({
+        payload: {
+          type: "organizationMembership.deleted",
+          data: {
+            id: "orgmem_mgr",
+            organization: { id: "org_known" },
+            public_user_data: { user_id: "user_mgr" },
+            updated_at: Date.parse("2026-07-15T01:00:00Z"),
+          },
+        },
+      }),
+      world.deps,
+    );
+    expect(response.status).toBe(200);
+    expect(
+      world.audit_events.find((e) => e.action === "tenant_zero_managers"),
+    ).toMatchObject({ tenantId: "tenant_1", trigger: "membership_deleted" });
+  });
+
+  it("audits tenant_zero_managers when a dashboard update demotes the last manager", async () => {
+    const world = fake_world();
+    world.profiles.set("user_mgr", {
+      clerkUserId: "user_mgr",
+      status: "active",
+      clerkSyncedAt: new Date(0),
+    });
+    await handle_clerk_webhook(
+      signed_request({
+        payload: membership_created_payload({
+          id: "orgmem_mgr",
+          public_user_data: { user_id: "user_mgr" },
+          role: "org:admin",
+        }),
+      }),
+      world.deps,
+    );
+    const response = await handle_clerk_webhook(
+      signed_request({
+        payload: {
+          type: "organizationMembership.updated",
+          data: {
+            id: "orgmem_mgr",
+            organization: { id: "org_known" },
+            public_user_data: { user_id: "user_mgr" },
+            role: "org:member",
+            updated_at: Date.parse("2026-07-15T01:00:00Z"),
+          },
+        },
+      }),
+      world.deps,
+    );
+    expect(response.status).toBe(200);
+    expect(
+      world.audit_events.find((e) => e.action === "tenant_zero_managers"),
+    ).toMatchObject({ tenantId: "tenant_1", trigger: "membership_role_change" });
+  });
+
+  it("stays silent while another active manager remains", async () => {
+    const world = fake_world();
+    world.profiles.set("user_mgr_a", {
+      clerkUserId: "user_mgr_a",
+      status: "active",
+      clerkSyncedAt: new Date(0),
+    });
+    world.profiles.set("user_mgr_b", {
+      clerkUserId: "user_mgr_b",
+      status: "active",
+      clerkSyncedAt: new Date(0),
+    });
+    await handle_clerk_webhook(
+      signed_request({
+        payload: membership_created_payload({
+          id: "orgmem_a",
+          public_user_data: { user_id: "user_mgr_a" },
+          role: "org:admin",
+        }),
+      }),
+      world.deps,
+    );
+    await handle_clerk_webhook(
+      signed_request({
+        payload: membership_created_payload({
+          id: "orgmem_b",
+          public_user_data: { user_id: "user_mgr_b" },
+          role: "org:admin",
+        }),
+      }),
+      world.deps,
+    );
+    await handle_clerk_webhook(
+      signed_request({
+        payload: {
+          type: "organizationMembership.deleted",
+          data: {
+            id: "orgmem_a",
+            organization: { id: "org_known" },
+            public_user_data: { user_id: "user_mgr_a" },
+            updated_at: Date.parse("2026-07-15T01:00:00Z"),
+          },
+        },
+      }),
+      world.deps,
+    );
+    expect(
+      world.audit_events.some((e) => e.action === "tenant_zero_managers"),
+    ).toBe(false);
   });
 });

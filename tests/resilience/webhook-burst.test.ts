@@ -78,6 +78,12 @@ function webhook_world() {
       async count_active_memberships() {
         return 0;
       },
+      async find_membership_tenant_id() {
+        return null;
+      },
+      async count_active_managers() {
+        return 1;
+      },
     },
     audit: {
       async record() {},
