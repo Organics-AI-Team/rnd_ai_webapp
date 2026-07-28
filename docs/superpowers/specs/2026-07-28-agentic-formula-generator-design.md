@@ -333,16 +333,23 @@ Each milestone ships value and is independently verifiable.
 
 ---
 
-## 11. Open questions
+## 11. Resolved decisions (2026-07-28)
 
-1. **`material.search` tool** — needed, or does `knowledge.search` cover
-   structured ingredient filtering for formulation? (Resolve in planning.)
-2. **Generator entry point** — reuse `/ai/sales-rnd-ai`, or a dedicated
-   "Formulate" action on `/formulas/create`? (UX preference.)
-3. **Formula version import** — import all `rd_formulas` versions (5,844) or only
-   the latest per product? (Corpus richness vs. noise.)
-4. **CosIng benefit mapping** — map CosIng function classes directly to
-   `benefits`/`usecase`, or a curated subset? (Affects picker filter quality.)
+1. **`material.search` tool — YES, add it.** A single governed `material.search`
+   tool over `product-repository.search_products` with a capability card, for
+   structured filtering the semantic `knowledge.search` cannot do (cost ceiling,
+   in-stock, exclude-INCI, supplier). Mirrors the existing tool/card pattern.
+2. **Generator entry point — dedicated "Formulate" action on
+   `/formulas/create`.** Closest to where the gap was felt; drives the same
+   `POST /api/ai/runs` + SSE events; the artifact hands into the existing draft
+   flow. (`/ai/sales-rnd-ai` may also start a generator run later; not required.)
+3. **Formula history depth — latest version per product first.** Import the
+   latest `rd_formulas` version per product (+ `formula_masters`) for clean
+   grounding; full version history is a follow-up import (the pipeline's
+   natural-key upsert supports adding versions later).
+4. **CosIng benefits — full function-class map first.** Map all CosIng function
+   classes into `benefits`/`usecase`; curate/rename later if the picker filters
+   get noisy. Keeps M1 simple and grounding rich.
 
 ---
 
