@@ -23,7 +23,9 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # Read the last assignment of a variable from the .env file (empty if unset)
 env_value() {
-    grep -E "^${1}=" "$ENV_FILE" | tail -n 1 | cut -d'=' -f2-
+    # `|| true` keeps set -e/pipefail from killing the script SILENTLY when the
+    # variable is absent — require_env_value prints the proper error instead
+    grep -E "^${1}=" "$ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true
 }
 
 # Fail when a variable is unset or still carries a template placeholder

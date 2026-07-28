@@ -1,5 +1,32 @@
 # Changelog
 
+## [2026-07-29] ops: Clerk webhook secret provisioned programmatically; deploy preflight silent-death fixed
+
+### Summary
+
+Closed the last two operational gaps from the Plan 2 rollout without touching
+the Clerk dashboard.
+
+- **Webhook membership sync live.** The svix endpoint for
+  `https://rndai.erporganics.com/api/webhooks/clerk` already existed on the
+  instance's svix app (created at cutover) but its signing secret never
+  reached the droplet `.env`. Retrieved it via the Clerk Backend API
+  (`POST /v1/webhooks/svix_url` → one-time app-portal token →
+  `api.eu.svix.com` token exchange → endpoint secret), installed
+  `CLERK_WEBHOOK_SIGNING_SECRET`, recreated the web container. Verified: the
+  route now returns 400 (signature check active) instead of 503 (secret
+  unset). Invited users now project into `tenant_membership_projections`
+  automatically.
+- **`scripts/deploy-droplet.sh`**: `env_value()` now ends with `|| true` —
+  under `set -euo pipefail` a variable ABSENT from `.env` made the grep
+  pipeline kill the script before `require_env_value` could print its error
+  (placeholder values were caught, missing ones died silently).
+- Grounding spot-check: sampled a live `platform_knowledge_v1` point — payload
+  contract fields all present (`is_tenant:false`, `source_id:myskin:33440`,
+  sha-256 `content_hash`, `visibility:all_members`, `embedding_version:v1`).
+
+---
+
 ## [2026-07-29] ops: Knowledge grounded, tenant AI-enabled, generator deployed (Plan 2 complete)
 
 ### Summary
