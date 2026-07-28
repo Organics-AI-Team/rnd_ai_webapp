@@ -1,5 +1,49 @@
 # Changelog
 
+## [2026-07-28] feat(ops): Idempotent provision-tenant-ai operator script (profile + deployments + rollout)
+
+### Summary
+
+New create-or-get operator script `apps/ai/scripts/provision-tenant-ai.ts`
+(npm: `provision:tenant-ai -w apps/ai`, supports `--dry-run`) that AI-enables
+an EXISTING tenant: one active `tenant_ai_profiles` doc derived from
+`PLAN_ENTITLEMENTS` (default plan `growth`, includes `material.search`), one
+active revision-1 `agent_deployments` doc per `GRANT_AGENT_KEYS` agent
+(default `formulation,raw_material_research`; pins `ORCHESTRATOR_VERSION`
+"agentic-1.0.0" + schema versions "1"), and one internal-cohort agentic
+`ai_rollout_assignments` doc (version 1) written through
+`create_ai_rollout_repository().assign` (transactional, audited, super-admin
+checked). After writing, `compile_for_tenant` runs as a fail-closed
+acceptance check.
+
+### Field verification (against real code, not notes)
+
+- `promptVersionId` is pinned as an OPAQUE ObjectId — never dereferenced into
+  `prompt_versions` at runtime (`ai-policy-repository.ts:299`,
+  `ai-runtime-state-repository.ts:115`, `production-run-runtime.ts:173`,
+  `run-api-runtime.ts:54` only require it non-empty), so the script generates
+  a fresh ObjectId per deployment creation; no PromptVersion doc is required.
+- Provider/model reality: provider key `google`, models from
+  `PLAN_ENTITLEMENTS`/`PLATFORM_PROVIDER_UNIVERSE`; overrides via
+  `PROVISION_PROVIDERS`/`PROVISION_MODELS` are validated against the universe.
+- Deployment tool allowlists: primary (rollout) agent keeps full plan tools
+  (incl. approval-gated `formula.confirm`); registry specialists are narrowed
+  to `delegation-registry` allowlist ∩ plan (matches `delegate-tool-factory`
+  enforcement at delegation time).
+- Numeric profile limits stored as plain numbers (fixture-mirrored;
+  `to_bigint` re-coerces on read); `knowledgeStorageLimitBytes` set because
+  knowledge uploads fail-closed without it.
+
+### Tests
+
+- `tests/ai-control/provision-tenant-ai.test.ts` — MongoMemoryReplSet +
+  `setup_commercial_indexes`: dry-run writes nothing; double-run idempotency
+  (counts stable incl. single rollout audit event); compile_for_tenant
+  acceptance for agent `formulation`; fail-closed precondition tests.
+  4/4 green; full `tests/ai-control` suite 144/144 green.
+
+---
+
 ## [2026-07-28] feat: Sustainable chem/formula data pipeline executed; production re-imported enriched (Plan 1 complete)
 
 ### Summary
