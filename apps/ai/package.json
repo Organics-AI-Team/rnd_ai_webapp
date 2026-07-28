@@ -25,7 +25,8 @@
     "migrate:clerk": "tsx scripts/migrate-legacy-users-to-clerk.ts",
     "tenant:audit": "tsx scripts/audit-tenant-ownership.ts",
     "tenant:backfill": "tsx scripts/backfill-tenant-ownership.ts",
-    "tenant:verify": "tsx scripts/verify-tenant-ownership.ts"
+    "tenant:verify": "tsx scripts/verify-tenant-ownership.ts",
+    "import:reference": "tsx scripts/import/import-reference.ts"
   },
   "dependencies": {
     "@clerk/backend": "3.11.5",
