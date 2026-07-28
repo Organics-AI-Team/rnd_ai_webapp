@@ -40,7 +40,11 @@ export default async function PlatformTenantsPage() {
         <tbody>
           {tenants.map((tenant: any) => (
             <tr key={tenant._id} className="border-b">
-              <td className="py-2 pr-4 font-mono">{tenant.slug}</td>
+              <td className="py-2 pr-4 font-mono">
+                <Link className="underline" href={`/platform/tenants/${tenant._id}`}>
+                  {tenant.slug}
+                </Link>
+              </td>
               <td className="py-2 pr-4">{tenant.name}</td>
               <td className="py-2 pr-4">{tenant.status}</td>
               <td className="py-2 pr-4">{tenant.planKey}</td>
