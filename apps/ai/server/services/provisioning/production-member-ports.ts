@@ -206,28 +206,6 @@ export function create_production_member_ports(
   const clerk = clerk_like ?? default_clerk_backend();
 
   return {
-    memberships: {
-      async find_memberships_by_email(email) {
-        const profile = await db
-          .collection("user_profiles")
-          .findOne({ primaryEmail: email });
-        if (!profile) return [];
-        const memberships = await db
-          .collection("tenant_membership_projections")
-          .find({ userProfileId: profile._id.toString() })
-          .toArray();
-        return memberships.map((m) => ({
-          tenant_id: String(m.tenantId),
-          status: String(m.status),
-        }));
-      },
-      async suspend_membership(tenant_id, user_profile_id) {
-        await db.collection("tenant_membership_projections").updateOne(
-          { tenantId: tenant_id, userProfileId: user_profile_id },
-          { $set: { status: "suspended", updatedAt: new Date() } },
-        );
-      },
-    },
     invitations: {
       async upsert(tenant_id, invitation, invited_by_profile_id) {
         const now = new Date();

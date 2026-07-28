@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   invite_tenant_user,
-  suspend_tenant_user,
   type TenantMemberPorts,
 } from "../../apps/ai/server/services/provisioning/invite-tenant-user";
 import { AuthorizationError } from "../../apps/ai/server/auth/errors";
@@ -35,15 +34,9 @@ const student: RequestPrincipal = {
 function fake_ports() {
   const clerk_invitations: Array<{ email: string; role: string; org: string }> = [];
   const projections: any[] = [];
-  const suspensions: Array<{ tenant_id: string; profile_id: string }> = [];
   const audit_events: any[] = [];
 
   const ports: TenantMemberPorts = {
-    memberships: {
-      async suspend_membership(tenant_id, user_profile_id) {
-        suspensions.push({ tenant_id, profile_id: user_profile_id });
-      },
-    },
     invitations: {
       async upsert(tenant_id, invitation, invited_by_profile_id) {
         projections.push({ tenant_id, invitation, invited_by_profile_id });
@@ -72,7 +65,7 @@ function fake_ports() {
     },
   };
 
-  return { ports, clerk_invitations, projections, suspensions, audit_events };
+  return { ports, clerk_invitations, projections, audit_events };
 }
 
 describe("invite_tenant_user (multi-org permitted)", () => {
@@ -106,31 +99,5 @@ describe("invite_tenant_user (multi-org permitted)", () => {
       invite_tenant_user(manager, { email: "second-org@x.ac.th" }, world.ports),
     ).resolves.toMatchObject({ invitation_id: "inv_1" });
     expect(world.clerk_invitations).toHaveLength(1);
-  });
-});
-
-describe("suspend_tenant_user", () => {
-  it("lets a manager suspend a tenant user", async () => {
-    const world = fake_ports();
-    await suspend_tenant_user(
-      manager,
-      { user_profile_id: "507f1f77bcf86cd799439099" },
-      world.ports,
-    );
-    expect(world.suspensions).toHaveLength(1);
-    expect(world.audit_events.some((e) => e.action === "suspend_tenant_user")).toBe(
-      true,
-    );
-  });
-
-  it("rejects a tenant user caller", async () => {
-    const world = fake_ports();
-    await expect(
-      suspend_tenant_user(
-        student,
-        { user_profile_id: "507f1f77bcf86cd799439099" },
-        world.ports,
-      ),
-    ).rejects.toBeInstanceOf(AuthorizationError);
   });
 });

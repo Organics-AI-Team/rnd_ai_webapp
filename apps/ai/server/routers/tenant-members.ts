@@ -4,10 +4,12 @@ import { ObjectId } from "mongodb";
 import client_promise from "@rnd-ai/shared-database";
 
 import { router, tenantProcedure } from "../trpc";
+import { invite_tenant_user } from "../services/provisioning/invite-tenant-user";
 import {
-  invite_tenant_user,
+  reactivate_tenant_user,
+  remove_tenant_user,
   suspend_tenant_user,
-} from "../services/provisioning/invite-tenant-user";
+} from "../services/provisioning/manage-members";
 import {
   derive_invitation_display,
   invitation_ttl_days,
@@ -22,9 +24,10 @@ import { throw_member_admin_error } from "./member-admin-errors";
 
 /**
  * University member administration. Managers list, invite students, manage
- * invitations, and suspend users; manager appointment/demotion is a platform
- * operation and is rejected here by construction (the invite path always
- * passes the user role).
+ * invitations, suspend/reactivate/remove users; manager appointment/demotion
+ * is a platform operation and is rejected here by construction (the invite
+ * path always passes the user role; suspend/reactivate/remove guard against
+ * manager targets).
  */
 export const tenantMembersRouter = router({
   /**
@@ -155,16 +158,59 @@ export const tenantMembersRouter = router({
     }),
 
   /**
-   * Suspend a user's membership in the caller's university.
+   * Suspend a user's membership in the caller's university (users only —
+   * manager lifecycle is platform-scope and refused by the service).
    */
   suspendUser: tenantProcedure("tenant:members:suspend_user")
     .input(z.object({ user_profile_id: z.string().min(1) }).strict())
     .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
-      return suspend_tenant_user(
-        ctx.principal,
-        { user_profile_id: input.user_profile_id ?? "" },
-        create_production_member_ports(client.db()),
-      );
+      try {
+        return await suspend_tenant_user(
+          ctx.principal,
+          input,
+          create_production_member_admin_ports(client.db()),
+        );
+      } catch (error) {
+        throw_member_admin_error(error);
+      }
+    }),
+
+  /**
+   * Reactivate a suspended user's membership (app-side; refused when the
+   * user profile itself is not active).
+   */
+  reactivateUser: tenantProcedure("tenant:members:suspend_user")
+    .input(z.object({ user_profile_id: z.string().min(1) }).strict())
+    .mutation(async ({ input, ctx }) => {
+      const client = await client_promise;
+      try {
+        return await reactivate_tenant_user(
+          ctx.principal,
+          input,
+          create_production_member_admin_ports(client.db()),
+        );
+      } catch (error) {
+        throw_member_admin_error(error);
+      }
+    }),
+
+  /**
+   * Remove a user from the caller's university (manager-only permission;
+   * soft revoke + Clerk removal with revert-on-failure; re-invite revives).
+   */
+  removeUser: tenantProcedure("tenant:members:remove_user")
+    .input(z.object({ user_profile_id: z.string().min(1) }).strict())
+    .mutation(async ({ input, ctx }) => {
+      const client = await client_promise;
+      try {
+        return await remove_tenant_user(
+          ctx.principal,
+          input,
+          create_production_member_admin_ports(client.db()),
+        );
+      } catch (error) {
+        throw_member_admin_error(error);
+      }
     }),
 });

@@ -9,15 +9,8 @@ const invite_input_schema = z
   .object({ email: z.string().trim().toLowerCase().email() })
   .strict();
 
-const suspend_input_schema = z
-  .object({ user_profile_id: z.string().min(1) })
-  .strict();
-
-/** Ports for tenant member management; fakes in tests, MongoDB/Clerk in production. */
+/** Ports for the tenant invite path; fakes in tests, MongoDB/Clerk in production. */
 export interface TenantMemberPorts {
-  readonly memberships: {
-    suspend_membership(tenant_id: string, user_profile_id: string): Promise<void>;
-  };
   readonly invitations: {
     upsert(
       tenant_id: string,
@@ -90,34 +83,4 @@ export async function invite_tenant_user(
     invitation_id: invitation.id,
   });
   return { invitation_id: invitation.id };
-}
-
-/**
- * Suspend a tenant user's membership in the manager's university. The
- * projection is suspended immediately; Clerk-side revocation is reconciled
- * by webhooks/reconcile-clerk.
- *
- * @param actor - Verified tenant principal (requires tenant:members:suspend_user).
- * @param raw_input - Suspension input ({ user_profile_id }).
- * @param ports - Member-management ports.
- */
-export async function suspend_tenant_user(
-  actor: RequestPrincipal,
-  raw_input: { user_profile_id: string },
-  ports: TenantMemberPorts,
-): Promise<{ success: true }> {
-  require_active_tenant(actor);
-  require_permission(actor, "tenant:members:suspend_user");
-  const input = suspend_input_schema.parse(raw_input);
-  const tenant_id = actor.active_tenant_id as string;
-
-  await ports.memberships.suspend_membership(tenant_id, input.user_profile_id);
-  await ports.audit.record({
-    action: "suspend_tenant_user",
-    tenantId: tenant_id,
-    userProfileId: input.user_profile_id,
-    actorProfileId: actor.internal_user_id,
-    occurred_at: new Date(),
-  });
-  return { success: true };
 }
