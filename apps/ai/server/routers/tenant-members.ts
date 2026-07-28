@@ -1,13 +1,11 @@
 import { z } from "zod";
 import { ObjectId } from "mongodb";
-import { TRPCError } from "@trpc/server";
 import client_promise from "@rnd-ai/shared-database";
 
 import { router, tenantProcedure } from "../trpc";
 import {
   invite_tenant_user,
   suspend_tenant_user,
-  MultipleMembershipsDisabledError,
 } from "../services/provisioning/invite-tenant-user";
 import { create_production_member_ports } from "../services/provisioning/production-member-ports";
 
@@ -57,18 +55,11 @@ export const tenantMembersRouter = router({
     .input(z.object({ email: z.string().email() }).strict())
     .mutation(async ({ input, ctx }) => {
       const client = await client_promise;
-      try {
-        return await invite_tenant_user(
-          ctx.principal,
-          { email: input.email ?? "" },
-          create_production_member_ports(client.db()),
-        );
-      } catch (error) {
-        if (error instanceof MultipleMembershipsDisabledError) {
-          throw new TRPCError({ code: "CONFLICT", message: error.message });
-        }
-        throw error;
-      }
+      return invite_tenant_user(
+        ctx.principal,
+        { email: input.email ?? "" },
+        create_production_member_ports(client.db()),
+      );
     }),
 
   /**

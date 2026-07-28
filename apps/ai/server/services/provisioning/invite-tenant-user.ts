@@ -1,23 +1,9 @@
+// apps/ai/server/services/provisioning/invite-tenant-user.ts
 import { z } from "zod";
 import type { RequestPrincipal } from "@rnd-ai/shared-types";
 
 import { require_active_tenant, require_permission } from "../../auth/authorize";
 import type { ManagerInvitation } from "./provisioning-types";
-
-/**
- * Raised when an email already holds an active or pending membership at
- * another university. The first commercial release permits exactly one.
- */
-export class MultipleMembershipsDisabledError extends Error {
-  readonly code = "MULTIPLE_MEMBERSHIPS_DISABLED";
-
-  constructor(email: string) {
-    super(
-      `MULTIPLE_MEMBERSHIPS_DISABLED: ${email} already belongs to another university.`,
-    );
-    this.name = "MultipleMembershipsDisabledError";
-  }
-}
 
 const invite_input_schema = z
   .object({ email: z.string().trim().toLowerCase().email() })
@@ -30,15 +16,9 @@ const suspend_input_schema = z
 /** Ports for tenant member management; fakes in tests, MongoDB/Clerk in production. */
 export interface TenantMemberPorts {
   readonly memberships: {
-    find_memberships_by_email(
-      email: string,
-    ): Promise<Array<{ tenant_id: string; status: string }>>;
     suspend_membership(tenant_id: string, user_profile_id: string): Promise<void>;
   };
   readonly invitations: {
-    find_invitations_by_email(
-      email: string,
-    ): Promise<Array<{ tenant_id: string; status: string }>>;
     upsert(
       tenant_id: string,
       invitation: ManagerInvitation,
@@ -62,14 +42,16 @@ export interface TenantMemberPorts {
 /**
  * Invite a student (tenant user) into the manager's university. Managers can
  * only ever grant the user role through this path — manager appointments are
- * a platform operation. The single-membership rule is enforced before Clerk
- * is called.
+ * a platform operation. Multi-org membership is permitted (Plan 3): an email
+ * holding memberships elsewhere is invited normally; Clerk's own
+ * duplicate-pending rejection is translated by the production port.
  *
  * @param actor - Verified tenant principal (requires tenant:members:invite_user).
  * @param raw_input - Invitation input ({ email }).
  * @param ports - Member-management ports.
  * @returns Created invitation ID.
- * @throws AuthorizationError or MultipleMembershipsDisabledError.
+ * @throws AuthorizationError when the caller lacks the permission.
+ * @throws DuplicatePendingInvitationError (from the port) when already pending.
  */
 export async function invite_tenant_user(
   actor: RequestPrincipal,
@@ -80,19 +62,7 @@ export async function invite_tenant_user(
   require_permission(actor, "tenant:members:invite_user");
   const input = invite_input_schema.parse(raw_input);
   const tenant_id = actor.active_tenant_id as string;
-
-  const [memberships, invitations] = await Promise.all([
-    ports.memberships.find_memberships_by_email(input.email),
-    ports.invitations.find_invitations_by_email(input.email),
-  ]);
-  const blocking = [...memberships, ...invitations].some(
-    (record) =>
-      record.tenant_id !== tenant_id &&
-      (record.status === "active" || record.status === "invited"),
-  );
-  if (blocking) {
-    throw new MultipleMembershipsDisabledError(input.email);
-  }
+  console.info({ boundary: "tenant-members", event: "invite.start", tenant_id });
 
   const clerk_organization_id =
     await ports.tenants.clerk_organization_id_for(tenant_id);
@@ -112,6 +82,12 @@ export async function invite_tenant_user(
     emailNormalized: input.email,
     actorProfileId: actor.internal_user_id,
     occurred_at: new Date(),
+  });
+  console.info({
+    boundary: "tenant-members",
+    event: "invite.done",
+    tenant_id,
+    invitation_id: invitation.id,
   });
   return { invitation_id: invitation.id };
 }

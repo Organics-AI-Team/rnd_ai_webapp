@@ -1,3 +1,4 @@
+// tests/provisioning/clerk-webhooks.test.ts
 import { createHmac, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
@@ -50,25 +51,38 @@ interface StoredMembership {
 }
 
 /**
- * Build an in-memory webhook world (receipts + projections + audit).
+ * In-memory membership map key mirroring the production revive keying:
+ * one row per (tenant, profile) pair — NEVER per Clerk membership id.
+ */
+function pair_key(tenant_id: string, user_profile_id: string): string {
+  return `${tenant_id}:${user_profile_id}`;
+}
+
+/**
+ * Build an in-memory webhook world (receipts + projections + audit) with the
+ * Plan 3 dependency surface: retryable receipts, revive-keyed memberships,
+ * count_active_memberships (no profile suspension port exists any more).
  */
 function fake_world() {
-  const receipts = new Map<string, { completed: boolean }>();
+  const receipts = new Map<string, { completed: boolean; failed: boolean }>();
   const profiles = new Map<string, any>();
   const memberships = new Map<string, StoredMembership>();
   const invitations = new Map<string, any>();
   const audit_events: any[] = [];
-  const suspended_profiles: string[] = [];
 
   const deps: ClerkWebhookDependencies = {
     receipts: {
-      async claim(event_id, event_type) {
-        if (receipts.has(event_id)) return { already_processed: true };
-        receipts.set(event_id, { completed: false });
+      async claim(event_id, _event_type) {
+        const existing = receipts.get(event_id);
+        if (existing && !existing.failed) return { already_processed: true };
+        receipts.set(event_id, { completed: false, failed: false });
         return { already_processed: false };
       },
       async complete(event_id) {
-        receipts.set(event_id, { completed: true });
+        receipts.set(event_id, { completed: true, failed: false });
+      },
+      async fail(event_id) {
+        receipts.set(event_id, { completed: false, failed: true });
       },
     },
     projections: {
@@ -100,9 +114,10 @@ function fake_world() {
         return profiles.has(clerk_user_id) ? `profile_${clerk_user_id}` : null;
       },
       async upsert_membership(membership, occurred_at) {
-        const existing = memberships.get(membership.clerk_membership_id);
+        const key = pair_key(membership.tenant_id, membership.user_profile_id);
+        const existing = memberships.get(key);
         if (existing && existing.clerkSyncedAt > occurred_at) return "stale";
-        memberships.set(membership.clerk_membership_id, {
+        memberships.set(key, {
           clerkMembershipId: membership.clerk_membership_id,
           tenantId: membership.tenant_id,
           userProfileId: membership.user_profile_id,
@@ -113,7 +128,9 @@ function fake_world() {
         return "applied";
       },
       async revoke_membership(clerk_membership_id, occurred_at) {
-        const existing = memberships.get(clerk_membership_id);
+        const existing = [...memberships.values()].find(
+          (m) => m.clerkMembershipId === clerk_membership_id,
+        );
         if (existing && existing.clerkSyncedAt > occurred_at) return "stale";
         if (existing) {
           existing.status = "revoked";
@@ -125,16 +142,10 @@ function fake_world() {
         invitations.set(clerk_invitation_id, { status, clerkSyncedAt: occurred_at });
         return "applied";
       },
-      async count_other_active_memberships(user_profile_id, clerk_membership_id) {
+      async count_active_memberships(user_profile_id) {
         return [...memberships.values()].filter(
-          (m) =>
-            m.userProfileId === user_profile_id &&
-            m.clerkMembershipId !== clerk_membership_id &&
-            m.status === "active",
+          (m) => m.userProfileId === user_profile_id && m.status === "active",
         ).length;
-      },
-      async suspend_profile_authorization(user_profile_id) {
-        suspended_profiles.push(user_profile_id);
       },
     },
     audit: {
@@ -144,15 +155,7 @@ function fake_world() {
     },
   };
 
-  return {
-    deps,
-    receipts,
-    profiles,
-    memberships,
-    invitations,
-    audit_events,
-    suspended_profiles,
-  };
+  return { deps, receipts, profiles, memberships, invitations, audit_events };
 }
 
 const membership_created_payload = (overrides: Record<string, unknown> = {}) => ({
@@ -274,17 +277,17 @@ describe("handle_clerk_webhook", () => {
       world.deps,
     );
     expect(response.status).toBe(200);
-    expect(world.memberships.get("orgmem_1")?.status).toBe("revoked");
+    expect(world.memberships.get("tenant_1:profile_user_1")?.status).toBe("revoked");
   });
 
-  it("suspends authorization and preserves both projections on multiple active memberships", async () => {
+  it("keeps both memberships active and records membership_multi_org — never mutating the profile", async () => {
     const world = fake_world();
     world.profiles.set("user_multi", {
       clerkUserId: "user_multi",
       status: "active",
       clerkSyncedAt: new Date(0),
     });
-    world.memberships.set("orgmem_existing", {
+    world.memberships.set("tenant_other:profile_user_multi", {
       clerkMembershipId: "orgmem_existing",
       tenantId: "tenant_other",
       userProfileId: "profile_user_multi",
@@ -302,12 +305,102 @@ describe("handle_clerk_webhook", () => {
       world.deps,
     );
     expect(response.status).toBe(200);
-    expect(world.suspended_profiles).toContain("profile_user_multi");
-    expect(world.memberships.get("orgmem_existing")?.status).toBe("active");
-    expect(world.memberships.get("orgmem_second")).toBeTruthy();
+    expect(world.profiles.get("user_multi")?.status).toBe("active");
+    expect(world.memberships.get("tenant_other:profile_user_multi")?.status).toBe("active");
+    expect(world.memberships.get("tenant_1:profile_user_multi")?.status).toBe("active");
+    const multi_audit = world.audit_events.find((e) => e.action === "membership_multi_org");
+    expect(multi_audit).toMatchObject({
+      userProfileId: "profile_user_multi",
+      clerkMembershipId: "orgmem_second",
+      activeMembershipCount: 2,
+    });
     expect(
       world.audit_events.some((e) => e.action === "membership_reconciliation_required"),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("revives the same (tenant, profile) projection under a NEW clerkMembershipId after remove→re-invite", async () => {
+    const world = fake_world();
+    world.profiles.set("user_1", {
+      clerkUserId: "user_1",
+      status: "active",
+      clerkSyncedAt: new Date(0),
+    });
+    await handle_clerk_webhook(
+      signed_request({ payload: membership_created_payload() }),
+      world.deps,
+    );
+    await handle_clerk_webhook(
+      signed_request({
+        payload: {
+          type: "organizationMembership.deleted",
+          data: {
+            id: "orgmem_1",
+            organization: { id: "org_known" },
+            public_user_data: { user_id: "user_1" },
+            updated_at: Date.parse("2026-07-15T01:00:00Z"),
+          },
+        },
+      }),
+      world.deps,
+    );
+    const response = await handle_clerk_webhook(
+      signed_request({
+        payload: membership_created_payload({
+          id: "orgmem_2",
+          created_at: Date.parse("2026-07-15T02:00:00Z"),
+          updated_at: Date.parse("2026-07-15T02:00:00Z"),
+        }),
+      }),
+      world.deps,
+    );
+    expect(response.status).toBe(200);
+    // The blocking-fix regression: ONE row per pair, revived active under
+    // the new Clerk membership id — no second insert, no lost event.
+    expect(world.memberships.size).toBe(1);
+    const revived = world.memberships.get("tenant_1:profile_user_1");
+    expect(revived).toMatchObject({
+      clerkMembershipId: "orgmem_2",
+      status: "active",
+    });
+  });
+
+  it("returns 5xx on a failed apply and reapplies on the svix retry", async () => {
+    const world = fake_world();
+    world.profiles.set("user_1", {
+      clerkUserId: "user_1",
+      status: "active",
+      clerkSyncedAt: new Date(0),
+    });
+    let failures_remaining = 1;
+    const flaky_deps: ClerkWebhookDependencies = {
+      ...world.deps,
+      projections: {
+        ...world.deps.projections,
+        async upsert_membership(membership, occurred_at) {
+          if (failures_remaining > 0) {
+            failures_remaining -= 1;
+            throw new Error("transient projection outage");
+          }
+          return world.deps.projections.upsert_membership(membership, occurred_at);
+        },
+      },
+    };
+    const message_id = "msg_retry_1";
+    const first = await handle_clerk_webhook(
+      signed_request({ payload: membership_created_payload(), message_id }),
+      flaky_deps,
+    );
+    expect(first.status).toBe(500);
+    expect(world.memberships.size).toBe(0);
+    expect(world.receipts.get(message_id)).toEqual({ completed: false, failed: true });
+    const second = await handle_clerk_webhook(
+      signed_request({ payload: membership_created_payload(), message_id }),
+      flaky_deps,
+    );
+    expect(second.status).toBe(200);
+    expect(world.memberships.size).toBe(1);
+    expect(world.receipts.get(message_id)).toEqual({ completed: true, failed: false });
   });
 
   it("marks invitation accepted on organizationInvitation.accepted", async () => {

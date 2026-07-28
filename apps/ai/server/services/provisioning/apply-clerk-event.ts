@@ -1,13 +1,15 @@
+// apps/ai/server/services/provisioning/apply-clerk-event.ts
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
- * Clerk webhook synchronization (G1.5).
+ * Clerk webhook synchronization (G1.5, multi-org semantics from Plan 3).
  *
  * Verifies the svix signature before parsing business fields, claims an
  * idempotency receipt per event ID, and applies projection updates with
  * monotonic occurredAt checks so an older event can never overwrite newer
  * state. Deletions mark records revoked/deleted — business identity is never
- * hard-deleted.
+ * hard-deleted. A failed apply marks the receipt failed and answers 5xx so
+ * the svix retry reapplies (receipts complete only after a successful apply).
  */
 
 /** Result of applying one projection change. */
@@ -27,6 +29,8 @@ export interface ClerkWebhookDependencies {
   readonly receipts: {
     claim(event_id: string, event_type: string): Promise<{ already_processed: boolean }>;
     complete(event_id: string): Promise<void>;
+    /** Mark a claimed receipt failed so a redelivery of the same event id reclaims it. */
+    fail(event_id: string): Promise<void>;
   };
   readonly projections: {
     upsert_user_profile(
@@ -36,6 +40,13 @@ export interface ClerkWebhookDependencies {
     mark_user_deleted(clerk_user_id: string, occurred_at: Date): Promise<ApplyOutcome>;
     find_tenant_id_by_clerk_org(clerk_org_id: string): Promise<string | null>;
     find_profile_id_by_clerk_user(clerk_user_id: string): Promise<string | null>;
+    /**
+     * Upsert keyed by (tenant_id, user_profile_id) — NOT clerk_membership_id.
+     * Remove→re-invite mints a NEW Clerk membership id for the same pair and
+     * the projection carries a unique (tenantId, userProfileId) index, so
+     * the implementation must revive the existing row: set the new
+     * clerkMembershipId, role, and status under the monotonic clock guard.
+     */
     upsert_membership(
       membership: MembershipChange,
       occurred_at: Date,
@@ -49,11 +60,8 @@ export interface ClerkWebhookDependencies {
       status: "active" | "revoked",
       occurred_at: Date,
     ): Promise<ApplyOutcome>;
-    count_other_active_memberships(
-      user_profile_id: string,
-      clerk_membership_id: string,
-    ): Promise<number>;
-    suspend_profile_authorization(user_profile_id: string): Promise<void>;
+    /** Active memberships across ALL tenants for one profile (multi-org audit). */
+    count_active_memberships(user_profile_id: string): Promise<number>;
   };
   readonly audit: {
     record(event: Record<string, unknown> & { action: string }): Promise<void>;
@@ -219,19 +227,16 @@ export async function apply_clerk_event(
         occurred_at,
       );
       if (outcome === "applied") {
-        const others = await deps.projections.count_other_active_memberships(
-          user_profile_id,
-          String(data.id),
-        );
-        if (others > 0) {
-          // First release permits one active university membership. Preserve
-          // both projections for repair and suspend authorization instead of
-          // choosing one.
-          await deps.projections.suspend_profile_authorization(user_profile_id);
+        const active_memberships =
+          await deps.projections.count_active_memberships(user_profile_id);
+        if (active_memberships > 1) {
+          // Multi-org membership is permitted (Plan 3). Record an
+          // informational audit; user_profiles.status is NEVER mutated here.
           await deps.audit.record({
-            action: "membership_reconciliation_required",
+            action: "membership_multi_org",
             userProfileId: user_profile_id,
             clerkMembershipId: String(data.id),
+            activeMembershipCount: active_memberships,
             occurred_at,
           });
         }
@@ -254,11 +259,14 @@ export async function apply_clerk_event(
 
 /**
  * Framework-neutral webhook entry: verify, claim the idempotency receipt,
- * apply, complete. A duplicate event returns 200 without reapplying.
+ * apply, complete. A duplicate event returns 200 without reapplying; a
+ * FAILED apply releases the claim (receipt marked failed) and answers 5xx so
+ * svix retries reapply the event instead of losing it forever.
  *
  * @param request - Incoming webhook request.
  * @param deps - Receipt/projection/audit ports.
- * @returns 200 on success or duplicate; 400 on verification failure.
+ * @returns 200 on success or duplicate; 400 on verification failure; 500 on
+ *          a failed apply (retryable).
  */
 export async function handle_clerk_webhook(
   request: Request,
@@ -286,7 +294,19 @@ export async function handle_clerk_webhook(
   if (receipt.already_processed) {
     return new Response(null, { status: 200 });
   }
-  await apply_clerk_event(payload, deps);
+  try {
+    await apply_clerk_event(payload, deps);
+  } catch (error) {
+    console.error({
+      boundary: "clerk-webhook",
+      event: "apply.failed",
+      event_id,
+      event_type: String(payload?.type ?? ""),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await deps.receipts.fail(event_id);
+    return new Response("event apply failed", { status: 500 });
+  }
   await deps.receipts.complete(event_id);
   return new Response(null, { status: 200 });
 }

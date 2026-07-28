@@ -1,9 +1,9 @@
+// tests/provisioning/tenant-invitations.test.ts
 import { describe, expect, it } from "vitest";
 
 import {
   invite_tenant_user,
   suspend_tenant_user,
-  MultipleMembershipsDisabledError,
   type TenantMemberPorts,
 } from "../../apps/ai/server/services/provisioning/invite-tenant-user";
 import { AuthorizationError } from "../../apps/ai/server/auth/errors";
@@ -28,14 +28,11 @@ const student: RequestPrincipal = {
 };
 
 /**
- * Build in-memory member-management ports.
- *
- * @param seed - Existing memberships/invitations by normalized email.
+ * Build in-memory member-management ports. Plan 3 removed the cross-tenant
+ * email lookups from this contract — compiling this fake without them is
+ * itself the guard-lift regression assertion.
  */
-function fake_ports(seed: {
-  memberships_by_email?: Record<string, Array<{ tenant_id: string; status: string }>>;
-  invitations_by_email?: Record<string, Array<{ tenant_id: string; status: string }>>;
-} = {}) {
+function fake_ports() {
   const clerk_invitations: Array<{ email: string; role: string; org: string }> = [];
   const projections: any[] = [];
   const suspensions: Array<{ tenant_id: string; profile_id: string }> = [];
@@ -43,17 +40,11 @@ function fake_ports(seed: {
 
   const ports: TenantMemberPorts = {
     memberships: {
-      async find_memberships_by_email(email) {
-        return (seed.memberships_by_email?.[email] ?? []) as any;
-      },
       async suspend_membership(tenant_id, user_profile_id) {
         suspensions.push({ tenant_id, profile_id: user_profile_id });
       },
     },
     invitations: {
-      async find_invitations_by_email(email) {
-        return (seed.invitations_by_email?.[email] ?? []) as any;
-      },
       async upsert(tenant_id, invitation, invited_by_profile_id) {
         projections.push({ tenant_id, invitation, invited_by_profile_id });
       },
@@ -84,7 +75,7 @@ function fake_ports(seed: {
   return { ports, clerk_invitations, projections, suspensions, audit_events };
 }
 
-describe("invite_tenant_user", () => {
+describe("invite_tenant_user (multi-org permitted)", () => {
   it("lets a manager invite a tenant user with the user role only", async () => {
     const world = fake_ports();
     const result = await invite_tenant_user(
@@ -109,43 +100,12 @@ describe("invite_tenant_user", () => {
     expect(world.clerk_invitations).toHaveLength(0);
   });
 
-  it("rejects a second active membership with MULTIPLE_MEMBERSHIPS_DISABLED", async () => {
-    const world = fake_ports({
-      memberships_by_email: {
-        "taken@x.ac.th": [{ tenant_id: "tenant_other", status: "active" }],
-      },
-    });
+  it("invites an email that already belongs to another university (guard lifted)", async () => {
+    const world = fake_ports();
     await expect(
-      invite_tenant_user(manager, { email: "taken@x.ac.th" }, world.ports),
-    ).rejects.toBeInstanceOf(MultipleMembershipsDisabledError);
-    expect(world.clerk_invitations).toHaveLength(0);
-  });
-
-  it("rejects a pending invitation at another university", async () => {
-    const world = fake_ports({
-      invitations_by_email: {
-        "pending@x.ac.th": [{ tenant_id: "tenant_other", status: "invited" }],
-      },
-    });
-    await expect(
-      invite_tenant_user(manager, { email: "pending@x.ac.th" }, world.ports),
-    ).rejects.toBeInstanceOf(MultipleMembershipsDisabledError);
-  });
-
-  it("allows re-inviting into the same tenant idempotently", async () => {
-    const world = fake_ports({
-      invitations_by_email: {
-        "same@x.ac.th": [
-          { tenant_id: "507f1f77bcf86cd799439031", status: "invited" },
-        ],
-      },
-    });
-    const result = await invite_tenant_user(
-      manager,
-      { email: "same@x.ac.th" },
-      world.ports,
-    );
-    expect(result.invitation_id).toBeTruthy();
+      invite_tenant_user(manager, { email: "second-org@x.ac.th" }, world.ports),
+    ).resolves.toMatchObject({ invitation_id: "inv_1" });
+    expect(world.clerk_invitations).toHaveLength(1);
   });
 });
 

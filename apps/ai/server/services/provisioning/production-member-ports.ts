@@ -229,16 +229,6 @@ export function create_production_member_ports(
       },
     },
     invitations: {
-      async find_invitations_by_email(email) {
-        const invitations = await db
-          .collection("tenant_invitation_projections")
-          .find({ emailNormalized: email })
-          .toArray();
-        return invitations.map((invitation) => ({
-          tenant_id: String(invitation.tenantId),
-          status: String(invitation.status),
-        }));
-      },
       async upsert(tenant_id, invitation, invited_by_profile_id) {
         const now = new Date();
         await db.collection("tenant_invitation_projections").updateOne(

@@ -92,22 +92,31 @@ export async function reconcile_tenant(
       : "user";
     const projection = projection_by_clerk_id.get(membership.id);
     if (!projection) {
-      // Safe repair: Clerk is authoritative for membership existence.
-      await db.collection("tenant_membership_projections").insertOne({
-        clerkMembershipId: membership.id,
-        tenantId: tenant_id,
-        userProfileId: profile._id.toString(),
-        tenantRole: role,
-        status: "active",
-        clerkSyncVersion: 0,
-        clerkSyncedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      // Safe repair: Clerk is authoritative for membership existence. Keyed
+      // by (tenantId, userProfileId) with revive semantics — a revoked
+      // projection for the same pair is revived under the new Clerk
+      // membership id instead of violating uniq_membership_tenant_profile.
+      await db.collection("tenant_membership_projections").updateOne(
+        { tenantId: tenant_id, userProfileId: profile._id.toString() },
+        {
+          $set: {
+            clerkMembershipId: membership.id,
+            tenantRole: role,
+            status: "active",
+            clerkSyncedAt: new Date(),
+            updatedAt: new Date(),
+          },
+          $setOnInsert: {
+            clerkSyncVersion: 0,
+            createdAt: new Date(),
+          },
+        },
+        { upsert: true },
+      );
       findings.push({
         kind: "missing_projection_repaired",
         clerk_membership_id: membership.id,
-        detail: `Created missing projection with role ${role}.`,
+        detail: `Created or revived projection with role ${role}.`,
       });
       continue;
     }

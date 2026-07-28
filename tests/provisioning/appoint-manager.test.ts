@@ -1,3 +1,4 @@
+// tests/provisioning/appoint-manager.test.ts
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,7 +6,6 @@ import {
   AlreadyTenantMemberError,
   type AppointManagerPorts,
 } from "../../apps/ai/server/services/provisioning/appoint-manager";
-import { MultipleMembershipsDisabledError } from "../../apps/ai/server/services/provisioning/invite-tenant-user";
 import { AuthorizationError } from "../../apps/ai/server/auth/errors";
 import { TENANT_ROLE_PERMISSIONS } from "../../packages/shared-types/src/auth";
 import type { RequestPrincipal } from "../../packages/shared-types/src/auth";
@@ -38,12 +38,11 @@ const tenant_manager: RequestPrincipal = {
 /**
  * Build in-memory appointment ports.
  *
- * @param seed - Existing memberships/invitations by normalized email and
- *               optional Clerk organization / pending invitation overrides.
+ * @param seed - Existing memberships by normalized email and optional Clerk
+ *               organization / pending invitation overrides.
  */
 function fake_ports(seed: {
   memberships_by_email?: Record<string, Array<{ tenant_id: string; status: string }>>;
-  invitations_by_email?: Record<string, Array<{ tenant_id: string; status: string }>>;
   clerk_organization_id?: string | null;
   pending_invitation?: { id: string; email: string; role: string };
 } = {}) {
@@ -58,9 +57,6 @@ function fake_ports(seed: {
       },
     },
     invitations: {
-      async find_invitations_by_email(email) {
-        return (seed.invitations_by_email?.[email] ?? []) as any;
-      },
       async upsert(tenant_id, invitation, invited_by_profile_id) {
         projections.push({ tenant_id, invitation, invited_by_profile_id });
       },
@@ -144,20 +140,18 @@ describe("appoint_manager", () => {
     expect(world.projections).toHaveLength(0);
   });
 
-  it("rejects an email that belongs to another university", async () => {
+  it("appoints an email that already belongs to another university (guard lifted)", async () => {
     const world = fake_ports({
       memberships_by_email: {
         "dean@chula.ac.th": [{ tenant_id: OTHER_TENANT, status: "active" }],
       },
     });
-    await expect(
-      appoint_manager(
-        platform_admin,
-        { tenant_id: TENANT, email: "dean@chula.ac.th" },
-        world.ports,
-      ),
-    ).rejects.toBeInstanceOf(MultipleMembershipsDisabledError);
-    expect(world.clerk_invitations).toHaveLength(0);
+    const result = await appoint_manager(
+      platform_admin,
+      { tenant_id: TENANT, email: "dean@chula.ac.th" },
+      world.ports,
+    );
+    expect(result.invitation_id).toBe("inv_1");
   });
 
   it("rejects an email that is already an active member of this university", async () => {

@@ -1,14 +1,15 @@
+// apps/ai/server/services/provisioning/appoint-manager.ts
 import { z } from "zod";
 import type { RequestPrincipal } from "@rnd-ai/shared-types";
 
 import { require_platform_admin } from "../../auth/authorize";
-import { MultipleMembershipsDisabledError } from "./invite-tenant-user";
 import type { ManagerInvitation } from "./provisioning-types";
 
 /**
  * Raised when the appointee already holds an active membership in the target
  * university. Appointment is an invitation flow; role changes for existing
- * members are reconciled through Clerk, not silently re-invited.
+ * members go through platformTenants.demoteManager / reconciliation, not a
+ * silent re-invite.
  */
 export class AlreadyTenantMemberError extends Error {
   readonly code = "ALREADY_TENANT_MEMBER";
@@ -36,9 +37,6 @@ export interface AppointManagerPorts {
     ): Promise<Array<{ tenant_id: string; status: string }>>;
   };
   readonly invitations: {
-    find_invitations_by_email(
-      email: string,
-    ): Promise<Array<{ tenant_id: string; status: string }>>;
     upsert(
       tenant_id: string,
       invitation: ManagerInvitation,
@@ -63,15 +61,16 @@ export interface AppointManagerPorts {
  * Appoint a university manager. Platform-only by plan: tenant managers can
  * never mint managers (their invite path always passes the user role), so
  * this operation asserts a platform role even though the router also gates
- * it. The single-membership rule is enforced before Clerk is called, and the
- * Clerk port is idempotent over pending invitations.
+ * it. Multi-org membership is permitted (Plan 3): memberships at OTHER
+ * universities no longer block appointment — only an existing active
+ * membership in THIS university does. The Clerk port stays idempotent over
+ * pending invitations.
  *
  * @param actor - Verified principal; must hold a platform role.
  * @param raw_input - Appointment input ({ tenant_id, email }).
  * @param ports - Appointment ports (memberships, invitations, Clerk, tenants, audit).
  * @returns Created or reused invitation ID and its Clerk manager role.
  * @throws AuthorizationError when the actor holds no platform role.
- * @throws MultipleMembershipsDisabledError when the email belongs to another university.
  * @throws AlreadyTenantMemberError when the email is already an active member here.
  * @throws Error when the tenant has no Clerk organization.
  */
@@ -83,18 +82,7 @@ export async function appoint_manager(
   require_platform_admin(actor);
   const input = appoint_input_schema.parse(raw_input);
 
-  const [memberships, invitations] = await Promise.all([
-    ports.memberships.find_memberships_by_email(input.email),
-    ports.invitations.find_invitations_by_email(input.email),
-  ]);
-  const blocking_elsewhere = [...memberships, ...invitations].some(
-    (record) =>
-      record.tenant_id !== input.tenant_id &&
-      (record.status === "active" || record.status === "invited"),
-  );
-  if (blocking_elsewhere) {
-    throw new MultipleMembershipsDisabledError(input.email);
-  }
+  const memberships = await ports.memberships.find_memberships_by_email(input.email);
   const already_member = memberships.some(
     (record) =>
       record.tenant_id === input.tenant_id && record.status === "active",

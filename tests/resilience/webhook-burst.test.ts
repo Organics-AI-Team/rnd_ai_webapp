@@ -46,6 +46,9 @@ function webhook_world() {
       async complete(event_id) {
         receipts.set(event_id, true);
       },
+      async fail(event_id) {
+        receipts.delete(event_id);
+      },
     },
     projections: {
       async upsert_user_profile(user, occurred_at) {
@@ -72,10 +75,9 @@ function webhook_world() {
       async update_invitation_status() {
         return "applied";
       },
-      async count_other_active_memberships() {
+      async count_active_memberships() {
         return 0;
       },
-      async suspend_profile_authorization() {},
     },
     audit: {
       async record() {},

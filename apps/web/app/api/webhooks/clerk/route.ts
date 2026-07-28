@@ -1,3 +1,4 @@
+// apps/web/app/api/webhooks/clerk/route.ts
 import type { Db } from "mongodb";
 import client_promise from "@rnd-ai/shared-database";
 
@@ -64,12 +65,32 @@ function production_deps(db: Db): ClerkWebhookDependencies {
           },
           { upsert: true },
         );
-        return { already_processed: result.upsertedCount === 0 };
+        if (result.upsertedCount > 0) return { already_processed: false };
+        // A previously FAILED apply is reclaimable: the svix retry must
+        // reapply instead of no-opping against a dead claim.
+        const reclaimed = await db
+          .collection("clerk_webhook_receipts")
+          .findOneAndUpdate(
+            { eventId: event_id, result: "failed" },
+            { $set: { result: "claimed", occurredAt: new Date() } },
+          );
+        return { already_processed: reclaimed === null };
       },
       async complete(event_id) {
         await db.collection("clerk_webhook_receipts").updateOne(
           { eventId: event_id },
           { $set: { processedAt: new Date(), result: "processed" } },
+        );
+      },
+      async fail(event_id) {
+        console.error({
+          boundary: "clerk-webhook",
+          event: "receipt.failed",
+          event_id,
+        });
+        await db.collection("clerk_webhook_receipts").updateOne(
+          { eventId: event_id },
+          { $set: { result: "failed", processedAt: new Date() } },
         );
       },
     },
@@ -126,9 +147,17 @@ function production_deps(db: Db): ClerkWebhookDependencies {
         return profile ? profile._id.toString() : null;
       },
       async upsert_membership(membership, occurred_at) {
+        // Revive keying (Plan 3 BLOCKING fix): one projection row per
+        // (tenantId, userProfileId) — the unique index forbids a second row,
+        // and remove→re-invite mints a NEW clerkMembershipId for the SAME
+        // pair. Insert when absent; otherwise revive/update the existing row
+        // under the monotonic clock guard, adopting the new Clerk id.
         const existing = await db
           .collection("tenant_membership_projections")
-          .findOne({ clerkMembershipId: membership.clerk_membership_id });
+          .findOne({
+            tenantId: membership.tenant_id,
+            userProfileId: membership.user_profile_id,
+          });
         if (!existing) {
           await db.collection("tenant_membership_projections").insertOne({
             clerkMembershipId: membership.clerk_membership_id,
@@ -146,8 +175,15 @@ function production_deps(db: Db): ClerkWebhookDependencies {
         return monotonic_update(
           db,
           "tenant_membership_projections",
-          { clerkMembershipId: membership.clerk_membership_id },
-          { tenantRole: membership.tenant_role, status: membership.status },
+          {
+            tenantId: membership.tenant_id,
+            userProfileId: membership.user_profile_id,
+          },
+          {
+            clerkMembershipId: membership.clerk_membership_id,
+            tenantRole: membership.tenant_role,
+            status: membership.status,
+          },
           occurred_at,
         );
       },
@@ -169,20 +205,11 @@ function production_deps(db: Db): ClerkWebhookDependencies {
           occurred_at,
         );
       },
-      async count_other_active_memberships(user_profile_id, clerk_membership_id) {
+      async count_active_memberships(user_profile_id) {
         return db.collection("tenant_membership_projections").countDocuments({
           userProfileId: user_profile_id,
-          clerkMembershipId: { $ne: clerk_membership_id },
           status: "active",
         });
-      },
-      async suspend_profile_authorization(user_profile_id) {
-        const { ObjectId } = await import("mongodb");
-        if (!ObjectId.isValid(user_profile_id)) return;
-        await db.collection("user_profiles").updateOne(
-          { _id: new ObjectId(user_profile_id) },
-          { $set: { status: "suspended", updatedAt: new Date() } },
-        );
       },
     },
     audit: {
@@ -195,10 +222,11 @@ function production_deps(db: Db): ClerkWebhookDependencies {
 
 /**
  * Clerk webhook ingress. Signature-verified before any parsing; duplicate
- * events acknowledge 200 without reapplying (svix retries are expected).
+ * events acknowledge 200 without reapplying; failed applies answer 500 so
+ * svix retries (receipts complete only after a successful apply).
  *
  * @param request - Incoming webhook request.
- * @returns 200 on success/duplicate, 400 on invalid signature.
+ * @returns 200 on success/duplicate, 400 on invalid signature, 500 retryable.
  */
 export async function POST(request: Request): Promise<Response> {
   const client = await client_promise;

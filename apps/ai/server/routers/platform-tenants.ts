@@ -18,7 +18,6 @@ import {
   appoint_manager,
   AlreadyTenantMemberError,
 } from "../services/provisioning/appoint-manager";
-import { MultipleMembershipsDisabledError } from "../services/provisioning/invite-tenant-user";
 import { create_production_member_ports } from "../services/provisioning/production-member-ports";
 
 /**
@@ -154,10 +153,7 @@ export const platformTenantsRouter = router({
           create_production_member_ports(client.db()),
         );
       } catch (error) {
-        if (
-          error instanceof MultipleMembershipsDisabledError ||
-          error instanceof AlreadyTenantMemberError
-        ) {
+        if (error instanceof AlreadyTenantMemberError) {
           throw new TRPCError({ code: "CONFLICT", message: error.message });
         }
         throw error;
