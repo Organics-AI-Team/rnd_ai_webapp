@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Navigation } from "./navigation";
 import { AdminNavigation } from "./admin-navigation";
 import { OrganizationActivator } from "./organization_activator";
+import { CrossOrgNotFoundHint } from "./cross_org_not_found_hint";
 
 // Clerk components render only when the deployment configures Clerk — the
 // legacy flow has no ClerkProvider and Clerk hooks would throw (same
@@ -29,8 +30,14 @@ export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   }
 
   // Org-context guard: auto-activates a sole membership; renders an explicit
-  // picker for multi-membership sessions with no active organization.
-  const org_guard = clerk_enabled ? <OrganizationActivator /> : null;
+  // picker for multi-membership sessions with no active organization. The
+  // cross-org NOT_FOUND hint shares the Clerk gate.
+  const org_guard = clerk_enabled ? (
+    <>
+      <OrganizationActivator />
+      <CrossOrgNotFoundHint />
+    </>
+  ) : null;
 
   // If it's an admin route, use AdminNavigation
   if (isAdminRoute) {
