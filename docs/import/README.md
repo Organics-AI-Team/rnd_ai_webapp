@@ -39,3 +39,51 @@ Re-running produces the same counts (upsert by natural key).
 Both managed Mongo clusters are trusted-source firewalled to the droplet —
 imports must run ON `rnd-ai-prod` (`/opt/rnd-ai`), with the export synced to
 `/opt/rnd_ai` and `RND_EXPORT_DIR=/opt/rnd_ai`.
+
+## Qdrant knowledge ingest (M3)
+
+Grounds the governed `knowledge.search` tool. Writes through the governed
+adapter into the SAME collections production reads —
+`platform_knowledge_${AI_EMBEDDING_VERSION}` (market scrape) and
+`tenant_knowledge_${AI_EMBEDDING_VERSION}` (this tenant's formulas) — with
+the production embedding config (gemini-embedding-001, 768 dims, version
+`v1`). Never writes the legacy `raw_materials_*` collections.
+
+**Run ON the rnd-ai-prod droplet** (Mongo + Qdrant are firewalled to it).
+
+### Extra env (beyond the Mongo section above)
+- `GEMINI_API_KEY` — REQUIRED for embeddings. Verify it is set on the
+  droplet before starting: `node -e "process.env.GEMINI_API_KEY || process.exit(1)"`.
+- `QDRANT_URL`, `QDRANT_API_KEY` — existing Qdrant connection.
+- `AI_EMBEDDING_MODEL` / `AI_EMBEDDING_VERSION` / `AI_EMBEDDING_DIMENSIONS`
+  — leave at the worker defaults (`gemini-embedding-001` / `v1` / `768`)
+  unless the worker env pins different values; they MUST match the worker.
+- `KNOWLEDGE_BATCH_SIZE` (default 50), `KNOWLEDGE_BATCH_DELAY_MS` (default
+  1000), `KNOWLEDGE_PROGRESS_FILE` (default `.import-progress-myskin.json`).
+
+### Commands
+```bash
+# validate + report, no embeds, no writes
+npm run import:knowledge:market   -w apps/ai -- --dry-run
+IMPORT_TENANT_ID=<tenant> IMPORT_ACTOR_PROFILE_ID=<profile> \
+  npm run import:knowledge:formulas -w apps/ai -- --dry-run
+
+# real runs (market takes ~40+ min for 94,530 rows; run under nohup/tmux)
+npm run import:knowledge:market   -w apps/ai
+IMPORT_TENANT_ID=<tenant> IMPORT_ACTOR_PROFILE_ID=<profile> \
+  npm run import:knowledge:formulas -w apps/ai
+
+# both, in order
+IMPORT_TENANT_ID=<tenant> IMPORT_ACTOR_PROFILE_ID=<profile> \
+  npm run import:knowledge -w apps/ai
+```
+
+### Resumability & idempotency
+- The market ingest checkpoints its row position after every batch; an
+  interrupted run resumes where it stopped. Pass `--from-start` to ignore
+  the checkpoint. Point ids are deterministic per `source_id`, so re-runs
+  overwrite the same points — never duplicate.
+
+### Expected counts (Organics AI tenant)
+- platform points: ≤ 94,530 (myskin rows minus unidentifiable/duplicate)
+- tenant points: ~1,916 (one per imported formula)

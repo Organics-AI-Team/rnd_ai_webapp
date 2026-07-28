@@ -31,7 +31,9 @@
     "import:formulas": "tsx scripts/import/import-formulas.ts",
     "import:all": "tsx scripts/import/import-all.ts",
     "grant:tool": "tsx scripts/grant-tool-allowlist.ts",
-    "import:knowledge:market": "tsx scripts/import/import-knowledge-market.ts"
+    "import:knowledge:market": "tsx scripts/import/import-knowledge-market.ts",
+    "import:knowledge:formulas": "tsx scripts/import/import-knowledge-formulas.ts",
+    "import:knowledge": "npm run import:knowledge:market && npm run import:knowledge:formulas"
   },
   "dependencies": {
     "@clerk/backend": "3.11.5",
