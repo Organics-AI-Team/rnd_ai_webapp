@@ -107,7 +107,7 @@ export const tenantMembersRouter = router({
       try {
         return await revoke_tenant_invitation(
           ctx.principal,
-          input,
+          { clerk_invitation_id: input.clerk_invitation_id ?? "" },
           create_production_member_admin_ports(client.db()),
         );
       } catch (error) {
@@ -125,7 +125,7 @@ export const tenantMembersRouter = router({
       try {
         return await resend_tenant_invitation(
           ctx.principal,
-          input,
+          { clerk_invitation_id: input.clerk_invitation_id ?? "" },
           create_production_member_admin_ports(client.db()),
         );
       } catch (error) {
@@ -144,7 +144,7 @@ export const tenantMembersRouter = router({
       try {
         return await suspend_tenant_user(
           ctx.principal,
-          input,
+          { user_profile_id: input.user_profile_id ?? "" },
           create_production_member_admin_ports(client.db()),
         );
       } catch (error) {
@@ -163,7 +163,7 @@ export const tenantMembersRouter = router({
       try {
         return await reactivate_tenant_user(
           ctx.principal,
-          input,
+          { user_profile_id: input.user_profile_id ?? "" },
           create_production_member_admin_ports(client.db()),
         );
       } catch (error) {
@@ -182,7 +182,7 @@ export const tenantMembersRouter = router({
       try {
         return await remove_tenant_user(
           ctx.principal,
-          input,
+          { user_profile_id: input.user_profile_id ?? "" },
           create_production_member_admin_ports(client.db()),
         );
       } catch (error) {

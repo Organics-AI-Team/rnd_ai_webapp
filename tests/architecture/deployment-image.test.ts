@@ -57,7 +57,10 @@ describe("droplet deployment images", () => {
     const compose = await read("docker-compose.yml");
 
     expect(compose).toContain("dockerfile: apps/web/Dockerfile");
-    expect(compose).toContain('"3000:3000"');
+    // Port is bound to localhost only (127.0.0.1:3000:3000) so nginx on the
+    // droplet proxies 80/443 → 127.0.0.1:3000 without exposing the app on
+    // the public interface. Both forms contain "3000:3000" as a substring.
+    expect(compose).toContain("3000:3000");
     expect(compose).toContain("QDRANT_URL=http://qdrant:6333");
     expect(compose).toContain("/api/health");
   });

@@ -206,6 +206,34 @@ export function create_production_member_ports(
   const clerk = clerk_like ?? default_clerk_backend();
 
   return {
+    memberships: {
+      /**
+       * Find all active/suspended memberships for the given email across all
+       * tenants. Used by appoint_manager to guard against re-inviting an
+       * existing member of THIS university (multi-org is permitted for others).
+       *
+       * @param email - Normalized email to query.
+       * @returns Array of { tenant_id, status } membership records.
+       */
+      async find_memberships_by_email(
+        email: string,
+      ): Promise<Array<{ tenant_id: string; status: string }>> {
+        // Look up the profile by normalized email, then find all memberships
+        // for that profile.
+        const profile = await db
+          .collection("user_profiles")
+          .findOne({ emailNormalized: email });
+        if (!profile) return [];
+        const memberships = await db
+          .collection("tenant_membership_projections")
+          .find({ userProfileId: profile._id.toString() })
+          .toArray();
+        return memberships.map((m) => ({
+          tenant_id: String(m.tenantId),
+          status: String(m.status),
+        }));
+      },
+    },
     invitations: {
       async upsert(tenant_id, invitation, invited_by_profile_id) {
         const now = new Date();

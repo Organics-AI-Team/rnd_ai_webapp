@@ -34,7 +34,8 @@
     "provision:tenant-ai": "tsx scripts/provision-tenant-ai.ts",
     "import:knowledge:market": "tsx scripts/import/import-knowledge-market.ts",
     "import:knowledge:formulas": "tsx scripts/import/import-knowledge-formulas.ts",
-    "import:knowledge": "npm run import:knowledge:market && npm run import:knowledge:formulas"
+    "import:knowledge": "npm run import:knowledge:market && npm run import:knowledge:formulas",
+    "repair:multi-org-suspensions": "tsx scripts/repair-multi-org-suspensions.ts"
   },
   "dependencies": {
     "@clerk/backend": "3.11.5",

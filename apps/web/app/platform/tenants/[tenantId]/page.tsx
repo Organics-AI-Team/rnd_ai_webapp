@@ -24,7 +24,21 @@ export default function PlatformTenantDetailPage() {
   const utils = trpc.useUtils();
   const tenants = trpc.platformTenants.list.useQuery();
   const members = trpc.platformTenants.listMembers.useQuery({ tenant_id });
-  const tenant = tenants.data?.find((entry: any) => entry._id === tenant_id);
+  // MongoDB projection includes slug/name/status/planKey/dataResidencyRegion/
+  // clerkOrganizationId. The tRPC router spreads the full document; TypeScript
+  // can only infer the _id field because MongoDB's with-projection type is
+  // opaque. We cast to the known runtime shape.
+  const tenant = tenants.data?.find((entry: any) => entry._id === tenant_id) as
+    | {
+        _id: string;
+        name?: string;
+        slug?: string;
+        status?: string;
+        planKey?: string;
+        dataResidencyRegion?: string;
+        clerkOrganizationId?: string;
+      }
+    | undefined;
 
   /** Refresh the member list after any mutation. */
   const refresh = () =>

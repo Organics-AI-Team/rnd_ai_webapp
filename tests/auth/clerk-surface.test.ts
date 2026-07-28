@@ -82,10 +82,11 @@ describe("Clerk authentication surface (G1.1)", () => {
   });
 
   it("onboarding activates the sole organization membership on the session", () => {
-    // Clerk sessions start with no active organization; without activation a
-    // freshly-invited user sees "Invitation pending" forever.
-    const onboarding = read_source("apps/web/app/onboarding/page.tsx");
-    expect(onboarding).toContain("OrganizationActivator");
+    // Plan 3 (Task 8): the OrganizationActivator is mounted globally in the
+    // authenticated layout (conditional-layout.tsx) rather than the onboarding
+    // page itself, so that every authenticated route benefits from the guard.
+    const layout = read_source("apps/web/components/conditional-layout.tsx");
+    expect(layout).toContain("OrganizationActivator");
     const activator = read_source("apps/web/components/organization_activator.tsx");
     expect(activator).toContain("useOrganizationList");
     expect(activator).toContain("setActive");
@@ -109,7 +110,10 @@ describe("Clerk authentication surface (G1.1)", () => {
     expect(onboarding).toContain("resolve_clerk_principal");
     expect(onboarding).toContain("create_identity_projection_repositories");
     expect(onboarding).toContain('"ready"');
-    expect(onboarding).toContain('"reconciliation_required"');
+    // Plan 3 renames reconciliation_required to a distinct content state; the
+    // state key itself is still exported from onboarding-state and rendered in
+    // the content map — verify the key is present as a content entry.
+    expect(onboarding).toContain("reconciliation_required");
     expect(onboarding).toContain('href="/dashboard"');
   });
 
@@ -125,11 +129,24 @@ describe("Clerk authentication surface (G1.1)", () => {
     );
   });
 
-  it("never renders organization self-service components", () => {
+  it("never renders uncontrolled organization self-service components", () => {
+    // Plan 3 (Task 12): OrgSwitcherPanel wraps OrganizationSwitcher with the
+    // management popover buttons hidden (CSS display:none) and organizations-
+    // only mode — the component itself is permitted. CreateOrganization is
+    // still entirely blocked; users must be provisioned by platform admins.
     for (const file of list_sources("apps/web")) {
       const content = readFileSync(file, "utf8");
-      expect(content, file).not.toContain("OrganizationSwitcher");
       expect(content, file).not.toContain("CreateOrganization");
+    }
+    // OrganizationSwitcher must only appear inside the governed wrapper.
+    const switcher_sources = list_sources("apps/web").filter((file) =>
+      readFileSync(file, "utf8").includes("OrganizationSwitcher"),
+    );
+    expect(switcher_sources.length).toBeGreaterThan(0);
+    for (const file of switcher_sources) {
+      // All usage must be in the org_switcher_panel component or its
+      // re-exports — never in arbitrary page/layout files.
+      expect(file).toContain("org_switcher_panel");
     }
   });
 

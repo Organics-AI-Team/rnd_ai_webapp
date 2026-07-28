@@ -193,7 +193,7 @@ export const platformTenantsRouter = router({
       try {
         return await demote_manager(
           ctx.principal,
-          input,
+          { tenant_id: input.tenant_id ?? "", user_profile_id: input.user_profile_id ?? "" },
           create_production_member_admin_ports(client.db()),
         );
       } catch (error) {
