@@ -27,7 +27,8 @@
     "tenant:backfill": "tsx scripts/backfill-tenant-ownership.ts",
     "tenant:verify": "tsx scripts/verify-tenant-ownership.ts",
     "import:reference": "tsx scripts/import/import-reference.ts",
-    "import:materials": "tsx scripts/import/import-materials.ts"
+    "import:materials": "tsx scripts/import/import-materials.ts",
+    "import:formulas": "tsx scripts/import/import-formulas.ts"
   },
   "dependencies": {
     "@clerk/backend": "3.11.5",
