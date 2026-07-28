@@ -3,6 +3,12 @@
 import { usePathname } from "next/navigation";
 import { Navigation } from "./navigation";
 import { AdminNavigation } from "./admin-navigation";
+import { OrganizationActivator } from "./organization_activator";
+
+// Clerk components render only when the deployment configures Clerk — the
+// legacy flow has no ClerkProvider and Clerk hooks would throw (same
+// build-time check as app-auth.tsx).
+const clerk_enabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -22,18 +28,28 @@ export function ConditionalLayout({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  // Org-context guard: auto-activates a sole membership; renders an explicit
+  // picker for multi-membership sessions with no active organization.
+  const org_guard = clerk_enabled ? <OrganizationActivator /> : null;
+
   // If it's an admin route, use AdminNavigation
   if (isAdminRoute) {
     return (
-      <AdminNavigation>
-        <main className="p-6">{children}</main>
-      </AdminNavigation>
+      <>
+        {org_guard}
+        <AdminNavigation>
+          <main className="p-6">{children}</main>
+        </AdminNavigation>
+      </>
     );
   }
 
   return (
-    <Navigation>
-      <main className={isAIPage ? "h-full" : "p-6"}>{children}</main>
-    </Navigation>
+    <>
+      {org_guard}
+      <Navigation>
+        <main className={isAIPage ? "h-full" : "p-6"}>{children}</main>
+      </Navigation>
+    </>
   );
 }

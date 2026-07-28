@@ -2,80 +2,121 @@ import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import client_promise from "@rnd-ai/shared-database";
 
-import { OrganizationActivator } from "@/components/organization_activator";
 import { is_clerk_enabled } from "@/lib/server/clerk-config";
+import {
+  classify_onboarding_state,
+  type MembershipResolution,
+  type OnboardingState,
+} from "@/lib/server/onboarding-state";
 import { AuthorizationError } from "@/server/auth/errors";
 import { resolve_clerk_principal } from "@/server/auth/clerk-principal-resolver";
 import { create_identity_projection_repositories } from "@/server/auth/identity-repositories";
 
 export const dynamic = "force-dynamic";
 
-type OnboardingState =
-  | "clerk_disabled"
-  | "unauthenticated"
-  | "invitation_pending"
-  | "membership_sync_pending"
-  | "reconciliation_required"
-  | "ready";
+/**
+ * Lazily connect and return the database handle (never touched when Clerk
+ * is disabled — the classification short-circuits first).
+ *
+ * @returns Connected database handle.
+ */
+async function database() {
+  return (await client_promise).db();
+}
 
 /**
  * Determine the onboarding state from the server-side Clerk session and the
  * internal identity projections. A Clerk organization on the session is not
  * enough — the database-authoritative membership projection decides whether
- * the user is actually onboarded, still synchronizing, or needs support.
- * This page never queries tenant business data.
+ * the user is onboarded, suspended, removed, still synchronizing, or must
+ * choose among several organizations. Never queries tenant business data.
  *
  * @returns Onboarding state for the current request.
  */
 async function resolve_onboarding_state(): Promise<OnboardingState> {
-  if (!is_clerk_enabled()) return "clerk_disabled";
-  const auth_state = await auth();
-  if (!auth_state.userId) return "unauthenticated";
-  if (!auth_state.orgId) return "invitation_pending";
+  const clerk_enabled = is_clerk_enabled();
+  const auth_state = clerk_enabled ? await auth() : null;
+  const snapshot = {
+    clerk_enabled,
+    user_id: auth_state?.userId ?? null,
+    org_id: auth_state?.orgId ?? null,
+  };
 
-  try {
-    const repositories = create_identity_projection_repositories(
-      (await client_promise).db(),
-    );
-    const principal = await resolve_clerk_principal(
-      {
-        userId: auth_state.userId,
-        orgId: auth_state.orgId ?? null,
-        orgRole: auth_state.orgRole ?? null,
-        sessionId: auth_state.sessionId ?? null,
-      },
-      repositories,
-    );
-    console.info({
-      boundary: "onboarding",
-      event: "membership.resolved",
-      membership_status: principal.membership_status,
-    });
-    return principal.membership_status === "active"
-      ? "ready"
-      : "membership_sync_pending";
-  } catch (error) {
-    if (error instanceof AuthorizationError) {
-      // UNAUTHENTICATED (profile not projected yet) and MEMBERSHIP_INACTIVE
-      // (membership not projected yet) are normal webhook-lag states;
-      // FORBIDDEN (inactive tenant or role mismatch) needs an operator.
-      console.info({
-        boundary: "onboarding",
-        event: "membership.unresolved",
-        code: error.code,
+  return classify_onboarding_state(snapshot, {
+    async resolve_membership(): Promise<MembershipResolution> {
+      try {
+        const principal = await resolve_clerk_principal(
+          {
+            userId: auth_state?.userId ?? null,
+            orgId: auth_state?.orgId ?? null,
+            orgRole: auth_state?.orgRole ?? null,
+            sessionId: auth_state?.sessionId ?? null,
+          },
+          create_identity_projection_repositories(await database()),
+        );
+        console.info({
+          boundary: "onboarding",
+          event: "membership.resolved",
+          membership_status: principal.membership_status,
+        });
+        return principal.membership_status === "active"
+          ? { kind: "ready" }
+          : { kind: "rejected", code: "MEMBERSHIP_INACTIVE" };
+      } catch (error) {
+        if (error instanceof AuthorizationError) {
+          console.info({
+            boundary: "onboarding",
+            event: "membership.unresolved",
+            code: error.code,
+          });
+          const code =
+            error.code === "MEMBERSHIP_INACTIVE" || error.code === "FORBIDDEN"
+              ? error.code
+              : "UNAUTHENTICATED";
+          return { kind: "rejected", code };
+        }
+        throw error;
+      }
+    },
+    async find_projection_status() {
+      const db = await database();
+      const profile = await db
+        .collection("user_profiles")
+        .findOne({ clerkUserId: snapshot.user_id });
+      const tenant = await db
+        .collection("tenants")
+        .findOne({ clerkOrganizationId: snapshot.org_id });
+      if (!profile || !tenant) return null;
+      const membership = await db
+        .collection("tenant_membership_projections")
+        .findOne({
+          tenantId: tenant._id.toString(),
+          userProfileId: profile._id.toString(),
+        });
+      const status = membership ? String(membership.status) : null;
+      return status === "active" || status === "suspended" || status === "revoked"
+        ? status
+        : null;
+    },
+    async count_active_memberships() {
+      const db = await database();
+      const profile = await db
+        .collection("user_profiles")
+        .findOne({ clerkUserId: snapshot.user_id });
+      if (!profile) return 0;
+      return db.collection("tenant_membership_projections").countDocuments({
+        userProfileId: profile._id.toString(),
+        status: "active",
       });
-      return error.code === "FORBIDDEN"
-        ? "reconciliation_required"
-        : "membership_sync_pending";
-    }
-    throw error;
-  }
+    },
+  });
 }
 
 /**
- * Onboarding status page (G1.1). Shows explicit states from the server-side
- * principal resolution: invitation pending, membership synchronization
- * pending, reconciliation required, or ready with a link into the app.
+ * Onboarding status page. Explicit states from server-side principal
+ * resolution — including Plan 3's suspended / removed / choose-organization
+ * states. The org-context guard (organization activator + picker) is
+ * mounted globally by the authenticated layout, not by this page.
  *
  * @returns Onboarding status view.
  */
@@ -95,9 +136,21 @@ export default async function OnboardingPage() {
       title: "Invitation pending",
       body: "Your account is not a member of a university yet. Ask your university manager to send you an invitation, then follow the link in the invitation email.",
     },
+    choose_organization: {
+      title: "Choose your organization",
+      body: "Your account belongs to more than one university. Pick the one you want to work in from the selector, or use the organization switcher in the sidebar.",
+    },
     membership_sync_pending: {
       title: "Membership synchronization pending",
       body: "Your university membership is being synchronized. This usually completes within a minute — refresh this page. If it persists, contact support.",
+    },
+    access_suspended: {
+      title: "Access suspended",
+      body: "Your access was suspended by your university manager — contact your administrator to restore it.",
+    },
+    membership_removed: {
+      title: "Membership removed",
+      body: "You are no longer a member of this university. If this is unexpected, ask your university manager for a new invitation — accepting it restores your access.",
     },
     reconciliation_required: {
       title: "Account needs attention",
@@ -113,10 +166,6 @@ export default async function OnboardingPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
-      {/* A freshly-invited user has a membership but no active organization
-          on the Clerk session; the activator selects it and refreshes so the
-          server-side resolution above flips to the ready state. */}
-      <OrganizationActivator />
       <div className="max-w-md text-center space-y-4">
         <h1 className="text-xl font-semibold">{title}</h1>
         <p className="text-sm text-muted-foreground">{body}</p>

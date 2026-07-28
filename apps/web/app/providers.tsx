@@ -1,15 +1,29 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { AppAuthProvider } from "@/lib/app-auth";
+import { route_membership_error } from "@/lib/membership_error_routing";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
+        // Mid-session membership loss (suspended / removed / tenant
+        // deactivated) routes to /onboarding, which explains the state.
+        queryCache: new QueryCache({
+          onError: (error) => route_membership_error(error),
+        }),
+        mutationCache: new MutationCache({
+          onError: (error) => route_membership_error(error),
+        }),
         defaultOptions: {
           queries: {
             // Serve cached data for a minute before background refresh —
