@@ -55,6 +55,17 @@ export function manager_clerk_role(): "org:manager" | "org:admin" {
 }
 
 /**
+ * Clerk role string for a plain university user under the configured role
+ * mode (org:user custom, org:member built-in). Counterpart of
+ * manager_clerk_role — new code must never hardcode org:* literals.
+ *
+ * @returns Clerk role string for tenant users.
+ */
+export function user_clerk_role(): "org:user" | "org:member" {
+  return process.env.CLERK_ORG_ROLE_MODE === "built_in" ? "org:member" : "org:user";
+}
+
+/**
  * Map a tenants collection document onto the provisioning record view.
  *
  * @param document - Raw tenant document.
