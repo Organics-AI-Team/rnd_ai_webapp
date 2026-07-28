@@ -8,6 +8,8 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "paths": {
+      "@/ai/*": ["./*"],
+      "@/server/*": ["./server/*"],
       "@/*": ["./*"],
       "@rnd-ai/shared-types": ["../../packages/shared-types/src"]
     }
