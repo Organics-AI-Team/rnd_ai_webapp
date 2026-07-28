@@ -1,5 +1,47 @@
 # Changelog
 
+## [2026-07-28] fix: /formulas/create had no ingredients — traced to empty catalog, seeded
+
+### Trace (data flow, no code bug found)
+
+`/formulas/create` → `FormulaForm` → `trpc.products.list({limit:1000})` →
+`productsRouter.list` (tenantProcedure "tenant:knowledge:read") →
+`ctx.repositories.products.search_products(tenant_context, …)` → the
+tenant-scoped `products` collection filtered by `{ tenantId }`. Post-G2.5
+the ingredient picker reads the canonical tenant `products` collection
+(NOT the legacy `raw_materials_console` or the platform-global
+`raw_materials_myskin` reference used only for CAS lookup).
+
+Root cause: the fresh production DB has an empty `products` collection, so
+the picker correctly rendered zero rows. The RBAC gate (`user.role ===
+"admin"`) passes because `app-auth` maps Clerk `org:manager` → display
+role `admin`, so the page renders — it just had nothing to list. No code
+defect; a data-seeding gap. (The old Atlas source `stockmanagement.…`
+no longer resolves and the old droplet's DB is not reachable with current
+keys, so the historical catalog was not migrated.)
+
+### Fix
+
+- Added `apps/ai/scripts/seed-products.ts`: idempotent (upsert by
+  `tenantId`+`productCode`) seed of a 24-item real cosmetic raw-material
+  starter catalog (INCI names, CAS numbers, benefits, use-cases, price,
+  supplier) written to the tenant `products` collection.
+- Seeded tenant `6a68a51a…` (Organics AI) with 24 materials.
+
+### Verified live (rndai.erporganics.com, authenticated manager)
+
+- `products.list` returns 200 with data; the "เพิ่มสาร" picker shows
+  **"เลือกสาร (24 รายการ)"** with codes RM000001–RM000024, INCI names,
+  and working Benefits/Use-Case filters.
+
+### Note
+
+This is a curated starter catalog, not the historical product list. To
+load the exact prior catalog, point the seed at the authoritative source
+(old droplet DB dump or a fresh export) and re-run.
+
+---
+
 ## [2026-07-28] ops: Production cutover complete — login + RBAC live on the IT-account stack
 
 ### Summary
