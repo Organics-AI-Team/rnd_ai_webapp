@@ -1,9 +1,11 @@
 // apps/ai/server/services/provisioning/manage-members.ts
 import { z } from "zod";
+import type { ClientSession } from "mongodb";
 import type { RequestPrincipal } from "@rnd-ai/shared-types";
 
 import { require_active_tenant, require_permission } from "../../auth/authorize";
 import {
+  LastManagerError,
   ManagerActionForbiddenError,
   MemberNotFoundError,
   ProfileInactiveError,
@@ -227,4 +229,50 @@ export async function remove_tenant_user(
     user_profile_id: input.user_profile_id,
   });
   return { success: true };
+}
+
+/**
+ * Assert (inside a transaction) that demoting/suspending/removing the given
+ * member cannot leave the tenant without an active manager. No-op for
+ * non-manager or non-active targets. Enforced for APP-INITIATED mutations
+ * only (spec §4.3) — Clerk-originated violations are detected by the
+ * zero-manager webhook detector instead.
+ *
+ * @param ports - Member-admin ports.
+ * @param tenant_id - Tenant whose invariant is protected.
+ * @param user_profile_id - Member being mutated.
+ * @param session - Transaction session the caller is running in. Required
+ *                  rationale: the count is only trustworthy inside the same
+ *                  transaction as the mutation.
+ * @throws LastManagerError when the target is the last active manager.
+ */
+export async function assert_not_last_active_manager(
+  ports: MemberAdminPorts,
+  tenant_id: string,
+  user_profile_id: string,
+  session: ClientSession | undefined,
+): Promise<void> {
+  const membership = await ports.memberships.find_membership(
+    tenant_id,
+    user_profile_id,
+    session,
+  );
+  if (
+    !membership ||
+    membership.tenant_role !== "manager" ||
+    membership.status !== "active"
+  ) {
+    return;
+  }
+  // Write-conflict guard: both of two racing transactions write the same
+  // tenant document, so Mongo aborts one (withTransaction retries it, and
+  // the retry re-reads a one-manager count) instead of committing write-skew.
+  await ports.memberships.touch_tenant_for_invariant(tenant_id, session);
+  const active_managers = await ports.memberships.count_active_managers(
+    tenant_id,
+    session,
+  );
+  if (active_managers <= 1) {
+    throw new LastManagerError(tenant_id);
+  }
 }

@@ -18,7 +18,10 @@ import {
   appoint_manager,
   AlreadyTenantMemberError,
 } from "../services/provisioning/appoint-manager";
-import { create_production_member_ports } from "../services/provisioning/production-member-ports";
+import { create_production_member_ports, create_production_member_admin_ports } from "../services/provisioning/production-member-ports";
+import { demote_manager } from "../services/provisioning/demote-manager";
+import { list_tenant_members } from "../services/provisioning/list-tenant-members";
+import { throw_member_admin_error } from "./member-admin-errors";
 
 /**
  * Build the Clerk backend client at request time from the private secret.
@@ -157,6 +160,44 @@ export const platformTenantsRouter = router({
           throw new TRPCError({ code: "CONFLICT", message: error.message });
         }
         throw error;
+      }
+    }),
+
+  /**
+   * Per-tenant member list for the platform tenant detail page. Platform
+   * roles only; tenant metadata + membership rows, never business data.
+   */
+  listMembers: platformAdminProcedure
+    .input(z.object({ tenant_id: z.string().min(1) }).strict())
+    .query(async ({ input }) => {
+      const client = await client_promise;
+      return list_tenant_members(client.db(), input.tenant_id);
+    }),
+
+  /**
+   * Demote a university manager to user (platform-only, idempotent, audited;
+   * last-manager invariant enforced transactionally with Clerk-after-commit
+   * and revert-on-failure).
+   */
+  demoteManager: platformAdminProcedure
+    .input(
+      z
+        .object({
+          tenant_id: z.string().min(1),
+          user_profile_id: z.string().min(1),
+        })
+        .strict(),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const client = await client_promise;
+      try {
+        return await demote_manager(
+          ctx.principal,
+          input,
+          create_production_member_admin_ports(client.db()),
+        );
+      } catch (error) {
+        throw_member_admin_error(error);
       }
     }),
 
