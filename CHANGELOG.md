@@ -1,5 +1,62 @@
 # Changelog
 
+## [2026-07-28] ops: Production cutover complete — login + RBAC live on the IT-account stack
+
+### Summary
+
+Completed the cutover to the dedicated IT-account stack (`rnd-ai-prod`,
+178.128.27.61) with a fresh database, real Clerk keys, and a live
+authenticated end-to-end pass. `rndai.erporganics.com` now serves from the
+new droplet through Cloudflare.
+
+### Clerk (via the official `clerk` CLI, v2.3.0)
+
+- Authenticated the CLI (`clerk auth login`, it@organicscosme.com) and
+  pulled the dev-instance keys (`clerk env pull`) for app
+  `RND AI Management` — the CLI is the credential path; there is no way to
+  read the secret key without dashboard/CLI access.
+- Installed the secret key on the droplet and restarted the stack; the
+  `Missing secretKey` middleware crash cleared and health returned 200.
+- Installed Clerk agent skills (`.agents/skills/clerk-*`).
+
+### Fresh-database bootstrap
+
+- 38 commercial indexes ensured; super-admin profile created for
+  `leonaruebet@gmail.com` (`user_3Gc4…`, profile `6a68a451…`).
+- Provisioned tenant "Organics AI" (`6a68a51a665f1a13e6bffffe`, slug
+  `organics-ai`, plan enterprise, region bkk, active) mapped to the
+  existing Clerk org `org_3GcGUvF…`; reconcile projected the manager
+  membership (`missing_projection_repaired`). Fixed the provisioning
+  idempotency bug that blocked this (see companion commit).
+
+### Cutover
+
+- Flipped the Cloudflare A record `rndai.erporganics.com` →
+  178.128.27.61 (proxied; edge TLS unaffected; origin runs a self-signed
+  cert behind Cloudflare "full" mode). Reversible via one API call.
+- Verified traffic lands on the new droplet (unique probe seen in its
+  nginx log).
+
+### Authenticated E2E (live, real domain)
+
+- Minted a Clerk sign-in token via the CLI, drove a headless browser
+  through the ticket → landed authenticated on `/`.
+- `/products` renders the tenant-scoped app (empty = fresh DB, not an
+  error); `/ai/raw-materials-ai` renders.
+- Tenant-scoped tRPC (`products.list`, `chatThreads.list`,
+  `organizations.list`) all return 200 authenticated; unauthenticated
+  access still 307s to Clerk sign-in.
+
+### Still open (unchanged, user-gated)
+
+- Clerk **production** instance (live keys + custom domain) — pages still
+  show the "Development mode" badge; dev instance has a ~100-user cap.
+- Legacy business data not migrated (fresh DB per direction "start
+  fresh").
+- Decommission the old drjel-ai droplet after a soak window.
+
+---
+
 ## [2026-07-27] ops: Provision dedicated production infra in the IT DigitalOcean account
 
 ### Summary
