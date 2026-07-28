@@ -218,11 +218,15 @@ export function create_production_member_ports(
       async find_memberships_by_email(
         email: string,
       ): Promise<Array<{ tenant_id: string; status: string }>> {
-        // Look up the profile by normalized email, then find all memberships
-        // for that profile.
+        // Look up the profile by its stored primaryEmail (the webhook writes
+        // primaryEmail; there is no emailNormalized field). Callers pass a
+        // trimmed lowercase email, so match case-insensitively via collation.
         const profile = await db
           .collection("user_profiles")
-          .findOne({ emailNormalized: email });
+          .findOne(
+            { primaryEmail: email },
+            { collation: { locale: "en", strength: 2 } },
+          );
         if (!profile) return [];
         const memberships = await db
           .collection("tenant_membership_projections")
