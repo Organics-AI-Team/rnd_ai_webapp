@@ -32,6 +32,14 @@ export interface ClerkBackendLike {
       organizationId: string;
       status?: string[];
     }): Promise<{ data: Array<{ id: string; emailAddress: string; role: string; status: string }> }>;
+    getOrganizationMembershipList(params: {
+      organizationId: string;
+    }): Promise<{
+      data: Array<{
+        role: string;
+        publicUserData?: { identifier?: string | null } | null;
+      }>;
+    }>;
   };
 }
 
@@ -168,6 +176,26 @@ export function create_production_provisioning_ports(
       },
 
       async ensure_manager_invitation(clerk_organization_id, input) {
+        // If the manager is already an active member of the organization,
+        // there is nothing to invite (fresh internal DB against an existing
+        // Clerk org, or a re-run after the invitation was accepted). Clerk
+        // rejects inviting an existing member with a 400; treat it as
+        // satisfied and let membership reconciliation project the record.
+        const members = await clerk.organizations.getOrganizationMembershipList({
+          organizationId: clerk_organization_id,
+        });
+        const alreadyMember = members.data.some(
+          (member) =>
+            member.publicUserData?.identifier?.toLowerCase() ===
+            input.initial_manager_email,
+        );
+        if (alreadyMember) {
+          return {
+            id: `existing-member:${input.initial_manager_email}`,
+            email: input.initial_manager_email,
+            role: manager_clerk_role(),
+          } satisfies ManagerInvitation;
+        }
         const pending = await clerk.organizations.getOrganizationInvitationList({
           organizationId: clerk_organization_id,
           status: ["pending"],
@@ -201,6 +229,12 @@ export function create_production_provisioning_ports(
 
     invitations: {
       async upsert(tenant_id, invitation, invited_by_profile_id) {
+        // No invitation projection for an already-active member: the
+        // membership itself is the source of truth (projected by webhook or
+        // reconcile), so an "invited" row would be a false pending state.
+        if (invitation.id.startsWith("existing-member:")) {
+          return;
+        }
         const now = new Date();
         await invitations.updateOne(
           { clerkInvitationId: invitation.id },

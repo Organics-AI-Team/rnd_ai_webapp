@@ -58,6 +58,18 @@ function request_clerk_client(): ClerkBackendLike {
           })),
         };
       },
+      getOrganizationMembershipList: async (params) => {
+        const response =
+          await clerk.organizations.getOrganizationMembershipList(params);
+        return {
+          data: response.data.map((membership) => ({
+            role: membership.role,
+            publicUserData: membership.publicUserData
+              ? { identifier: membership.publicUserData.identifier }
+              : null,
+          })),
+        };
+      },
     },
   };
 }
