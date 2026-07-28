@@ -40,6 +40,7 @@ export type Permission =
   | "tenant:members:read"
   | "tenant:members:invite_user"
   | "tenant:members:suspend_user"
+  | "tenant:members:remove_user"
   | "tenant:ai:read"
   | "tenant:ai:configure"
   | "tenant:knowledge:read"
@@ -96,6 +97,7 @@ const tenant_manager_permissions: readonly Permission[] = [
   "tenant:members:read",
   "tenant:members:invite_user",
   "tenant:members:suspend_user",
+  "tenant:members:remove_user",
   "tenant:ai:read",
   "tenant:ai:configure",
   "tenant:knowledge:manage",
