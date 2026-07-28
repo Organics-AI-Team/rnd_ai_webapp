@@ -72,3 +72,6 @@ _archive/
 .planning/
 .playwright-mcp/
 .loop/
+
+# knowledge-ingest resume checkpoints (local/droplet state, never committed)
+.import-progress-*.json
