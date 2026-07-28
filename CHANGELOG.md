@@ -1,5 +1,54 @@
 # Changelog
 
+## [2026-07-29] ops: Knowledge grounded, tenant AI-enabled, generator deployed (Plan 2 complete)
+
+### Summary
+
+Executed all of Plan 2 (`docs/superpowers/plans/2026-07-28-agentic-generator-grounding.md`)
+— 11 implementation tasks via phased subagents (review-approved, 405/405 tests
+across 53 files, full `npm run typecheck` exit 0) — then completed Task 12 on
+the `rnd-ai-prod` droplet.
+
+### Production grounding (Qdrant, verified)
+
+- `platform_knowledge_v1`: **20,229 points** (myskin market scrape; the CSV's
+  94,531 physical lines are 20,813 logical records — multiline descriptions).
+- `tenant_knowledge_v1`: **1,916 points** (tenant formulas, payload-filtered).
+- Two production defects found and fixed at the root during the run:
+  1. `tsx` CLIs could not resolve `@/ai`/`@/server` aliases → added the
+     specific path mappings to `apps/ai/tsconfig.json`.
+  2. `GeminiEmbeddingService` never transmitted its configured 768 dims — the
+     SDK (0.24.x) lacks `outputDimensionality`, so gemini returned 3072-dim
+     vectors that violated the governed payload contract AND would have broken
+     `knowledge.search` queries at runtime. Fixed with Matryoshka
+     truncate+L2-renormalize (`fit_embedding_dimensions`, unit-tested).
+
+### Tenant AI-enablement + deploy
+
+- `npm run provision:tenant-ai` run against tenant `6a68a51a…`: created
+  `tenant_ai_profiles` (growth plan), active `agent_deployments` for
+  `formulation` + `raw_material_research`, and the agentic
+  `ai_rollout_assignments` — policy now compiles with all 7 tools including
+  `material.search`; re-run confirms idempotency ("exists" across the board).
+- Rebuilt and deployed web + worker images (`docker compose build` + `up -d`);
+  web healthy, worker booted with cost accounting satisfied
+  (`AI_GEMINI_*_PRICE_MICROUSD_PER_MILLION_TOKENS` added to droplet `.env`),
+  `rndai.erporganics.com` serving 200 through Cloudflare.
+
+### Gaps / follow-ups
+
+- `CLERK_WEBHOOK_SIGNING_SECRET` is still a placeholder (dashboard-side
+  provisioning; webhook membership sync 503s — pre-existing, recovery via
+  `npm run reconcile:clerk`). Also blocks `deploy-droplet.sh` preflight, which
+  additionally dies SILENTLY on any missing (not placeholder) env var —
+  `env_value`'s grep under `set -e`; fix the script when touching it next.
+- Final human verification of the live Formulate flow (authenticated manager
+  clicks Formulate on `/formulas/create`) — everything below it is verified:
+  routes deployed, run admission compiles, corpus grounded, dynamism tests
+  prove tool-choice behavior.
+
+---
+
 ## [2026-07-28] feat(ops): Idempotent provision-tenant-ai operator script (profile + deployments + rollout)
 
 ### Summary

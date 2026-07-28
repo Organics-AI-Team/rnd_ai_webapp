@@ -84,6 +84,11 @@ IMPORT_TENANT_ID=<tenant> IMPORT_ACTOR_PROFILE_ID=<profile> \
   the checkpoint. Point ids are deterministic per `source_id`, so re-runs
   overwrite the same points — never duplicate.
 
-### Expected counts (Organics AI tenant)
-- platform points: ≤ 94,530 (myskin rows minus unidentifiable/duplicate)
-- tenant points: ~1,916 (one per imported formula)
+### Expected counts (Organics AI tenant, verified on prod 2026-07-29)
+- platform points: 20,229 (the CSV has 94,531 physical lines but only 20,813
+  logical records — multiline quoted descriptions; 584 skipped as
+  unidentifiable/duplicate)
+- tenant points: 1,916 (one per imported formula)
+
+Note: host-run CLIs need `QDRANT_URL=http://localhost:6333` — the `.env`
+value `http://qdrant:6333` resolves only inside the compose network.
