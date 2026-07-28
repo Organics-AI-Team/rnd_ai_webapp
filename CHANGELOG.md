@@ -1,5 +1,50 @@
 # Changelog
 
+## [2026-07-28] feat: Sustainable chem/formula data pipeline executed; production re-imported enriched (Plan 1 complete)
+
+### Summary
+
+Executed all of Plan 1 (`docs/superpowers/plans/2026-07-28-chem-data-pipeline.md`)
+via phased implementer subagents: a versioned, idempotent, one-command Mongo
+import pipeline now lives at `apps/ai/scripts/import/` and the throwaway
+`import-rm-catalog.ts` is retired. Ran it against production (on the droplet —
+both clusters are trusted-source firewalled, laptop cannot connect).
+
+### Implementation (8 commits, 13/13 tests green)
+
+- `apps/ai/scripts/import/`: `import.config.ts` (env-driven paths/tenant/actor),
+  `lib/csv.ts` (multiline-safe reader), `lib/enrich.ts` (CosIng + inci_lines →
+  CAS/functions/benefits), `lib/report.ts` (integrity report), `map-material.ts`,
+  `map-formula.ts` (latest version per product), `import-materials.ts`,
+  `import-reference.ts`, `import-formulas.ts`, `import-all.ts`; npm scripts
+  `import:materials|reference|formulas|all` (all support `--dry-run`).
+- Tests: `tests/import/` — unit (csv, enrich, mapping) + integration
+  (mongodb-memory-server, idempotency, dry-run, unmatched rm_code reporting).
+- Added `csv-parse` to `apps/ai` (plan assumed present; only `csv-parser` was).
+- Full-diff review: approved; sole notable finding is the PRE-EXISTING typecheck
+  error in `packages/ai-orchestration/src/checkpoint.ts:66` (MongoDBSaver vs
+  BaseCheckpointSaver interface) — untouched by this work, tracked as a gap.
+
+### Production run (rnd-ai-prod droplet, tenant 6a68a51a…)
+
+- Synced pipeline + export CSVs to `/opt/rnd-ai` / `/opt/rnd_ai`; dry-run
+  verified, then real run: `inci_reference` 36,269 · `products` 3,049 (CAS/
+  benefits now populated where INCI matched) · `formulas` 1,916 (latest version
+  per product; 1,098 unmatched rm_code lines retained + reported). Idempotency
+  re-run kicked off to confirm counts unchanged.
+- Note: 1,916 formulas (all products with any rd_formulas version), not the
+  ~474 `formula_masters` subset the runbook first estimated — runbook corrected.
+
+### Next (Plan 2 — in progress)
+
+Qdrant knowledge ingest (myskin market scrape → platform scope; tenant formulas
+→ tenant scope, via the governed `platform_knowledge_*`/`tenant_knowledge_*`
+collections that `knowledge.search` actually reads), governed `material.search`
+tool + capability card, dynamism tests, and the Formulate UI entry on
+`/formulas/create` driving `POST /api/ai/runs` + SSE.
+
+---
+
 ## [2026-07-28] feat: Load the real 3,049-item raw-material catalog into production
 
 ### Summary
