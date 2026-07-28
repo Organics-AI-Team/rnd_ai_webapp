@@ -50,6 +50,8 @@ const EXPECTED_PERMISSION_BY_TOOL = {
   "formula.revise": "formula:draft:update_own",
   "formula.search": "formula:read",
   "knowledge.search": "tenant:knowledge:read",
+  // Materials are the tenant's formulation catalog; read access rides formula:read.
+  "material.search": "formula:read",
   // No narrower web-specific permission exists; web search runs inside ai:run.
   "web.search": "ai:run",
 } as const satisfies Readonly<Record<string, Permission>>;
@@ -57,7 +59,7 @@ const EXPECTED_PERMISSION_BY_TOOL = {
 /**
  * Build all governed tool definitions with fail-closed NOT_WIRED ports.
  *
- * @returns The seven production ToolDefinitions.
+ * @returns The eight production ToolDefinitions.
  */
 function governed_definitions() {
   return create_all_governed_tool_definitions(
@@ -78,6 +80,7 @@ describe("governed tool capability cards", () => {
       "formula.revise",
       "formula.search",
       "knowledge.search",
+      "material.search",
       "web.search",
     ]);
   });

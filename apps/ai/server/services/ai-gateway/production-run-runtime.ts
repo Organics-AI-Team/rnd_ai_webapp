@@ -27,6 +27,7 @@ import { create_ai_tool_runtime_ports } from "../../repositories/ai-tool-runtime
 import { create_ai_usage_repository } from "../../repositories/ai-usage-repository";
 import { create_conversation_repository } from "../../repositories/conversation-repository";
 import { create_formula_repository } from "../../repositories/formula-repository";
+import { create_product_repository } from "../../repositories/product-repository";
 import { create_material_evidence_provider } from "../../repositories/material-evidence-provider";
 import { GeminiEmbeddingService } from "../../../services/embeddings/gemini-embedding-service";
 import {
@@ -345,6 +346,7 @@ export function create_production_agentic_runtime_loader(
     const repository_ports = create_repository_backed_tool_ports({
       tenant_context,
       formula_repository,
+      product_repository: create_product_repository(db),
       formula_commit: {
         service: formula_artifact_service,
         approval_gate: create_ai_approval_gate(db),

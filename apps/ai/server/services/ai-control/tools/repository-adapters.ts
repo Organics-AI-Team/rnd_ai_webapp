@@ -19,6 +19,7 @@
 import type { Document, WithId } from "mongodb";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 import type { FormulaRepository } from "../../../repositories/formula-repository";
+import type { ProductRepository } from "../../../repositories/product-repository";
 import { ResourceNotFoundError } from "../../../repositories/tenant-repository-base";
 import type {
   FormulaApprovalGate,
@@ -40,6 +41,10 @@ import type {
   FormulaSearchInput,
   FormulaSearchOutput,
 } from "./formula-tools";
+import type {
+  MaterialSearchInput,
+  MaterialSearchOutput,
+} from "./material-tools";
 
 /** Dependencies for the repository-backed governed tool ports. */
 export interface RepositoryToolPortDeps {
@@ -52,6 +57,8 @@ export interface RepositoryToolPortDeps {
     readonly service: Pick<FormulaArtifactService, "commit_confirmed">;
     readonly approval_gate: FormulaApprovalGate;
   };
+  /** Tenant-scoped product repository. Omission keeps material.search fail-closed. */
+  readonly product_repository?: ProductRepository;
 }
 
 /** Default number of search results when the caller does not specify a limit. */
@@ -151,16 +158,37 @@ function to_search_row(
 }
 
 /**
+ * Map one product document to a material.search result row.
+ *
+ * @param doc - Tenant product document (canonical + legacy alias fields).
+ * @returns The strict material row.
+ */
+function to_material_row(doc: Document): MaterialSearchOutput["materials"][number] {
+  return {
+    material_id: String(doc._id),
+    rm_code: String(doc.productCode ?? doc.rm_code ?? ""),
+    name: String(doc.productName ?? doc.trade_name ?? ""),
+    inci_name: String(doc.INCI_name ?? doc.inci_name ?? ""),
+    cas_no: String(doc.cas_no ?? ""),
+    supplier: String(doc.supplier ?? ""),
+    price_thb_per_kg: typeof doc.price === "number" ? doc.price : null,
+    benefits: Array.isArray(doc.benefits) ? doc.benefits.map(String) : [],
+    functions: Array.isArray(doc.functions) ? doc.functions.map(String) : [],
+    in_stock: typeof doc.stockQuantity === "number" ? doc.stockQuantity > 0 : false,
+  };
+}
+
+/**
  * Build the repository-backed governed tool ports for one run.
  *
- * @param deps - The bound tenant context and formula repository.
+ * @param deps - The bound tenant context, formula repository, and optional product repository.
  * @returns GovernedToolPorts with search/comment/confirm wired to the
  *          repository and the remaining ports fail-closed NOT_WIRED.
  */
 export function create_repository_backed_tool_ports(
   deps: RepositoryToolPortDeps,
 ): GovernedToolPorts {
-  const { tenant_context, formula_repository, formula_commit } = deps;
+  const { tenant_context, formula_repository, formula_commit, product_repository } = deps;
 
   return {
     formula_search: {
@@ -307,6 +335,41 @@ export function create_repository_backed_tool_ports(
         return args.artifact;
       },
     },
+
+    material_search: product_repository
+      ? {
+          /**
+           * Tenant-scoped structured material search over the product
+           * repository; the trusted tenant is re-asserted on every call.
+           */
+          async search_materials(
+            args: MaterialSearchInput,
+            trusted: TrustedToolContext,
+          ): Promise<MaterialSearchOutput> {
+            assert_same_tenant(trusted, tenant_context);
+            const { documents, total_count } = await product_repository.search_products(
+              tenant_context,
+              {
+                ...(args.query ? { search_term: args.query } : {}),
+                ...(typeof args.max_price === "number" ? { max_price: args.max_price } : {}),
+                ...(args.in_stock_only ? { in_stock_only: true } : {}),
+                ...(args.exclude_inci && args.exclude_inci.length > 0
+                  ? { exclude_terms: args.exclude_inci }
+                  : {}),
+                active_only: true,
+                sort_field: "price",
+                sort_direction: "asc",
+                limit: args.limit ?? DEFAULT_SEARCH_LIMIT,
+              },
+            );
+            return {
+              result_count: documents.length,
+              total_count,
+              materials: documents.map(to_material_row),
+            };
+          },
+        }
+      : { search_materials: not_wired("material.search") },
 
     // Knowledge and provisioned web search are overridden by the production
     // runtime. The repository layer itself keeps both external ports closed.

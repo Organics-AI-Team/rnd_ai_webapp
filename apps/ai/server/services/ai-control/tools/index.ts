@@ -21,6 +21,10 @@ import {
   type KnowledgeToolPorts,
 } from "./knowledge-tools";
 import {
+  create_material_tool_definitions,
+  type MaterialToolPorts,
+} from "./material-tools";
+import {
   create_web_search_tool_definitions,
   type WebSearchToolPorts,
 } from "./web-search-tools";
@@ -31,12 +35,13 @@ const MODULE = "governed-tools";
 export interface GovernedToolPorts
   extends FormulaToolPorts,
     KnowledgeToolPorts,
+    MaterialToolPorts,
     WebSearchToolPorts {}
 
 /**
- * Build every governed ToolDefinition (7 tools) from injected ports.
+ * Build every governed ToolDefinition (8 tools) from injected ports.
  *
- * @param ports - Narrow ports for formula, knowledge, and web capabilities.
+ * @param ports - Narrow ports for formula, knowledge, material, and web capabilities.
  * @returns Immutable array of all governed tool definitions.
  */
 export function create_all_governed_tool_definitions(
@@ -46,6 +51,7 @@ export function create_all_governed_tool_definitions(
   const definitions = [
     ...create_formula_tool_definitions(ports),
     ...create_knowledge_tool_definitions(ports),
+    ...create_material_tool_definitions(ports),
     ...create_web_search_tool_definitions(ports),
   ];
   log_info(MODULE, "create_all_governed_tool_definitions — done", {
@@ -91,6 +97,9 @@ export function create_not_wired_governed_tool_ports(): GovernedToolPorts {
     formula_confirm: { confirm_formula: not_wired("formula_confirm.confirm_formula") },
     knowledge_search: {
       search_knowledge: not_wired("knowledge_search.search_knowledge"),
+    },
+    material_search: {
+      search_materials: not_wired("material_search.search_materials"),
     },
     web_search: { search_web: not_wired("web_search.search_web") },
   };

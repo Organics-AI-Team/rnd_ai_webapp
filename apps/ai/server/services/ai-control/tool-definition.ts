@@ -35,6 +35,9 @@ export const TOOL_PERMISSIONS = {
   formula_comment: "formula:comment:create",
   formula_confirm: "formula:confirm",
   knowledge_search: "tenant:knowledge:read",
+  // Materials are the tenant's formulation catalog; reading it rides the
+  // formula:read permission every tenant member holds.
+  material_search: "formula:read",
   // Web search is an operation within an authorized AI run; shared auth has
   // no narrower web-specific permission.
   web_search: "ai:run",
