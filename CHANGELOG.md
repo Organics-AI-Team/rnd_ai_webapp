@@ -4201,3 +4201,41 @@ QdrantRAGService exposes all these as snake_case methods per project convention.
 - `.env.production` — NEW: Production env template for droplet
 - `scripts/deploy-droplet.sh` — NEW: Droplet deployment automation
 - `CHANGELOG.md` — This file
+
+## [2026-07-28] v2/dev — Fix TS2739: MongoDBSaver vs BaseCheckpointSaver type-identity skew
+
+### Root Cause
+- `@langchain/langgraph-checkpoint-mongodb@1.4.0` is hoisted to the workspace-root
+  `node_modules`, where its `@langchain/langgraph-checkpoint` peer (declared `^1.0.0`)
+  resolves to the legacy `0.0.18` copy kept for the old `@langchain/langgraph@0.2.74`
+  consumers. Its `MongoDBSaver` d.ts therefore extended the 0.x base class, which
+  predates the `toJSON`/`getDeltaChannelHistory` members of the 1.x
+  `BaseCheckpointSaver` that `packages/ai-orchestration` compiles against
+  (nested `@langchain/langgraph@1.4.8` → checkpoint `1.1.3`) → TS2739 at
+  `packages/ai-orchestration/src/checkpoint.ts:66`. Deeper members (`serde`,
+  `getTuple` configs) were also nominally skewed via the duplicated `@langchain/core`.
+
+### Fix (types-only, zero runtime delta)
+- `packages/ai-orchestration/tsconfig.json` — added `compilerOptions.paths` pinning
+  `@langchain/langgraph-checkpoint`, `@langchain/core/runnables`, and
+  `@langchain/core/embeddings` to this package's nested 1.x copies, so the hoisted
+  mongodb saver's d.ts binds the dependency set its declared peer range requires.
+  `checkpoint.ts` is untouched; vitest and all runtimes ignore tsconfig `paths`.
+
+### Verification
+- `npm run typecheck:orchestration` → exit 0 (was TS2739).
+- `npm run test -- tests/orchestration` → 11 files, 135 tests passed.
+
+### Known Pre-existing Issue (out of scope, NOT introduced here)
+- `npm run typecheck` (full) still fails in its FIRST step
+  (`tsc --noEmit -p apps/web/tsconfig.json`) with 28 pre-existing errors at HEAD:
+  the web project reaches `packages/ai-orchestration/src` + `apps/ai` sources via
+  `@/ai`/`@/server` aliases and recompiles them under `"strict": false`
+  (`packages/shared-config/tsconfig.base.json`), where zod `z.infer` collapses
+  (all-optional objects, `never` unions) — 27 inference errors plus the web-program
+  view of the saver mismatch. Forcing `--strictNullChecks` fixes all orchestration
+  errors but surfaces 60 errors in web's own sources; mapping the langchain paths in
+  the web tsconfig is unsafe (legacy `@langchain/*` 0.x stack still used by
+  `apps/ai/services/providers/*`). Proper remediation: project references (consume
+  the orchestration package via emitted declarations) or strict-null adoption in
+  `apps/web` — tracked as follow-up.
