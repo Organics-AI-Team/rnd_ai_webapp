@@ -208,7 +208,15 @@ export function create_gemini_model_gateway(
         ) {
           throw new ModelProviderRequestError();
         }
-        const normalized_calls = response.function_calls.map((call, index) => {
+        // The loop contract is exactly one action per turn; Gemini pro models
+        // emit parallel calls under mode ANY. Keep the first (the model
+        // re-plans next turn with the observation) instead of failing the run.
+        if (response.function_calls.length > 1) {
+          console.warn("[gemini-model-gateway] truncating parallel calls", {
+            count: response.function_calls.length,
+          });
+        }
+        const normalized_calls = response.function_calls.slice(0, 1).map((call, index) => {
           const tool_name = reverse_names.get(call.name);
           if (!tool_name) {
             // Name the unmapped function: models sometimes emit the dotted
