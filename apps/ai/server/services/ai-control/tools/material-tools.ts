@@ -51,6 +51,11 @@ export const material_search_output_schema = z
         })
         .strict(),
     ),
+    // Steering feedback surfaced INSIDE the tool result on zero matches —
+    // the observation is the one channel models reliably react to; without
+    // it, models re-queried concept terms until LOOP_DETECTED (observed on
+    // two agents in production).
+    hint: z.string().max(500).optional(),
   })
   .strict();
 

@@ -362,10 +362,15 @@ export function create_repository_backed_tool_ports(
                 limit: args.limit ?? DEFAULT_SEARCH_LIMIT,
               },
             );
+            const empty_hint =
+              documents.length === 0
+                ? "0 matches. This catalog matches lexically on ingredient names, INCI, CAS, codes, and CosIng function terms — marketing concepts are not in the data. Do NOT re-query variations: use knowledge.search to translate the concept into ingredient names, or proceed to formula.draft with materials already found (common bases go in by INCI name)."
+                : undefined;
             return {
               result_count: documents.length,
               total_count,
               materials: documents.map(to_material_row),
+              ...(empty_hint ? { hint: empty_hint } : {}),
             };
           },
         }
