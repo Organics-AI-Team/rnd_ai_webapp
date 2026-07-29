@@ -248,11 +248,20 @@ async function resolve_executor_selection(
   if (deps.rollout_assignments) {
     try {
       const selection = await select_executor(tenant.tenant_id, deps.rollout_assignments);
-      if (
-        selection.executor === "agentic" &&
-        selection.deployment_id !== compiled.pins.deploymentId
-      ) {
+      // An active assignment approves the agentic EXECUTOR tenant-wide;
+      // per-agent approval is the requested agent's own ACTIVE deployment
+      // (platform-controlled, resolved at compile). The assignment's pinned
+      // deployment belongs to one flagship agent, so requiring equality here
+      // rejected every other agentic surface (sales_rnd / raw_material_research
+      // chats failed with AI_ROLLOUT_UNAVAILABLE while Formulate worked).
+      if (selection.executor === "agentic" && !compiled.pins.deploymentId) {
         throw new AIRolloutUnavailableError();
+      }
+      if (selection.executor === "agentic") {
+        return Object.freeze({
+          ...selection,
+          deployment_id: compiled.pins.deploymentId,
+        });
       }
       return selection;
     } catch (error) {

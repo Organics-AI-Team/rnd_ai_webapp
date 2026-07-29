@@ -1,5 +1,34 @@
 # Changelog
 
+## [2026-07-29] fix: AI_ROLLOUT_UNAVAILABLE for chat agents — assignment approves the executor, not one agent
+
+### Root cause
+
+`resolve_executor_selection` (ai-gateway.ts) required the rollout
+assignment's pinned `deploymentId` to EQUAL the compiled deployment of the
+run's requested agent. Deployments are per-agent, so a tenant with one
+assignment (pinned to `formulation`) could only ever run ONE agentic agent:
+the sales_rnd and raw-material chat surfaces failed with
+`AI_ROLLOUT_UNAVAILABLE — No approved rollout assignment` while Formulate
+worked. Additionally the tenant had no `sales_rnd` deployment at all
+(provisioning default covered formulation + raw_material_research only).
+
+### Fix
+
+- Gateway: an active assignment now approves the agentic EXECUTOR
+  tenant-wide; per-agent approval is the requested agent's own ACTIVE
+  deployment (platform-controlled, resolved and pinned at compile). The run
+  document pins the REQUESTED agent's deployment; the assignment id/version
+  pins are unchanged. Missing deployment still fails closed — at compile
+  (`AI_DISABLED`), with an empty-pin gateway guard as defense in depth.
+- Tests: run-api-runtime integration gains "second agentic agent admitted
+  with its own deployment pin" and "agent without deployment rejected"
+  (26/26 across the gateway suites).
+- Ops: provisioned the missing `sales_rnd` agent deployment for the Organics
+  tenant (`provision:tenant-ai` now run with all three agent keys).
+
+---
+
 ## [2026-07-29] fix: Container-runtime gap sweep — cards cwd override, bundled agent prompt, env contract
 
 ### Context

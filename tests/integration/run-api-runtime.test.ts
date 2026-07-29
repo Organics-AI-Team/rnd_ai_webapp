@@ -174,6 +174,72 @@ describe("production run API gateway composition", () => {
     })).toBe(1);
   });
 
+  it("admits a second agentic agent whose deployment differs from the assignment pin", async () => {
+    const second_deployment = new ObjectId("507f1f77bcf86cd79943d0aa");
+    const second_prompt = new ObjectId("507f1f77bcf86cd79943d0ab");
+    await db.collection("agent_deployments").insertOne({
+      _id: second_deployment,
+      tenantId: new ObjectId(TENANT),
+      agentKey: "formulation",
+      revision: 1,
+      status: "active",
+      promptVersionId: second_prompt,
+      agentDefinitionVersion: "formulation-1.0.0",
+      orchestratorVersion: "agentic-1.0.0",
+      inputSchemaVersion: "1",
+      outputSchemaVersion: "1",
+      allowedProviders: ["google"],
+      allowedModels: ["gemini-2.5-flash"],
+      toolAllowlist: ["formula.search", "knowledge.search"],
+      approvalRules: {},
+    });
+    const gateway = create_production_run_gateway(client, db, {
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
+      correlation_id: () => "corr-runtime-second-agent",
+    });
+
+    const accepted = await gateway.create_run(tenant, {
+      schema_version: "1",
+      thread_id: "507f1f77bcf86cd79943e001",
+      agent_key: "formulation",
+      message: "Draft a brightening serum from stocked actives.",
+      attachment_source_ids: [],
+      response_preferences: { language: "en", detail: "standard" },
+      idempotency_key: "runtime-second-agent-key-1",
+    });
+
+    expect(accepted).toMatchObject({ status: "accepted", executor: "agentic" });
+    // The run pins the REQUESTED agent's deployment, not the assignment's
+    // flagship pin — the assignment approves the executor tenant-wide.
+    expect(await db.collection("ai_runs").findOne({ _id: new ObjectId(accepted.run_id) })).toMatchObject({
+      deploymentId: second_deployment.toHexString(),
+      rolloutAssignmentId: ROLLOUT_ASSIGNMENT.toHexString(),
+      agentDefinitionVersion: "formulation-1.0.0",
+    });
+  });
+
+  // Compile fails closed (AI_DISABLED) before executor selection when the
+  // requested agent has no active deployment; the gateway's empty-pin guard
+  // is defense in depth behind it.
+  it("rejects an agentic run for an agent with no active deployment", async () => {
+    const gateway = create_production_run_gateway(client, db, {
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
+      correlation_id: () => "corr-runtime-no-deployment",
+    });
+
+    await expect(
+      gateway.create_run(tenant, {
+        schema_version: "1",
+        thread_id: "507f1f77bcf86cd79943e001",
+        agent_key: "sales_rnd",
+        message: "There is no sales_rnd deployment for this tenant.",
+        attachment_source_ids: [],
+        response_preferences: { language: "en", detail: "standard" },
+        idempotency_key: "runtime-no-deployment-key-1",
+      }),
+    ).rejects.toMatchObject({ code: "AI_DISABLED" });
+  });
+
   it("pins a rolled-back tenant to legacy and still enqueues one governed job", async () => {
     await db.collection("ai_rollout_assignments").updateOne(
       { _id: ROLLOUT_ASSIGNMENT },
