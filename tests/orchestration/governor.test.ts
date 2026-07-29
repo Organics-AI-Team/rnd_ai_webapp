@@ -5,6 +5,7 @@ import { fail } from "../../packages/ai-orchestration/src/nodes/fail";
 import { gate } from "../../packages/ai-orchestration/src/nodes/gate";
 import {
   count_identical_proposals,
+  is_duplicate_proposal,
   is_loop_detected,
   normalize_action_signature,
 } from "../../packages/ai-orchestration/src/loop-detection";
@@ -232,6 +233,18 @@ describe("loop detection", () => {
         3,
       ),
     ).toBe(true);
+  });
+
+  it("flags a repeat below the kill threshold for a one-strike denial", () => {
+    const action = make_pending_tool_action("knowledge.search", search_args);
+    const once = [make_tool_decision("knowledge.search", search_args, 1)];
+    expect(is_duplicate_proposal(once, action, 3)).toBe(false);
+    const twice = [...once, make_tool_decision("knowledge.search", search_args, 2)];
+    expect(is_duplicate_proposal(twice, action, 3)).toBe(true);
+    const thrice = [...twice, make_tool_decision("knowledge.search", search_args, 3)];
+    // At the threshold the kill takes over; the denial no longer applies.
+    expect(is_duplicate_proposal(thrice, action, 3)).toBe(false);
+    expect(is_loop_detected(thrice, action, 3)).toBe(true);
   });
 });
 

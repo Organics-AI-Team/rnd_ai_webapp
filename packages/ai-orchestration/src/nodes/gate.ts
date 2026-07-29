@@ -12,7 +12,7 @@
  * run directly.
  */
 import { Command } from "@langchain/langgraph";
-import { is_loop_detected } from "../loop-detection";
+import { is_duplicate_proposal, is_loop_detected } from "../loop-detection";
 import type { AgentLoopRuntime } from "../ports";
 import { log_loop_event } from "../ports";
 import {
@@ -102,6 +102,23 @@ export async function gate(
       ),
       { pending_action: null },
     );
+  }
+
+  // One deterministic strike before the kill: an identical repeat below the
+  // threshold is denied with typed feedback instead of silently marching the
+  // run into LOOP_DETECTED (bounding feedback, not sequencing).
+  if (
+    is_duplicate_proposal(
+      state.decision_log,
+      action,
+      runtime.config.loop_detection_threshold,
+    )
+  ) {
+    return route_denial(state, runtime, action, {
+      reason_code: "DUPLICATE_ACTION",
+      safe_reason:
+        "This exact tool call already ran in this conversation; its result is in the observations above. Choose a different action: change the arguments meaningfully, use another tool, draft, or finalize with the evidence you have.",
+    });
   }
 
   const verdict = await runtime.policy.evaluate_action(

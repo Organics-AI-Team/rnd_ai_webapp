@@ -76,3 +76,27 @@ export function is_loop_detected(
     ) >= threshold
   );
 }
+
+/**
+ * Decide whether the pending action is a repeat that deserves one
+ * deterministic denial BEFORE the kill threshold — the model gets typed
+ * feedback ("you already ran this; its result is above") instead of dying
+ * on the next identical repeat. Observed in production: models re-issued
+ * identical searches straight into LOOP_DETECTED with no warning.
+ *
+ * @param decision_log - Decision records including the pending proposal.
+ * @param action - Pending normalized action.
+ * @param threshold - Configured identical-proposal kill threshold (>=1).
+ * @returns True when this is a repeat below the kill threshold.
+ */
+export function is_duplicate_proposal(
+  decision_log: readonly DecisionRecordV1[],
+  action: NormalizedActionRef,
+  threshold: number,
+): boolean {
+  const count = count_identical_proposals(
+    decision_log,
+    normalize_action_signature(action),
+  );
+  return count >= 2 && count < threshold;
+}
