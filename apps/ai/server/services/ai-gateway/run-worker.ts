@@ -260,6 +260,16 @@ export async function process_one_job(deps: RunWorkerDeps): Promise<ProcessOutco
     return { processed: true, run_id: job.run_id, status: result.status };
   } catch (error) {
     const error_code = safe_error_code(error);
+    if (error_code === "WORKER_EXECUTION_FAILED") {
+      // Unclassified crash: without the reason this is undiagnosable from
+      // container logs (messages carry no secrets; codes/fields only).
+      console.error({
+        boundary: "ai-worker",
+        event: "job.unclassified_failure",
+        run_id: job.run_id,
+        reason: error instanceof Error ? error.message.slice(0, 600) : String(error),
+      });
+    }
     const max_attempts = deps.max_attempts ?? 5;
     if (is_retryable(error) && job.attempts < max_attempts) {
       // Only an explicitly retryable dependency failure is released. A hard
