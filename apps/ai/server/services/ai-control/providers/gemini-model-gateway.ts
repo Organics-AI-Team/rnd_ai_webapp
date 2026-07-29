@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  FunctionCallingMode,
   GoogleGenerativeAI,
   type FunctionDeclaration,
   type GenerateContentRequest,
@@ -133,6 +134,10 @@ function sdk_client(api_key: string): GeminiGenerationClient {
             },
           })) as FunctionDeclaration[],
         }],
+        // The loop contract requires exactly one tool call per turn; the
+        // default AUTO mode lets models answer in prose (observed:
+        // gemini-3.1-pro-preview replied with text twice -> MODEL_OUTPUT_INVALID).
+        toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.ANY } },
       };
       const result = await model.generateContent(body, { signal: request.signal });
       let text: string | null = null;
