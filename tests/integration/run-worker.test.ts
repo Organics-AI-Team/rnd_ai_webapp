@@ -214,6 +214,13 @@ describe("process_one_job", () => {
     });
     expect(await db.collection("ai_runs").findOne({ correlationId: "corr-w-poison" }))
       .toMatchObject({ status: "failed", errorCode: "RUN_RUNTIME_UNAVAILABLE" });
+    // Terminal failures must emit run.failed so SSE consumers terminate
+    // (regression: MODEL_PROVIDER_ERROR runs previously produced zero events).
+    expect(await db.collection("ai_run_events").findOne({ runId: run_id })).toMatchObject({
+      type: "run.failed",
+      sequence: 0,
+      event: { payload: { code: "PROVIDER_UNAVAILABLE", retryable: false } },
+    });
   });
 
   it("retires a retryable failure after its bounded attempt budget", async () => {

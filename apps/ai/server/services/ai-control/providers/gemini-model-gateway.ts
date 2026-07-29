@@ -226,7 +226,16 @@ export function create_gemini_model_gateway(
             cost_usd: cost_numerator_to_usd(cost_numerator),
           },
         };
-      } catch {
+      } catch (error) {
+        // Surface the provider's real failure before mapping to the stable
+        // code — API error messages name models/fields, never secrets. An
+        // opaque MODEL_PROVIDER_ERROR was undiagnosable from container logs.
+        console.error("[gemini-model-gateway] complete_turn failed", {
+          model: options.model,
+          status: (error as { status?: number }).status ?? null,
+          reason:
+            error instanceof Error ? error.message.slice(0, 600) : String(error),
+        });
         throw new ModelProviderRequestError();
       }
     },

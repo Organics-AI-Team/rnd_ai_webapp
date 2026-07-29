@@ -20,7 +20,9 @@ import type { Document, WithId } from "mongodb";
 import type {
   AgentRunEventV1,
   AgentRunOutputV1,
+  RunErrorCodeV1,
 } from "@rnd-ai/shared-types/src/ai/contracts";
+import { run_error_code_v1 } from "@rnd-ai/shared-types/src/ai/contracts";
 
 import type { AIRunRepository } from "../../repositories/ai-run-repository";
 import type { EventStore } from "./event-store";
@@ -278,6 +280,10 @@ export async function process_one_job(deps: RunWorkerDeps): Promise<ProcessOutco
       completedAt: failed_at,
       errorCode: error_code,
     });
+    // A terminally failed job must still emit run.failed — without it, SSE
+    // consumers wait forever (observed: MODEL_PROVIDER_ERROR run with zero
+    // events; the UI hung with no terminal signal).
+    await append_terminal_failure_event(deps, job, error_code, failed_at);
     await deps.jobs.fail({
       job_id: job.job_id,
       worker_id: deps.worker_id,
@@ -285,5 +291,61 @@ export async function process_one_job(deps: RunWorkerDeps): Promise<ProcessOutco
       error: error_code,
     });
     return { processed: true, run_id: job.run_id, status: "failed" };
+  }
+}
+
+/**
+ * Map an internal job error code onto the public run-error enum.
+ *
+ * @param code - Internal code from safe_error_code (e.g. MODEL_PROVIDER_ERROR).
+ * @returns A valid RunErrorCodeV1 (unknown codes become PROVIDER_UNAVAILABLE —
+ *          honest for dependency failures without leaking internals).
+ */
+function public_error_code(code: string): RunErrorCodeV1 {
+  const parsed = run_error_code_v1.safeParse(code);
+  return parsed.success ? parsed.data : "PROVIDER_UNAVAILABLE";
+}
+
+/**
+ * Append the terminal run.failed event after retries are exhausted.
+ *
+ * Best-effort by design: event persistence must never mask the terminal
+ * failure bookkeeping (run status + job fail) that already happened.
+ *
+ * @param deps - Worker dependencies (event store, clock).
+ * @param job - The claimed job whose run terminally failed.
+ * @param error_code - Internal error code recorded on the run/job.
+ * @param failed_at - Terminal failure timestamp.
+ */
+async function append_terminal_failure_event(
+  deps: RunWorkerDeps,
+  job: ClaimedRunJob,
+  error_code: string,
+  failed_at: Date,
+): Promise<void> {
+  try {
+    const ref = { tenant_id: job.tenant_id, run_id: job.run_id };
+    const next_sequence = (await deps.events.latest_sequence(ref)) + 1;
+    await deps.events.append(ref, [
+      {
+        schema_version: "1",
+        event_id: `terminal-failure-${job.run_id}-${next_sequence}`,
+        run_id: job.run_id,
+        sequence: next_sequence,
+        occurred_at: failed_at.toISOString(),
+        type: "run.failed",
+        payload: {
+          code: public_error_code(error_code),
+          safe_message: "The AI run could not be completed.",
+          retryable: false,
+        },
+      },
+    ]);
+  } catch {
+    console.error({
+      boundary: "ai-worker",
+      event: "terminal_event_append_failed",
+      run_id: job.run_id,
+    });
   }
 }
