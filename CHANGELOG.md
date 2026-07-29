@@ -1,5 +1,48 @@
 # Changelog
 
+## [2026-07-30] audit: 20 confirmed prod E2E gaps archived; model-routing + tool-mode experiments concluded
+
+### Adversarial sweep (find-more session)
+
+25 user-reachable flows enumerated, 20 CONFIRMED defective with file:line
+evidence + failure modes + smoke commands — archived at
+`docs/audit/2026-07-30-e2e-sweep-findings.json` (the next phase's backlog).
+Highest severity: (1) `/onboarding` 500s for EVERY visitor (proxy public-path
+bypass vs server `auth()`); (2) all 1,916 imported formulas invisible on
+`/formulas` (client filter over unmapped fields); (3) the entire
+clarification/approval/artifact SSE event vocabulary is emitted ONLY by the
+credential-free test adapter — no production code path emits
+`clarification.required`/`approval.required`/`artifact.updated`, so the HITL
+UI can never render on prod and waiting runs heartbeat forever; (4) proven
+SSE reconnect death (stale Clerk cookie → 307 to accounts.dev HTML →
+EventSource fatally stops while UI claims "reconnecting"); (5) picker caps at
+1,000 of 3,049 products; plus 15 more (invitation allowlist error masking,
+thread-continuity event bleed, legacy feedback PUT no-op, wrong CAS-join
+collection, dead reconcile runbook path, etc.).
+
+### Model/agent-behavior experiments (kept, reverted, learned)
+
+- KEPT: one-strike duplicate-action denial in the gate (typed feedback before
+  LOOP_DETECTED); material.search zero-match steering hint; real tool
+  argument schemas in packs; parallel-call truncation with logging;
+  `AI_GEMINI_TOOL_MODE` env knob (default AUTO).
+- Reverted after live evidence: gemini-3.1-pro-preview routing for
+  formulation/raw_material_research (pro models emit 4 parallel calls under
+  forced-call mode; the one-action-per-turn loop truncates → same-batch
+  re-proposal → loop detection; ANY mode also 400s on the larger tool set
+  with 3.5-flash). Deployments restored to ranked 3.5-flash;
+  growth plan retains gemini-3.1-pro-preview as allowed.
+- STRUCTURAL FOLLOW-UP: parallel tool-call support in the agent loop is the
+  correct unlock for pro-tier models (actions[] per turn, act fan-out,
+  batch-aware loop detection).
+
+### Verified green after all changes
+
+`sales_rnd` (Thai brief) and `formulation` (specified brief) both
+`run.completed` on production under the final configuration.
+
+---
+
 ## [2026-07-30] fix: Governed runs complete E2E on production — six stacked defects found via live smoke harness
 
 ### Method
