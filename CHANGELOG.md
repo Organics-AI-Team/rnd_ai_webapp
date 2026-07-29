@@ -1,5 +1,66 @@
 # Changelog
 
+## [2026-07-30] fix: Governed runs complete E2E on production — six stacked defects found via live smoke harness
+
+### Method
+
+Added `npm run smoke:run -w apps/ai` (`scripts/smoke-governed-run.ts`): creates
+a REAL run through the production gateway as a synthetic manager principal and
+tails `ai_run_events` to terminal state — server-side E2E without a browser.
+Iterated smoke → root-cause → fix → rebuild until both `sales_rnd` and
+`formulation` runs reach `run.completed` on prod.
+
+### Defects fixed (in discovery order)
+
+1. **Terminal job failures emitted no `run.failed` event** — SSE consumers
+   hung forever (first smoke: run failed, ZERO events). Worker now appends a
+   terminal `run.failed` (public error-code mapping, best-effort, regression
+   test in run-worker suite).
+2. **Model-provider errors swallowed** (`catch {}` → opaque
+   MODEL_PROVIDER_ERROR): gateway now logs model/status/reason; run-worker
+   logs unclassified failures; gateway logs unmapped function-call names.
+3. **Gemini 400 on every model turn**: the built-in `finalize` tool declared
+   `citations: { type: "array" }` without `items` (message-builder) — Gemini
+   requires `items`. Full citation item schema declared.
+4. **`finalize` was unpassable**: `citation_v1_schema.retrieved_at` is
+   required-though-nullable, but models omit it → every real finalize failed
+   MODEL_OUTPUT_INVALID after retries. Finalize input now defaults it to null
+   (output stays CitationV1-compatible).
+5. **Tools were declared to the model with EMPTY parameter schemas**
+   (`{type:"object"}` + card prose) — models never attempted
+   complex-argument tools (`formula.draft`), searching until LOOP_DETECTED.
+   Tool input Zod schemas now convert (zod-to-json-schema + Gemini-subset
+   sanitizer, `tool-parameter-schema.ts`) and are pinned into the context
+   pack (`tool_card_entry_v1_schema.parameters`) at assembly.
+6. **LangGraph's default recursionLimit (25) killed productive runs** before
+   the governor's iteration/budget limits could engage —
+   `build_thread_config` now sets a backstop of 250
+   (`AI_GRAPH_RECURSION_LIMIT` overridable); the governor remains the real
+   stop authority.
+
+### Behavior tuning (cards, not code)
+
+`material.search` card: lexical semantics spelled out (ingredient names /
+CosIng terms; marketing concepts return zero → translate via
+`knowledge.search`; ≤1 reformulation; example fixed — it previously taught
+the failing concept-query pattern). `formulation` agent card: gather-then-
+draft guidance (don't search per-excipient; two empty searches → change
+approach).
+
+### Verified on production
+
+- `sales_rnd`: run.completed — 3 grounded knowledge.search calls, cited
+  finalize (~29k tokens/$0.04).
+- `formulation`: run.completed — formula.draft executed, validator passed.
+- Vague-brief over-searching still ends in a SAFE `LOOP_DETECTED` with a
+  clean terminal event (guard working as designed; further prompt tuning is
+  iterative).
+- Both images rebuilt from the same tree (context-pack hash is pinned at
+  web admission and re-validated by the worker — image skew would fail runs
+  with RunExecutionStateInvalidError).
+
+---
+
 ## [2026-07-29] fix: AI_ROLLOUT_UNAVAILABLE for chat agents — assignment approves the executor, not one agent
 
 ### Root cause
