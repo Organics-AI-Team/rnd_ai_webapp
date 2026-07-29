@@ -1,5 +1,43 @@
 # Changelog
 
+## [2026-07-29] fix: Container-runtime gap sweep — cards cwd override, bundled agent prompt, env contract
+
+### Context
+
+An adversarial sweep (3 finders + per-finding refutation agents) hunted every
+"works in dev, fails in the container" gap after the CARDS_ROOT_NOT_FOUND
+incident. 21 raw findings → 10 container-reachable candidates → 9 confirmed
+(deduped to 5 fixes).
+
+### Fixes
+
+1. **Cards cwd override (the incident's second half).** The cards COPY alone
+   was insufficient for the WEB image: Next 16 standalone `server.js` executes
+   `process.chdir(__dirname)` at boot (cwd becomes `/app/apps/web`), so the
+   loader's cwd-relative probes missed `/app/apps/ai/...`. Fixed three ways:
+   `AI_CAPABILITY_CARDS_ROOT` pinned as Dockerfile ENV + mirrored in the
+   compose web env (deployed immediately via container recreate — no rebuild
+   needed), and a parent-relative probe candidate in `card-loader.ts` as
+   defense in depth. Worker was unaffected (no chdir).
+2. **Raw-materials agent prompt bundled as code.** `get_agent_instructions()`
+   fs-probed `prompts/system-prompt.md` (19.9K) at request time; in the web
+   image every probe missed and the agent silently degraded to a thin fallback
+   prompt (affects /api/ai/raw-materials-agent, enhanced-chat,
+   cosmetic-enhanced). The markdown now round-trips byte-identical through
+   `prompts/system-prompt.ts` (static import, bundles into both images); the
+   .md stays as the editable source.
+3. **Worker boot diagnosability.** `worker.start_failed` now logs the error
+   message (config-invariant messages name env keys, not secrets) — a
+   fail-closed boot (e.g. half-set GOOGLE_SEARCH_API_KEY/CSE_ID pair) was an
+   undiagnosable silent crash-loop.
+4. **Env contract**: web compose env gains `AI_RATE_CARD_VERSION` (admission
+   stamps it on budget reservations — was silently defaulting only on web),
+   `CLERK_FRONTEND_API_PROXY`, and `CLERK_INVITATION_TTL_DAYS` passthroughs.
+5. Verified non-issues (refuted by the verification pass): worker cards path
+   (cwd `/app` resolves), JSON imports (bundled), scripts/evals reads (host-only).
+
+---
+
 ## [2026-07-29] fix: AI runs failed with RUN_CREATE_FAILED — capability cards missing from Docker images
 
 ### Root cause

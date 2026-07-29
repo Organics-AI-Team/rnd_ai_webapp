@@ -82,6 +82,11 @@ ENV NODE_ENV=production
 # Disable telemetry in production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Next standalone server.js chdir()s to /app/apps/web at boot, so the card
+# loader's cwd-relative probes miss the copied cards dir — pin it explicitly
+# (compose mirrors this for visibility; the image is self-sufficient either way)
+ENV AI_CAPABILITY_CARDS_ROOT=/app/apps/ai/server/services/ai-control/cards
+
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

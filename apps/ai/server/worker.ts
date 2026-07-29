@@ -130,8 +130,15 @@ export async function run_private_worker(env: NodeJS.ProcessEnv = process.env): 
 }
 
 if (require.main === module) {
-  run_private_worker().catch(() => {
-    console.error({ boundary: "ai-worker", event: "worker.start_failed" });
+  run_private_worker().catch((error: unknown) => {
+    // Config-invariant messages name env KEYS, never secret values — safe to
+    // log, and without it a fail-closed boot is undiagnosable from container
+    // logs (observed: silent crash-loop on a half-set Google Search pair).
+    console.error({
+      boundary: "ai-worker",
+      event: "worker.start_failed",
+      reason: error instanceof Error ? error.message : String(error),
+    });
     process.exitCode = 1;
   });
 }

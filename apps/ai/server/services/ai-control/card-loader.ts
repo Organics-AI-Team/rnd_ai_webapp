@@ -100,6 +100,9 @@ const CARDS_ROOT_CANDIDATES = [
   join("ai", "server", "services", "ai-control", "cards"),
   join("server", "services", "ai-control", "cards"),
   "cards",
+  // Next standalone chdir()s to <root>/apps/web at boot; reach the sibling
+  // ai workspace from there (defense in depth behind AI_CAPABILITY_CARDS_ROOT).
+  join("..", "ai", "server", "services", "ai-control", "cards"),
 ];
 
 /**

@@ -37,6 +37,12 @@ services:
       # "built_in" maps to Clerk's org:admin/org:member instead.
       - CLERK_ORG_ROLE_MODE=${CLERK_ORG_ROLE_MODE:-}
 
+      # Clerk frontend-API proxying (middleware runtime toggle)
+      - CLERK_FRONTEND_API_PROXY=${CLERK_FRONTEND_API_PROXY:-false}
+
+      # Invitation expiry display window (days; empty falls back to 30)
+      - CLERK_INVITATION_TTL_DAYS=${CLERK_INVITATION_TTL_DAYS:-}
+
       # AI API Keys
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash}
@@ -59,6 +65,13 @@ services:
       # Knowledge upload authorization HMAC secret (>=24 chars; uploads
       # fail closed without it)
       - KNOWLEDGE_UPLOAD_AUTH_SECRET=${KNOWLEDGE_UPLOAD_AUTH_SECRET:-}
+
+      # Governed-run admission stamps the rate card too — must match worker
+      - AI_RATE_CARD_VERSION=${AI_RATE_CARD_VERSION:-commercial-2026-07-v1}
+
+      # Next standalone chdir()s to /app/apps/web at boot, so the card
+      # loader's cwd-relative probes miss the copied cards — pin explicitly
+      - AI_CAPABILITY_CARDS_ROOT=/app/apps/ai/server/services/ai-control/cards
 
       # Node Environment
       - NODE_ENV=production
