@@ -60,11 +60,21 @@ export type ClarificationRequestV1 = z.infer<
   typeof clarification_request_v1_schema
 >;
 
+/**
+ * Model-authored citation: `retrieved_at` defaults to null when the model
+ * omits it (models cite source ids, not retrieval clocks — requiring the
+ * timestamp made every real finalize call fail MODEL_OUTPUT_INVALID).
+ * Parsed output remains CitationV1-compatible.
+ */
+const citation_input_v1_schema = citation_v1_schema.extend({
+  retrieved_at: z.string().datetime({ offset: true }).nullable().default(null),
+});
+
 /** Finalize request derived from the model's finalize tool call. */
 export const finalize_request_v1_schema = z
   .object({
     answer: z.string().min(1).max(64_000),
-    citations: z.array(citation_v1_schema).max(200).default([]),
+    citations: z.array(citation_input_v1_schema).max(200).default([]),
     uncertainty: z.array(z.string().max(1_000)).max(50).default([]),
   })
   .strict();
