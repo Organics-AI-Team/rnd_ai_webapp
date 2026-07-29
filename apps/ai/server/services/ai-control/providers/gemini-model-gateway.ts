@@ -205,7 +205,15 @@ export function create_gemini_model_gateway(
         }
         const normalized_calls = response.function_calls.map((call, index) => {
           const tool_name = reverse_names.get(call.name);
-          if (!tool_name) throw new ModelProviderRequestError();
+          if (!tool_name) {
+            // Name the unmapped function: models sometimes emit the dotted
+            // card name instead of the declared transformed name.
+            console.error("[gemini-model-gateway] unknown function name", {
+              returned: String(call.name).slice(0, 120),
+              declared: [...reverse_names.keys()],
+            });
+            throw new ModelProviderRequestError();
+          }
           return {
             call_id: call_id(context, tool_name, call.args, index),
             tool_name,
