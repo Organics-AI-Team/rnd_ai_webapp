@@ -57,7 +57,7 @@ export const PLAN_ENTITLEMENTS: Readonly<Record<string, PlanEntitlement>> =
     },
     growth: {
       allowed_providers: ["google"],
-      allowed_models: ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
+      allowed_models: ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.1-pro-preview"],
       allowed_tools: [
         "formula.search",
         "formula.draft",
