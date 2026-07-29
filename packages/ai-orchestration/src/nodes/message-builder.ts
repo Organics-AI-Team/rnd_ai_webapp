@@ -99,7 +99,24 @@ export function declared_tools(pack: ContextPackV1): ToolDeclarationV1[] {
         type: "object",
         properties: {
           answer: { type: "string" },
-          citations: { type: "array" },
+          // Gemini rejects array schemas without `items` (400: "items:
+          // missing field") — mirror citation_v1_schema's fields.
+          citations: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                source_id: { type: "string" },
+                source_type: {
+                  type: "string",
+                  enum: ["knowledge", "web", "formula", "material", "thread"],
+                },
+                reference: { type: "string" },
+                retrieved_at: { type: "string", nullable: true },
+              },
+              required: ["source_id", "source_type", "reference"],
+            },
+          },
           uncertainty: { type: "array", items: { type: "string" } },
         },
         required: ["answer"],
