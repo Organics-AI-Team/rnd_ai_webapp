@@ -35,18 +35,30 @@ export function build_checkpoint_thread_id(
 }
 
 /**
+ * LangGraph recursion backstop, far above the governor's own iteration,
+ * budget, and deadline limits — those are the real stop conditions. The
+ * default (25) fired BEFORE the governor on productive multi-tool runs:
+ * one loop iteration spans several graph nodes, so 16 policy iterations
+ * need well over 25 super-steps. Overridable for tests via env.
+ */
+const GRAPH_RECURSION_LIMIT = Number(
+  process.env.AI_GRAPH_RECURSION_LIMIT ?? 250,
+);
+
+/**
  * Build the LangGraph thread config for invoke/stream/resume.
  *
  * @param tenant_id - Verified internal tenant ID.
  * @param thread_id - Internal conversation thread ID.
- * @returns The `{ configurable: { thread_id } }` config.
+ * @returns The `{ configurable, recursionLimit }` config.
  */
 export function build_thread_config(
   tenant_id: string,
   thread_id: string,
-): { configurable: { thread_id: string } } {
+): { configurable: { thread_id: string }; recursionLimit: number } {
   return {
     configurable: { thread_id: build_checkpoint_thread_id(tenant_id, thread_id) },
+    recursionLimit: GRAPH_RECURSION_LIMIT,
   };
 }
 
