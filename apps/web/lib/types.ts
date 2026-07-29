@@ -118,6 +118,15 @@ export const FormulaIngredientSchema = z.object({
 
 export type FormulaIngredient = z.infer<typeof FormulaIngredientSchema>;
 
+export const FORMULA_STATUSES = [
+  "draft",
+  "confirmed",
+  "testing",
+  "approved",
+  "rejected",
+] as const;
+export const FormulaStatusSchema = z.enum(FORMULA_STATUSES);
+
 // Formula Schema
 export const FormulaSchema = z.object({
   _id: z.string().optional(),
@@ -130,14 +139,24 @@ export const FormulaSchema = z.object({
   ingredients: z.array(FormulaIngredientSchema).min(1, "At least one ingredient is required"),
   totalAmount: z.number().positive("Total amount must be positive").optional(), // Total batch size
   remarks: z.string().optional(),
-  status: z.enum(["draft", "testing", "approved", "rejected"]).default("draft"),
+  status: FormulaStatusSchema.default("draft"),
   createdBy: z.string(),
   createdAt: z.date().default(() => new Date()),
   updatedAt: z.date().default(() => new Date()),
 });
 
 export type Formula = z.infer<typeof FormulaSchema>;
-export type FormulaStatusType = "draft" | "testing" | "approved" | "rejected";
+export type FormulaStatusType = typeof FORMULA_STATUSES[number];
+
+/**
+ * Narrow an untrusted string to a supported formula status.
+ *
+ * @param value - DOM or external status value.
+ * @returns True when the value is a supported formula status.
+ */
+export function is_formula_status(value: string): value is FormulaStatusType {
+  return FormulaStatusSchema.safeParse(value).success;
+}
 
 // ============================================
 // ORDER SCHEMAS

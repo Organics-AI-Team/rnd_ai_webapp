@@ -1,5 +1,3037 @@
 # Changelog
 
+## [2026-07-30] audit: 20 confirmed prod E2E gaps archived; model-routing + tool-mode experiments concluded
+
+### Adversarial sweep (find-more session)
+
+25 user-reachable flows enumerated, 20 CONFIRMED defective with file:line
+evidence + failure modes + smoke commands — archived at
+`docs/audit/2026-07-30-e2e-sweep-findings.json` (the next phase's backlog).
+Highest severity: (1) `/onboarding` 500s for EVERY visitor (proxy public-path
+bypass vs server `auth()`); (2) all 1,916 imported formulas invisible on
+`/formulas` (client filter over unmapped fields); (3) the entire
+clarification/approval/artifact SSE event vocabulary is emitted ONLY by the
+credential-free test adapter — no production code path emits
+`clarification.required`/`approval.required`/`artifact.updated`, so the HITL
+UI can never render on prod and waiting runs heartbeat forever; (4) proven
+SSE reconnect death (stale Clerk cookie → 307 to accounts.dev HTML →
+EventSource fatally stops while UI claims "reconnecting"); (5) picker caps at
+1,000 of 3,049 products; plus 15 more (invitation allowlist error masking,
+thread-continuity event bleed, legacy feedback PUT no-op, wrong CAS-join
+collection, dead reconcile runbook path, etc.).
+
+### Model/agent-behavior experiments (kept, reverted, learned)
+
+- KEPT: one-strike duplicate-action denial in the gate (typed feedback before
+  LOOP_DETECTED); material.search zero-match steering hint; real tool
+  argument schemas in packs; parallel-call truncation with logging;
+  `AI_GEMINI_TOOL_MODE` env knob (default AUTO).
+- Reverted after live evidence: gemini-3.1-pro-preview routing for
+  formulation/raw_material_research (pro models emit 4 parallel calls under
+  forced-call mode; the one-action-per-turn loop truncates → same-batch
+  re-proposal → loop detection; ANY mode also 400s on the larger tool set
+  with 3.5-flash). Deployments restored to ranked 3.5-flash;
+  growth plan retains gemini-3.1-pro-preview as allowed.
+- STRUCTURAL FOLLOW-UP: parallel tool-call support in the agent loop is the
+  correct unlock for pro-tier models (actions[] per turn, act fan-out,
+  batch-aware loop detection).
+
+### Verified green after all changes
+
+`sales_rnd` (Thai brief) and `formulation` (specified brief) both
+`run.completed` on production under the final configuration.
+
+---
+
+## [2026-07-30] fix: Governed runs complete E2E on production — six stacked defects found via live smoke harness
+
+### Method
+
+Added `npm run smoke:run -w apps/ai` (`scripts/smoke-governed-run.ts`): creates
+a REAL run through the production gateway as a synthetic manager principal and
+tails `ai_run_events` to terminal state — server-side E2E without a browser.
+Iterated smoke → root-cause → fix → rebuild until both `sales_rnd` and
+`formulation` runs reach `run.completed` on prod.
+
+### Defects fixed (in discovery order)
+
+1. **Terminal job failures emitted no `run.failed` event** — SSE consumers
+   hung forever (first smoke: run failed, ZERO events). Worker now appends a
+   terminal `run.failed` (public error-code mapping, best-effort, regression
+   test in run-worker suite).
+2. **Model-provider errors swallowed** (`catch {}` → opaque
+   MODEL_PROVIDER_ERROR): gateway now logs model/status/reason; run-worker
+   logs unclassified failures; gateway logs unmapped function-call names.
+3. **Gemini 400 on every model turn**: the built-in `finalize` tool declared
+   `citations: { type: "array" }` without `items` (message-builder) — Gemini
+   requires `items`. Full citation item schema declared.
+4. **`finalize` was unpassable**: `citation_v1_schema.retrieved_at` is
+   required-though-nullable, but models omit it → every real finalize failed
+   MODEL_OUTPUT_INVALID after retries. Finalize input now defaults it to null
+   (output stays CitationV1-compatible).
+5. **Tools were declared to the model with EMPTY parameter schemas**
+   (`{type:"object"}` + card prose) — models never attempted
+   complex-argument tools (`formula.draft`), searching until LOOP_DETECTED.
+   Tool input Zod schemas now convert (zod-to-json-schema + Gemini-subset
+   sanitizer, `tool-parameter-schema.ts`) and are pinned into the context
+   pack (`tool_card_entry_v1_schema.parameters`) at assembly.
+6. **LangGraph's default recursionLimit (25) killed productive runs** before
+   the governor's iteration/budget limits could engage —
+   `build_thread_config` now sets a backstop of 250
+   (`AI_GRAPH_RECURSION_LIMIT` overridable); the governor remains the real
+   stop authority.
+
+### Behavior tuning (cards, not code)
+
+`material.search` card: lexical semantics spelled out (ingredient names /
+CosIng terms; marketing concepts return zero → translate via
+`knowledge.search`; ≤1 reformulation; example fixed — it previously taught
+the failing concept-query pattern). `formulation` agent card: gather-then-
+draft guidance (don't search per-excipient; two empty searches → change
+approach).
+
+### Verified on production
+
+- `sales_rnd`: run.completed — 3 grounded knowledge.search calls, cited
+  finalize (~29k tokens/$0.04).
+- `formulation`: run.completed — formula.draft executed, validator passed.
+- Vague-brief over-searching still ends in a SAFE `LOOP_DETECTED` with a
+  clean terminal event (guard working as designed; further prompt tuning is
+  iterative).
+- Both images rebuilt from the same tree (context-pack hash is pinned at
+  web admission and re-validated by the worker — image skew would fail runs
+  with RunExecutionStateInvalidError).
+
+---
+
+## [2026-07-29] fix: AI_ROLLOUT_UNAVAILABLE for chat agents — assignment approves the executor, not one agent
+
+### Root cause
+
+`resolve_executor_selection` (ai-gateway.ts) required the rollout
+assignment's pinned `deploymentId` to EQUAL the compiled deployment of the
+run's requested agent. Deployments are per-agent, so a tenant with one
+assignment (pinned to `formulation`) could only ever run ONE agentic agent:
+the sales_rnd and raw-material chat surfaces failed with
+`AI_ROLLOUT_UNAVAILABLE — No approved rollout assignment` while Formulate
+worked. Additionally the tenant had no `sales_rnd` deployment at all
+(provisioning default covered formulation + raw_material_research only).
+
+### Fix
+
+- Gateway: an active assignment now approves the agentic EXECUTOR
+  tenant-wide; per-agent approval is the requested agent's own ACTIVE
+  deployment (platform-controlled, resolved and pinned at compile). The run
+  document pins the REQUESTED agent's deployment; the assignment id/version
+  pins are unchanged. Missing deployment still fails closed — at compile
+  (`AI_DISABLED`), with an empty-pin gateway guard as defense in depth.
+- Tests: run-api-runtime integration gains "second agentic agent admitted
+  with its own deployment pin" and "agent without deployment rejected"
+  (26/26 across the gateway suites).
+- Ops: provisioned the missing `sales_rnd` agent deployment for the Organics
+  tenant (`provision:tenant-ai` now run with all three agent keys).
+
+---
+
+## [2026-07-29] fix: Container-runtime gap sweep — cards cwd override, bundled agent prompt, env contract
+
+### Context
+
+An adversarial sweep (3 finders + per-finding refutation agents) hunted every
+"works in dev, fails in the container" gap after the CARDS_ROOT_NOT_FOUND
+incident. 21 raw findings → 10 container-reachable candidates → 9 confirmed
+(deduped to 5 fixes).
+
+### Fixes
+
+1. **Cards cwd override (the incident's second half).** The cards COPY alone
+   was insufficient for the WEB image: Next 16 standalone `server.js` executes
+   `process.chdir(__dirname)` at boot (cwd becomes `/app/apps/web`), so the
+   loader's cwd-relative probes missed `/app/apps/ai/...`. Fixed three ways:
+   `AI_CAPABILITY_CARDS_ROOT` pinned as Dockerfile ENV + mirrored in the
+   compose web env (deployed immediately via container recreate — no rebuild
+   needed), and a parent-relative probe candidate in `card-loader.ts` as
+   defense in depth. Worker was unaffected (no chdir).
+2. **Raw-materials agent prompt bundled as code.** `get_agent_instructions()`
+   fs-probed `prompts/system-prompt.md` (19.9K) at request time; in the web
+   image every probe missed and the agent silently degraded to a thin fallback
+   prompt (affects /api/ai/raw-materials-agent, enhanced-chat,
+   cosmetic-enhanced). The markdown now round-trips byte-identical through
+   `prompts/system-prompt.ts` (static import, bundles into both images); the
+   .md stays as the editable source.
+3. **Worker boot diagnosability.** `worker.start_failed` now logs the error
+   message (config-invariant messages name env keys, not secrets) — a
+   fail-closed boot (e.g. half-set GOOGLE_SEARCH_API_KEY/CSE_ID pair) was an
+   undiagnosable silent crash-loop.
+4. **Env contract**: web compose env gains `AI_RATE_CARD_VERSION` (admission
+   stamps it on budget reservations — was silently defaulting only on web),
+   `CLERK_FRONTEND_API_PROXY`, and `CLERK_INVITATION_TTL_DAYS` passthroughs.
+5. Verified non-issues (refuted by the verification pass): worker cards path
+   (cwd `/app` resolves), JSON imports (bundled), scripts/evals reads (host-only).
+
+---
+
+## [2026-07-29] fix: AI runs failed with RUN_CREATE_FAILED — capability cards missing from Docker images
+
+### Root cause
+
+`POST /api/ai/runs` threw `ToolGovernanceError: CARDS_ROOT_NOT_FOUND`
+(web container log), surfaced client-side as the generic `RUN_CREATE_FAILED`.
+The capability cards are runtime-read markdown
+(`apps/ai/server/services/ai-control/cards/**/*.md`); Next.js standalone
+output tracing follows JS imports only, so the web runner image never
+contained them — and the worker image (webpack bundle + prisma only) had the
+same gap. Never surfaced before because tonight's provisioning was the first
+time the agentic executor (which assembles cards at ingress) ran on this
+stack; `ai_runs` shows zero documents — every creation failed pre-commit.
+
+### Fix
+
+One COPY line in each runner stage (`apps/web/Dockerfile`,
+`apps/ai/Dockerfile.worker`) placing the cards at
+`/app/apps/ai/server/services/ai-control/cards` — the card-loader's first
+probe candidate from cwd `/app`. No env change needed
+(`AI_CAPABILITY_CARDS_ROOT` stays an override). Images rebuilt and
+redeployed; verified the directory exists in the running containers.
+
+---
+
+## [2026-07-29] feat: Member management, invitations, and multi-org membership live (Plan 3 complete)
+
+### Summary
+
+Executed all of Plan 3 (`docs/superpowers/plans/2026-07-29-member-management-multi-org.md`,
+spec adversarially reviewed before writing) — 13 implementation tasks via
+phased subagents + review/fix rounds — and deployed to production.
+**1,059/1,059 tests green (137 files), `npm run typecheck` exit 0.**
+
+### What shipped
+
+- **Multi-org membership**: the three single-membership guards are lifted
+  (invite, appoint-manager, webhook suspension); a second membership now
+  writes a `membership_multi_org` audit and touches nothing else. Webhook
+  membership projection re-keyed to `(tenantId, userProfileId)` with REVIVE
+  semantics — remove→re-invite works (was an E11000 dead-end). Webhook
+  receipts are now claim→apply→complete with `fail()` + atomic reclaim, so
+  failed applies are svix-retryable instead of silently lost.
+- **Member lifecycle (tenant managers, full UI at `/settings/members`)**:
+  Members/Invitations tabs — invite, revoke + resend invitation (expired
+  display state derived from the 30-day Clerk TTL, `CLERK_INVITATION_TTL_DAYS`
+  overridable), suspend, reactivate, remove (new manager-only permission
+  `tenant:members:remove_user`); users-only target guard; duplicate-invite
+  → friendly CONFLICT.
+- **Manager lifecycle (platform)**: `/platform/tenants/[tenantId]` detail
+  page — member list, appoint manager (existing mutation finally has UI),
+  demote manager; last-active-manager invariant enforced transactionally
+  with a write-skew guard (concurrent-demote test on MongoMemoryReplSet);
+  webhook-side `tenant_zero_managers` detector for Clerk-originated losses.
+- **Org switching**: Clerk `OrganizationSwitcher` (Clerk-mode-gated, manage
+  surfaces hidden) with `queryClient.clear()` on switch (no cross-org cache
+  bleed); generalized activator (auto-activate single membership, explicit
+  picker for several); onboarding gains `access_suspended` /
+  `membership_removed` / `choose_organization` states; global membership-loss
+  error routing to `/onboarding`; cross-org NOT_FOUND hint; role-gated
+  Members/Platform navigation backed by the new display-only `auth.me`.
+- **Post-review fix**: `find_memberships_by_email` queried a nonexistent
+  `emailNormalized` field — now matches `primaryEmail` with case-insensitive
+  collation (19e2798).
+
+### Rollout (rnd-ai-prod)
+
+- Repair script dry-run: **0 candidates** — no profiles were ever suspended
+  by the old rule; nothing to repair.
+- Clerk instance hardening via API: `admin_delete_enabled=false` (org admins
+  can no longer delete orgs from Clerk surfaces). Member-leave gating is not
+  API-exposed; in-app switcher hides Clerk manage surfaces and the
+  zero-manager detector is the backstop.
+- Web + worker images rebuilt and deployed; web healthy, public site and
+  health endpoint 200.
+
+### Live verification checklist (operator)
+
+Invite an allowlisted email into a second org → accept → switch orgs via the
+sidebar switcher (cache clears) → exercise suspend/reactivate/remove +
+invitation revoke/resend on `/settings/members` → appoint + demote a manager
+on `/platform/tenants/[id]` → confirm audits (`membership_multi_org`,
+`tenant_zero_managers` never fires during normal ops).
+
+---
+
+## [2026-07-29] ops: Clerk webhook secret provisioned programmatically; deploy preflight silent-death fixed
+
+### Summary
+
+Closed the last two operational gaps from the Plan 2 rollout without touching
+the Clerk dashboard.
+
+- **Webhook membership sync live.** The svix endpoint for
+  `https://rndai.erporganics.com/api/webhooks/clerk` already existed on the
+  instance's svix app (created at cutover) but its signing secret never
+  reached the droplet `.env`. Retrieved it via the Clerk Backend API
+  (`POST /v1/webhooks/svix_url` → one-time app-portal token →
+  `api.eu.svix.com` token exchange → endpoint secret), installed
+  `CLERK_WEBHOOK_SIGNING_SECRET`, recreated the web container. Verified: the
+  route now returns 400 (signature check active) instead of 503 (secret
+  unset). Invited users now project into `tenant_membership_projections`
+  automatically.
+- **`scripts/deploy-droplet.sh`**: `env_value()` now ends with `|| true` —
+  under `set -euo pipefail` a variable ABSENT from `.env` made the grep
+  pipeline kill the script before `require_env_value` could print its error
+  (placeholder values were caught, missing ones died silently).
+- Grounding spot-check: sampled a live `platform_knowledge_v1` point — payload
+  contract fields all present (`is_tenant:false`, `source_id:myskin:33440`,
+  sha-256 `content_hash`, `visibility:all_members`, `embedding_version:v1`).
+
+---
+
+## [2026-07-29] ops: Knowledge grounded, tenant AI-enabled, generator deployed (Plan 2 complete)
+
+### Summary
+
+Executed all of Plan 2 (`docs/superpowers/plans/2026-07-28-agentic-generator-grounding.md`)
+— 11 implementation tasks via phased subagents (review-approved, 405/405 tests
+across 53 files, full `npm run typecheck` exit 0) — then completed Task 12 on
+the `rnd-ai-prod` droplet.
+
+### Production grounding (Qdrant, verified)
+
+- `platform_knowledge_v1`: **20,229 points** (myskin market scrape; the CSV's
+  94,531 physical lines are 20,813 logical records — multiline descriptions).
+- `tenant_knowledge_v1`: **1,916 points** (tenant formulas, payload-filtered).
+- Two production defects found and fixed at the root during the run:
+  1. `tsx` CLIs could not resolve `@/ai`/`@/server` aliases → added the
+     specific path mappings to `apps/ai/tsconfig.json`.
+  2. `GeminiEmbeddingService` never transmitted its configured 768 dims — the
+     SDK (0.24.x) lacks `outputDimensionality`, so gemini returned 3072-dim
+     vectors that violated the governed payload contract AND would have broken
+     `knowledge.search` queries at runtime. Fixed with Matryoshka
+     truncate+L2-renormalize (`fit_embedding_dimensions`, unit-tested).
+
+### Tenant AI-enablement + deploy
+
+- `npm run provision:tenant-ai` run against tenant `6a68a51a…`: created
+  `tenant_ai_profiles` (growth plan), active `agent_deployments` for
+  `formulation` + `raw_material_research`, and the agentic
+  `ai_rollout_assignments` — policy now compiles with all 7 tools including
+  `material.search`; re-run confirms idempotency ("exists" across the board).
+- Rebuilt and deployed web + worker images (`docker compose build` + `up -d`);
+  web healthy, worker booted with cost accounting satisfied
+  (`AI_GEMINI_*_PRICE_MICROUSD_PER_MILLION_TOKENS` added to droplet `.env`),
+  `rndai.erporganics.com` serving 200 through Cloudflare.
+
+### Gaps / follow-ups
+
+- `CLERK_WEBHOOK_SIGNING_SECRET` is still a placeholder (dashboard-side
+  provisioning; webhook membership sync 503s — pre-existing, recovery via
+  `npm run reconcile:clerk`). Also blocks `deploy-droplet.sh` preflight, which
+  additionally dies SILENTLY on any missing (not placeholder) env var —
+  `env_value`'s grep under `set -e`; fix the script when touching it next.
+- Final human verification of the live Formulate flow (authenticated manager
+  clicks Formulate on `/formulas/create`) — everything below it is verified:
+  routes deployed, run admission compiles, corpus grounded, dynamism tests
+  prove tool-choice behavior.
+
+---
+
+## [2026-07-28] feat(ops): Idempotent provision-tenant-ai operator script (profile + deployments + rollout)
+
+### Summary
+
+New create-or-get operator script `apps/ai/scripts/provision-tenant-ai.ts`
+(npm: `provision:tenant-ai -w apps/ai`, supports `--dry-run`) that AI-enables
+an EXISTING tenant: one active `tenant_ai_profiles` doc derived from
+`PLAN_ENTITLEMENTS` (default plan `growth`, includes `material.search`), one
+active revision-1 `agent_deployments` doc per `GRANT_AGENT_KEYS` agent
+(default `formulation,raw_material_research`; pins `ORCHESTRATOR_VERSION`
+"agentic-1.0.0" + schema versions "1"), and one internal-cohort agentic
+`ai_rollout_assignments` doc (version 1) written through
+`create_ai_rollout_repository().assign` (transactional, audited, super-admin
+checked). After writing, `compile_for_tenant` runs as a fail-closed
+acceptance check.
+
+### Field verification (against real code, not notes)
+
+- `promptVersionId` is pinned as an OPAQUE ObjectId — never dereferenced into
+  `prompt_versions` at runtime (`ai-policy-repository.ts:299`,
+  `ai-runtime-state-repository.ts:115`, `production-run-runtime.ts:173`,
+  `run-api-runtime.ts:54` only require it non-empty), so the script generates
+  a fresh ObjectId per deployment creation; no PromptVersion doc is required.
+- Provider/model reality: provider key `google`, models from
+  `PLAN_ENTITLEMENTS`/`PLATFORM_PROVIDER_UNIVERSE`; overrides via
+  `PROVISION_PROVIDERS`/`PROVISION_MODELS` are validated against the universe.
+- Deployment tool allowlists: primary (rollout) agent keeps full plan tools
+  (incl. approval-gated `formula.confirm`); registry specialists are narrowed
+  to `delegation-registry` allowlist ∩ plan (matches `delegate-tool-factory`
+  enforcement at delegation time).
+- Numeric profile limits stored as plain numbers (fixture-mirrored;
+  `to_bigint` re-coerces on read); `knowledgeStorageLimitBytes` set because
+  knowledge uploads fail-closed without it.
+
+### Tests
+
+- `tests/ai-control/provision-tenant-ai.test.ts` — MongoMemoryReplSet +
+  `setup_commercial_indexes`: dry-run writes nothing; double-run idempotency
+  (counts stable incl. single rollout audit event); compile_for_tenant
+  acceptance for agent `formulation`; fail-closed precondition tests.
+  4/4 green; full `tests/ai-control` suite 144/144 green.
+
+---
+
+## [2026-07-28] feat: Sustainable chem/formula data pipeline executed; production re-imported enriched (Plan 1 complete)
+
+### Summary
+
+Executed all of Plan 1 (`docs/superpowers/plans/2026-07-28-chem-data-pipeline.md`)
+via phased implementer subagents: a versioned, idempotent, one-command Mongo
+import pipeline now lives at `apps/ai/scripts/import/` and the throwaway
+`import-rm-catalog.ts` is retired. Ran it against production (on the droplet —
+both clusters are trusted-source firewalled, laptop cannot connect).
+
+### Implementation (8 commits, 13/13 tests green)
+
+- `apps/ai/scripts/import/`: `import.config.ts` (env-driven paths/tenant/actor),
+  `lib/csv.ts` (multiline-safe reader), `lib/enrich.ts` (CosIng + inci_lines →
+  CAS/functions/benefits), `lib/report.ts` (integrity report), `map-material.ts`,
+  `map-formula.ts` (latest version per product), `import-materials.ts`,
+  `import-reference.ts`, `import-formulas.ts`, `import-all.ts`; npm scripts
+  `import:materials|reference|formulas|all` (all support `--dry-run`).
+- Tests: `tests/import/` — unit (csv, enrich, mapping) + integration
+  (mongodb-memory-server, idempotency, dry-run, unmatched rm_code reporting).
+- Added `csv-parse` to `apps/ai` (plan assumed present; only `csv-parser` was).
+- Full-diff review: approved; sole notable finding is the PRE-EXISTING typecheck
+  error in `packages/ai-orchestration/src/checkpoint.ts:66` (MongoDBSaver vs
+  BaseCheckpointSaver interface) — untouched by this work, tracked as a gap.
+
+### Production run (rnd-ai-prod droplet, tenant 6a68a51a…)
+
+- Synced pipeline + export CSVs to `/opt/rnd-ai` / `/opt/rnd_ai`; dry-run
+  verified, then real run: `inci_reference` 36,269 · `products` 3,049 (CAS/
+  benefits now populated where INCI matched) · `formulas` 1,916 (latest version
+  per product; 1,098 unmatched rm_code lines retained + reported). Idempotency
+  re-run kicked off to confirm counts unchanged.
+- Note: 1,916 formulas (all products with any rd_formulas version), not the
+  ~474 `formula_masters` subset the runbook first estimated — runbook corrected.
+
+### Next (Plan 2 — in progress)
+
+Qdrant knowledge ingest (myskin market scrape → platform scope; tenant formulas
+→ tenant scope, via the governed `platform_knowledge_*`/`tenant_knowledge_*`
+collections that `knowledge.search` actually reads), governed `material.search`
+tool + capability card, dynamism tests, and the Formulate UI entry on
+`/formulas/create` driving `POST /api/ai/runs` + SSE.
+
+---
+
+## [2026-07-28] feat: Load the real 3,049-item raw-material catalog into production
+
+### Summary
+
+The 24-item starter catalog was a placeholder. Located the authoritative
+source and imported the full internal raw-material master so the
+`/formulas/create` ingredient picker shows the real thousands.
+
+### Source discovery
+
+The original catalog DB (Atlas `stockmanagement.crbiufo.mongodb.net`) is
+deleted, and the old droplet's DB was unreachable. Found the authoritative
+export in the sibling project `client_projects/organics_group/rnd_ai/`:
+`internal_raw/sql_raw/rm_lines.csv` — the legacy R&D SQL dump of raw
+materials (`rm_code`, `trade_name`, `inci_name`, `supplier`, `rm_cost`,
+`company_name`), 3,070 rows. (Also present there: `rd_formulas.csv` 5,844,
+`formula_masters.csv` 474, CosIng INCI dataset, myskin scrape — candidates
+for a later formulas/knowledge import.)
+
+### Import
+
+- Added `apps/ai/scripts/import-rm-catalog.ts` with `map_rm_line_to_product()`
+  mapping the CSV columns onto the canonical tenant product schema
+  (`productCode`/`rm_code`, `productName`/`trade_name`, `INCI_name`,
+  `supplier`, `price`/`rm_cost`, `company_name`). Idempotent: replaces the
+  tenant's products with the provided set.
+- Transformed `rm_lines.csv` → 3,049 unique products (dedup by rm_code,
+  dropped rows missing code/name) and imported into tenant `6a68a51a…`
+  (Organics AI), replacing the 24 placeholders. Removed the throwaway
+  `seed-products.ts`.
+
+### Verified live (rndai.erporganics.com, authenticated manager)
+
+- `products.list` 200; the "เพิ่มสาร" picker renders the real catalog —
+  RC00A001 "ALCOHOL…", ACE PEP, ACULYN™, ALPHA ARBUTIN, etc. with true
+  INCI strings. Picker loads the first 1,000 (its `limit: 1000`) and is
+  searchable across all 3,049.
+
+### Follow-ups (not blocking)
+
+- Benefits/Use-Case columns show "-" (rm_lines has no such fields); could
+  enrich from the CosIng function data later.
+- To show >1,000 without search, raise `FormulaForm`'s products.list limit
+  or paginate. Importing the historical formulas (`rd_formulas.csv`) is a
+  separate task.
+
+---
+
+## [2026-07-28] fix: /formulas/create had no ingredients — traced to empty catalog, seeded
+
+### Trace (data flow, no code bug found)
+
+`/formulas/create` → `FormulaForm` → `trpc.products.list({limit:1000})` →
+`productsRouter.list` (tenantProcedure "tenant:knowledge:read") →
+`ctx.repositories.products.search_products(tenant_context, …)` → the
+tenant-scoped `products` collection filtered by `{ tenantId }`. Post-G2.5
+the ingredient picker reads the canonical tenant `products` collection
+(NOT the legacy `raw_materials_console` or the platform-global
+`raw_materials_myskin` reference used only for CAS lookup).
+
+Root cause: the fresh production DB has an empty `products` collection, so
+the picker correctly rendered zero rows. The RBAC gate (`user.role ===
+"admin"`) passes because `app-auth` maps Clerk `org:manager` → display
+role `admin`, so the page renders — it just had nothing to list. No code
+defect; a data-seeding gap. (The old Atlas source `stockmanagement.…`
+no longer resolves and the old droplet's DB is not reachable with current
+keys, so the historical catalog was not migrated.)
+
+### Fix
+
+- Added `apps/ai/scripts/seed-products.ts`: idempotent (upsert by
+  `tenantId`+`productCode`) seed of a 24-item real cosmetic raw-material
+  starter catalog (INCI names, CAS numbers, benefits, use-cases, price,
+  supplier) written to the tenant `products` collection.
+- Seeded tenant `6a68a51a…` (Organics AI) with 24 materials.
+
+### Verified live (rndai.erporganics.com, authenticated manager)
+
+- `products.list` returns 200 with data; the "เพิ่มสาร" picker shows
+  **"เลือกสาร (24 รายการ)"** with codes RM000001–RM000024, INCI names,
+  and working Benefits/Use-Case filters.
+
+### Note
+
+This is a curated starter catalog, not the historical product list. To
+load the exact prior catalog, point the seed at the authoritative source
+(old droplet DB dump or a fresh export) and re-run.
+
+---
+
+## [2026-07-28] ops: Production cutover complete — login + RBAC live on the IT-account stack
+
+### Summary
+
+Completed the cutover to the dedicated IT-account stack (`rnd-ai-prod`,
+178.128.27.61) with a fresh database, real Clerk keys, and a live
+authenticated end-to-end pass. `rndai.erporganics.com` now serves from the
+new droplet through Cloudflare.
+
+### Clerk (via the official `clerk` CLI, v2.3.0)
+
+- Authenticated the CLI (`clerk auth login`, it@organicscosme.com) and
+  pulled the dev-instance keys (`clerk env pull`) for app
+  `RND AI Management` — the CLI is the credential path; there is no way to
+  read the secret key without dashboard/CLI access.
+- Installed the secret key on the droplet and restarted the stack; the
+  `Missing secretKey` middleware crash cleared and health returned 200.
+- Installed Clerk agent skills (`.agents/skills/clerk-*`).
+
+### Fresh-database bootstrap
+
+- 38 commercial indexes ensured; super-admin profile created for
+  `leonaruebet@gmail.com` (`user_3Gc4…`, profile `6a68a451…`).
+- Provisioned tenant "Organics AI" (`6a68a51a665f1a13e6bffffe`, slug
+  `organics-ai`, plan enterprise, region bkk, active) mapped to the
+  existing Clerk org `org_3GcGUvF…`; reconcile projected the manager
+  membership (`missing_projection_repaired`). Fixed the provisioning
+  idempotency bug that blocked this (see companion commit).
+
+### Cutover
+
+- Flipped the Cloudflare A record `rndai.erporganics.com` →
+  178.128.27.61 (proxied; edge TLS unaffected; origin runs a self-signed
+  cert behind Cloudflare "full" mode). Reversible via one API call.
+- Verified traffic lands on the new droplet (unique probe seen in its
+  nginx log).
+
+### Authenticated E2E (live, real domain)
+
+- Minted a Clerk sign-in token via the CLI, drove a headless browser
+  through the ticket → landed authenticated on `/`.
+- `/products` renders the tenant-scoped app (empty = fresh DB, not an
+  error); `/ai/raw-materials-ai` renders.
+- Tenant-scoped tRPC (`products.list`, `chatThreads.list`,
+  `organizations.list`) all return 200 authenticated; unauthenticated
+  access still 307s to Clerk sign-in.
+
+### Still open (unchanged, user-gated)
+
+- Clerk **production** instance (live keys + custom domain) — pages still
+  show the "Development mode" badge; dev instance has a ~100-user cap.
+- Legacy business data not migrated (fresh DB per direction "start
+  fresh").
+- Decommission the old drjel-ai droplet after a soak window.
+
+---
+
+## [2026-07-27] ops: Provision dedicated production infra in the IT DigitalOcean account
+
+### Summary
+
+Provisioned a separated production stack for this project in the drjel IT
+DigitalOcean account (it@organicscosme.com), replacing the shared drjel-ai
+account placement. All created via CLI (doctl) per product-owner direction.
+
+### Resources (all sgp1)
+
+- Droplet `rnd-ai-prod` (587869665) — s-2vcpu-4gb, Ubuntu 24.04, IP
+  178.128.27.61; Docker 29.6.2 + Compose v5.3.1 + nginx 1.24 via cloud-init.
+- Managed MongoDB 8 `rnd-ai-mongo` (ccd5e50c-8202-4e4a-97d2-50f01737abe4) —
+  db-s-1vcpu-1gb single node; trusted sources locked to the new droplet only.
+- Cloud firewall `rnd-ai-prod-fw` — inbound 22/80/443 only (port-3000 lesson
+  applied from day one).
+- SSH key `rnd-ai-leo-mbp` imported so the operator workstation can manage
+  the droplet (the old droplet only authorized a decommissioned machine).
+- Redis intentionally NOT provisioned: zero redis/ioredis usage in the
+  codebase; add managed Valkey only when shared queue/rate-limit state exists.
+
+### Staged on the droplet (not yet serving)
+
+- `/opt/rnd-ai` — v2/dev working tree at 485898e (includes localhost-only
+  web port binding).
+- `/opt/rnd-ai/.env` (mode 600) — new Mongo URIs pre-filled; Clerk keys,
+  KNOWLEDGE_UPLOAD_AUTH_SECRET, and AI provider keys left blank on purpose.
+- nginx site `rnd-ai` proxying 80 → 127.0.0.1:3000 (default site removed).
+
+### Cutover remaining (in order)
+
+1. Create the Clerk PRODUCTION instance (dashboard, user-gated) and fill the
+   blank secrets in `/opt/rnd-ai/.env`.
+2. Migrate data from the old cluster (run mongodump/mongorestore ON a droplet
+   — both clusters are trusted-source firewalled; laptop cannot connect).
+3. `docker compose up -d --build` on rnd-ai-prod; verify localhost health.
+4. Flip Cloudflare DNS `rndai.erporganics.com` → 178.128.27.61 (zone lives in
+   the drjel Cloudflare account; API token verified working); decide origin
+   TLS (Cloudflare origin certificate on 443) before or at flip.
+5. Decommission the old drjel-ai droplet after a soak window.
+
+---
+
+## [2026-07-27] ops: Close public port 3000; live production E2E trace (G6.9 continued)
+
+### Root cause
+
+The DigitalOcean cloud firewall `rnd-ai-firewall` carried an explicit
+`tcp/3000 from 0.0.0.0/0` inbound rule, and `docker-compose.yml` published
+the web container as `"3000:3000"` (all interfaces). Result: the Next.js
+app was reachable directly at `http://<droplet-ip>:3000`, bypassing
+Cloudflare TLS/WAF. Auth middleware still enforced the Clerk wall on that
+path (verified 307 → hosted sign-in), so exposure was transport-level, not
+data-level.
+
+### Fixes
+
+- Removed the `tcp/3000` inbound rule from `rnd-ai-firewall` via the
+  DigitalOcean API (surgical rule DELETE; 22/80/443 untouched). Verified:
+  port 3000 closed from the internet, site health 200, SSH intact.
+- `docker-compose.yml`: web port mapping changed to `"127.0.0.1:3000:3000"`
+  so future stacks are localhost-only regardless of cloud-firewall state.
+  Safe because the droplet's nginx and the deploy script's health check
+  both reach the container via `localhost:3000`.
+
+### Live production E2E trace (credential-free, 2026-07-27)
+
+- DNS → Cloudflare proxy → origin → `/api/health` 200.
+- Unauthenticated pages and APIs (`products.list` tRPC, `POST /api/ai/runs`,
+  `POST /api/ai-chat`) all fail closed: 307 to Clerk hosted sign-in, no data.
+- Real sign-up attempt with a non-allowlisted email was rejected by Clerk
+  ("not allowed to access this application") — `restricted_to_allowlist`
+  verified live; no account was created.
+- ai:3001, qdrant:6333, mongo:27017 unreachable from the internet.
+
+### Remaining production-readiness gates (unchanged, user-gated)
+
+- Clerk production-instance cutover (live keys + custom domain); the hosted
+  pages still show the "Development mode" badge.
+- Legacy data backfill (`tenant:audit` → `tenant:backfill`) pending the
+  legacy-organization → tenant mapping decision.
+- Qdrant G3.5 tenant knowledge ingestion for the first tenant.
+- Authenticated-journey E2E (needs an allowlisted identity or a single-use
+  sign-in token minted on the authorized machine).
+
+---
+
+## [2026-07-17] fix: First-sign-up incident — unprovisioned organization collapsed to a generic 401 (G6.9 staged validation)
+
+### Incident and root cause
+
+The first commercial user signed up on the public domain and every tRPC
+call returned `401 "Authentication is required."` — the frontend looked
+unable to reach the database. Actual chain: the Clerk instance runs
+`force_organization_selection` with self-serve organization creation
+enabled, so after sign-up the user was pushed into creating
+"Leo's Organization" through the Clerk widget. That organization has no
+tenant projection, so `resolve_clerk_principal` rejected every request
+with FORBIDDEN ("The organization is not an active tenant."), which
+`failed_context` collapsed — silently, nothing logged for typed
+rejections — into UNAUTHENTICATED. An authorization/provisioning problem
+was indistinguishable from a missing session.
+
+### Production remediation (droplet + Clerk Backend API)
+
+- Enabled organization slugs (`slug_disabled=false`): provisioning's
+  create-or-get-by-slug requires them; the first run had parked the
+  tenant `repair_required`.
+- Allowlisted the platform owner's email: `restricted_to_allowlist`
+  sign-up mode also blocks organization invitations to non-allowlisted
+  identifiers (Clerk `not_allowed_access`).
+- Provisioned the first university via `provision_university` with the
+  bootstrapped super_admin as actor: tenant `6a59b2ec7c1edaad69c8b7b8`
+  "Organics AI" (slug `organics-ai`, plan `enterprise`, region `bkk`),
+  active, Clerk org `org_3GcGUvFVMtQqDYOmx2UybJzdji9`.
+- Created the owner's `org:manager` membership; the webhook pipeline
+  projected it end-to-end (`tenant_membership_projections`
+  active/manager) — first live validation of G1.5 receipts/projections.
+  Revoked the now-redundant manager invitation.
+- Deleted the empty rogue organization; disabled self-serve organization
+  creation instance-wide (`organization_creation_defaults.enabled=false`)
+  and per-user, matching the platform-provisions-universities design.
+- Verified end-to-end with a single-use sign-in token in a headless
+  browser: `/products` renders authenticated and `products.list`
+  returns 200.
+
+### Code fix (diagnosability of the incident class)
+
+- `apps/ai/server/trpc.ts`: `failed_context` now logs every typed
+  rejection (boundary, resolver, code, safe message) and preserves
+  FORBIDDEN with its reason (`auth_error_message`) instead of collapsing
+  it to UNAUTHENTICATED; the authenticated middleware surfaces it as
+  FORBIDDEN with the resolver's message.
+- `apps/web/lib/server/with-request-principal.ts`: same mapping for
+  direct routes — FORBIDDEN resolution failures now return
+  `403 FORBIDDEN` with the safe reason and are logged.
+- `tests/auth/trpc-procedures.test.ts`: two new surface locks — the
+  FORBIDDEN reason passes through, and a safe fallback message applies
+  when the resolver gave none.
+
+### Verification
+
+- `vitest tests/auth tests/architecture`: 13 files, 175 passed.
+- `auth_error` consumers (`tenant-router-isolation`,
+  `ai-control-authorization`, `tenant-lifecycle`): 34 passed.
+- `apps/ai` tsc error count unchanged against baseline (120 pre-existing
+  legacy errors, none in the touched files).
+
+### Known follow-up
+
+- Legacy business data (10 products, 10 legacy organizations) still has
+  no tenant provenance; the tenant-scoped repositories correctly return
+  empty sets. Run the audited `tenant:audit` → `tenant:backfill` once
+  the legacy-organization → tenant mapping decision is made.
+
+---
+
+## [2026-07-17] fix: Second sweep — journey-blocking session/invitation/sign-up gaps (G6.9)
+
+### Summary
+
+Walked the full remaining user journey (accept invitation → land in app →
+invite students → run AI → upload knowledge) and audited each step's
+external-state assumptions before users hit them. Three more members of
+the runtime-assumption class found and fixed.
+
+### Fixes
+
+- **Organization activation** (would have blocked the very next user
+  step): Clerk sessions start with no active organization, so a
+  freshly-invited user would see "Invitation pending" forever and every
+  tenant-scoped page would stay empty. New `OrganizationActivator`
+  client component (mounted on onboarding) activates the sole membership
+  via `useOrganizationList().setActive` and refreshes server resolution.
+- **Invitation redirect targets**: student and manager invitations from
+  the shared member ports carried no `redirectUrl`, stranding invitees
+  on Clerk's hosted default page. Both now redirect to
+  `NEXT_PUBLIC_APP_URL/onboarding` (matching initial-manager
+  provisioning).
+- **Public sign-up closed**: the instance now runs
+  `restricted_to_allowlist: true` — sign-up is invitation-only, matching
+  the commercial design; invited users are unaffected.
+
+### Known follow-ups (flagged, fail-closed today)
+
+- Qdrant on the droplet has only the legacy `raw_materials_myskin`
+  collection; governed knowledge retrieval stays empty (fail-closed)
+  until the G3.5 collections are ingested for the first tenant.
+- Platform AI is enabled by default (`AI_PLATFORM_DISABLED` unset) —
+  verified, no action needed.
+
+### Verification
+
+- Auth + architecture + provisioning tests 18 files / 212 passed
+  (new surface locks: activator mounted, both invitation redirects).
+- `apps/web` tsc clean; production web build passed; redeployed to the
+  droplet through the instance preflight.
+
+---
+
+## [2026-07-17] fix: Close the whole class of runtime instance/config assumptions (G6.9 hardening)
+
+### Summary
+
+The ABAC provisioning failure ("repair required; external state is
+unprovable") was one instance of a class: code assuming external state
+(Clerk instance features, custom roles, env vars) that a real deployment
+does not have, discovered only at runtime. Swept the entire class and
+fixed every member.
+
+### Instance-state fixes (applied to the live Clerk instance)
+
+- Organizations feature enabled (root cause of the ABAC failure:
+  `organization_not_enabled_in_instance`).
+- Custom org roles `org:manager` and `org:user` created on the instance —
+  the plan-preferred custom role mode now actually works; the droplet was
+  reverted from the temporary `built_in` fallback to custom mode.
+- The stuck `repair_required` ABAC stub was deleted (audited; it had no
+  Clerk organization attached).
+
+### Preventive gates (so this class cannot recur silently)
+
+- `deploy-droplet.sh` now verifies the LIVE Clerk instance before any
+  cutover deploy: secret key validity + organizations feature via
+  `GET /v1/organizations`, and — when `CLERK_ORG_ROLE_MODE` is custom —
+  the presence of `org:manager`/`org:user` via `GET /v1/organization_roles`.
+  It also warns when `KNOWLEDGE_UPLOAD_AUTH_SECRET` is missing/short.
+- Environment-contract sweep of every `process.env` read against the
+  compose file surfaced two real gaps, both fixed:
+  `NEXT_PUBLIC_APP_URL` (invitation redirect target + client base URL —
+  now a build arg in both web Dockerfiles, compose build+runtime env, and
+  documented) and `KNOWLEDGE_UPLOAD_AUTH_SECRET` (uploads fail closed
+  below 24 chars — now in compose and `.env.example` with generation
+  instructions). Worker gains `RAW_MATERIALS_REAL_STOCK_MONGODB_URI`
+  passthrough parity.
+- Operator runbook gaps closed as committed scripts:
+  `scripts/ops/bootstrap-first-admin.ts` (one-time first super admin,
+  refuses when one exists, audited) and
+  `scripts/ops/repair-tenant-provisioning.ts` (replays provisioning with
+  the tenant's ORIGINAL idempotency key so repair reuses the exact
+  production code path instead of hand-written writes).
+- `tests/architecture/deployment-image.test.ts` locks the new build args,
+  compose entries, and instance preflight markers (74/74).
+
+### Verification
+
+- Architecture tests 74/74; `bash -n` clean; compose config valid;
+  apps/web tsc clean; ops scripts typecheck standalone.
+- Redeployed to the droplet through the new preflight (record below).
+
+---
+
+## [2026-07-17] fix: Gate the Clerk Frontend API proxy behind an env flag (staging handshake fix)
+
+### Summary
+
+The first real sign-in on the droplet failed at the Clerk handshake with
+`host_invalid`: the middleware unconditionally enabled
+`frontendApiProxy`, which routes clerk-js through `/__clerk/*` on our
+domain — valid only for a Clerk PRODUCTION instance with a registered
+proxy domain. The staged development instance handshakes against
+`*.clerk.accounts.dev` and rejects the proxied host. The proxy is now
+opt-in via `CLERK_FRONTEND_API_PROXY=true` (documented in
+`.env.example`), to be enabled together with the production instance.
+The user's Clerk-side sign-up itself succeeded (active session in the
+failing handshake token), confirming the sign-up surface works.
+
+### Verification
+
+- Auth tests and `apps/web` typecheck pass; droplet web image rebuilt
+  with the flag unset and the handshake retested end-to-end.
+
+---
+
+## [2026-07-17] ops: Deploy v2/dev to the droplet with Clerk login enabled (G6.8 + G6.9 wiring)
+
+### Summary
+
+`v2/dev` (commit `8c7702f`) is deployed and serving on the DigitalOcean
+droplet (`rnd-ai-droplet`, 165.245.181.97, behind Cloudflare at
+rndai.erporganics.com). The governed AI worker runs in production for the
+first time, and Clerk authentication is enabled end-to-end with a staged
+development instance.
+
+### Deployment record (G6.8)
+
+- Droplet checked out `v2/dev`; `.env` gained `GEMINI_MODEL=gemini-3.5-flash`,
+  the required worker pricing variables (official July-2026 rates:
+  1,500,000 / 9,000,000 micro-USD per million tokens), and the rate card.
+- The previous image is tagged `rnd-ai-web:rollback-main-5d43312` for
+  instant rollback; nginx/Cloudflare routing untouched.
+- First deploy attempt failed in the worker image on the corrupt lockfile
+  (see previous entry) — the failure never touched running containers;
+  the redeploy after the lock repair succeeded.
+- Verified: `/api/health` 200 locally and via the public domain; worker
+  container `worker.started`, 0 restarts; web healthy.
+
+### Clerk staging wiring (G6.9, dev instance)
+
+- Clerk application "RND AI Management"
+  (`app_3Gbz01w3E8rYjZbdbqVEfPTPmoi`, dev instance
+  `resolved-gelding-68`) created via the Clerk CLI; `clerk init`
+  detected the existing integration (middleware, provider, auth pages
+  all SKIP) and wrote keys to `apps/web/.env.local` only.
+- Webhook endpoint `ep_3Gc2v5KNqC6NVNwbpEiVhhx9AsW` →
+  `https://rndai.erporganics.com/api/webhooks/clerk` created
+  programmatically through the Svix API (one-time-token exchange); the
+  signing secret was transferred to the droplet without ever entering
+  the transcript or the repository.
+- Droplet `.env` now carries the full five-variable Clerk contract with
+  `CLERK_CUTOVER=true`; the web image was rebuilt so the publishable key
+  is inlined (the deploy script's cutover validation gate passed on a
+  real deployment for the first time).
+- Verified on the public domain: `/sign-in` renders the Clerk surface
+  (200), protected `/dashboard` 307-redirects to the Clerk-hosted
+  sign-in with the correct return URL, `/api/health` unaffected.
+
+### Remaining staged-validation steps
+
+First user sign-up + one-time super-admin bootstrap, webhook delivery
+receipt check (`clerk_webhook_receipts`), university provisioning, the
+seven staged Playwright Clerk cases, and eventually a production Clerk
+instance (custom domain DNS) before commercial rollout. The dev-instance
+keys are staging credentials, not launch credentials.
+
+---
+
+## [2026-07-17] fix: Repair the dependency lockfile for clean installs; correct the G6.7 audit claim
+
+### Summary
+
+The G6.7 lockfile was incomplete: surgically deleted `uuid`/`langsmith`
+entries were never written back by npm, so any clean `npm ci` consumer —
+including the droplet worker image — failed to resolve them (the local
+tree only worked because Node walked up into the parent repository's
+`node_modules`). This also means the earlier "0 vulnerabilities" claim
+was partly an artifact of the missing lock entries. Both are corrected
+here.
+
+### Root cause
+
+- npm 11.6 does not restore hand-deleted lock entries on install when
+  `node_modules` still satisfies the tree, and regenerating the lock
+  **inside this git worktree (nested under another npm project)** kept
+  dropping exactly those package nodes while keeping their edges.
+  Regenerating the identical manifests outside the nesting resolves
+  correctly — the complete lock generated there is now committed.
+- The `langsmith`/`uuid` overrides were removed: they cannot apply
+  reliably here, and the affected packages live only in the legacy
+  0.3-era langchain tree (rollback executor, deletion-scheduled G5.10).
+- A full regeneration floated root `mongodb` to 7.5.0 against the
+  project-wide 6.21.0 pins (110 test failures, split `Db` types); a root
+  override now pins `mongodb` to 6.21.0 so one copy dedupes everywhere.
+- recharts floated to 3.9.2 whose `PieLabelRenderProps` no longer carries
+  custom datum fields; the feedback-analytics pie label now narrows the
+  props explicitly (runtime unchanged).
+
+### Honest audit position (supersedes the previous entry's "0")
+
+`npm audit --omit=dev`: **10 advisories — 1 high, 9 moderate, 0 critical,
+0 low** (down from 48 / 3 critical / 22 high). All ten sit in the legacy
+0.3-era langchain tree: `langsmith` SSRF-via-tracing-headers (high;
+tracing is not enabled in any production environment contract) plus the
+`@langchain/*`/`uuid` moderates. That tree is the pinned rollback-only
+legacy executor scheduled for deletion at G5.10; the advisories retire
+with it. The governed orchestration path uses core 1.2.3 /
+langgraph 1.4.8 / langsmith 0.8.x — not affected.
+
+### Verification
+
+- `npm ci --legacy-peer-deps` from the committed lock — clean; `uuid`
+  and `langsmith` physically install (Docker-equivalent proof).
+- Full suite 102 files / 926 tests passed; `tsc -p apps/web` clean;
+  boundary scan 0; worker bundle builds; production web build passed.
+
+---
+
+## [2026-07-17] fix: Clear all 48 production npm audit advisories (G6.7)
+
+### Summary
+
+`npm audit --omit=dev` now reports **0 vulnerabilities**, down from 48
+(3 critical, 22 high, 18 moderate, 5 low). No `--force` downgrades were
+used; the absurd `next@9.3.3` "fix" path was explicitly rejected in favor
+of a targeted nested override.
+
+### Changes
+
+- `npm audit fix --legacy-peer-deps`: 30 semver-compatible advisory fixes
+  (protobufjs critical, tRPC prototype pollution, langchain/langsmith
+  updates in the governed tree, defu, effect, fast-uri, form-data, glob,
+  hono, minimatch, picomatch, prisma, socket.io, tar, undici, ws, and
+  more).
+- Removed dependencies that were declared but never imported: `ai`
+  (apps/web — cleared 3 advisories) and `xlsx` (apps/ai — cleared the
+  unfixable SheetJS high advisories entirely).
+- `jspdf` ^3.0.3 → ^4.2.1 (critical: LFI/path traversal + AcroForm
+  arbitrary JS execution). The only usage (dashboard monthly report,
+  core text/autoTable API) is compatible.
+- `packages/ai-orchestration`: `@langchain/core` 1.2.2 → 1.2.3 and
+  `@langchain/langgraph` 1.4.7 → 1.4.8 (patch security releases);
+  package-boundary pin test updated to the new exact versions.
+- Root `overrides`: `langsmith >=0.6.1` (SSRF via tracing header
+  injection sat in the legacy 0.3-era tree that remains compiled as the
+  rollback executor), `uuid >=11.1.1` (buffer bounds), and
+  `next > postcss >=8.5.10` (stringify XSS) — stale lockfile subtrees
+  were re-resolved so the overrides actually apply.
+
+### Verification
+
+- `npm audit --omit=dev` — 0 vulnerabilities.
+- Full suite — 102 files / 926 tests passed (one clean run; an earlier
+  load-test timeout reproduced only under concurrent-build CPU
+  contention and passes in isolation).
+- `npm run build:worker` + import check of the bundle — clean (proves
+  the legacy executor still bundles with overridden langsmith/uuid).
+- `npm run build:web` — production build passed (proves Next works with
+  the postcss override and jspdf 4).
+- `npx tsc --noEmit -p apps/web` — clean; boundary scan — 0 violations.
+
+---
+
+## [2026-07-17] feat: Pin the newest generally available model by platform ranking (G6.6)
+
+### Summary
+
+Adopted Gemini 3.5 Flash — the newest generally available Gemini model as
+of July 2026 and Google's flagship for agentic workloads — as the
+platform-preferred model, replacing the accidental alphabetical model
+selection at run admission with an explicit, config-only preference
+ranking. In-flight runs keep their admission-time pin by design.
+
+### Changes
+
+- `platform-ai-constraints.ts`: added `gemini-3.5-flash` to the provider
+  universe; new `PLATFORM_MODEL_PREFERENCE` ranking (newest first) and a
+  pure `select_preferred_model` helper — ranked pick over the effective
+  allowlist with a deterministic lexicographic fallback for unranked
+  models.
+- `run-api-runtime.ts`: run admission pins the model via
+  `select_preferred_model` instead of `sort()[0]` (which silently chose
+  the alphabetically first model).
+- `plan-entitlements.ts`: `gemini-3.5-flash` added to starter, growth,
+  and enterprise plans (flash-class pricing tier, GA).
+- `docker-compose.yml`: `GEMINI_MODEL` default (legacy env-driven paths)
+  moved from `gemini-3.1-pro-preview` (still preview) to
+  `gemini-3.5-flash`.
+- Embeddings deliberately stay on `gemini-embedding-001`: existing Qdrant
+  vectors depend on it; `.env.example` now documents the
+  `gemini-embedding-2` upgrade path (version bump + full re-index).
+- `tests/ai-control/model-selection.test.ts`: ranked pick, ranking
+  fallback, deterministic unranked fallback, empty-map rejection,
+  ranking⊆universe, and newest-GA-first assertions.
+
+### Verification
+
+- Model IDs verified against the official Gemini API models documentation
+  (July 2026): `gemini-3.5-flash` stable/GA; `gemini-3.1-pro-preview`
+  preview; `gemini-3-pro-preview` shut down (never in our universe).
+- Targeted suites: ai-control + gateway + run API — 17 files / 148 tests
+  passed; apps/web typecheck clean.
+- Full suite: 102 files / 926 tests passed.
+
+---
+
+## [2026-07-17] docs: Orchestrator guide with tool inventory and drift test (G6.5)
+
+### Summary
+
+Added the human-facing orchestrator documentation the model-facing
+capability cards already had: `docs/ai/orchestrator-guide.md` explains the
+run architecture, the reasoning chain (one action per turn, gate
+authorization, finalize validation, clarification/approval interrupts),
+the internal-first search strategy, the complete 10-capability tool
+inventory, the exact procedure for authoring a new tool + card, and where
+model selection is configured. A drift test ties the guide to the live
+tool catalogue so an undocumented tool fails CI.
+
+### Changes
+
+- Added `docs/ai/orchestrator-guide.md` (architecture, reasoning chain,
+  search, tool inventory, tool authoring, model configuration, code map)
+  and linked it from `docs/README.md`.
+- Added `tests/ai-control/orchestrator-guide.test.ts`: the guide must
+  mention every registered governed tool and its permission, every
+  delegation capability and agent persona, all seven required card
+  sections, and the reasoning/search/model anchors.
+
+### Verification
+
+- `npx vitest run tests/ai-control` — 14 files / 124 tests passed
+  (guide drift test 4/4 included).
+
+---
+
+## [2026-07-17] fix: Login and onboarding polish (G6.4)
+
+### Summary
+
+Closed the three login/onboarding gaps: dead links to the deleted legacy
+/login page, an onboarding page that never consulted the internal
+membership projection, and Clerk's deprecated route-matcher helper in the
+middleware.
+
+### Changes
+
+- `apps/web/app/onboarding/page.tsx`: the session's `orgId` is no longer
+  trusted alone — the page resolves the database-authoritative principal
+  via `resolve_clerk_principal` over the identity projection repositories.
+  New states: `ready` (active membership, links to /dashboard) and
+  `reconciliation_required` (inactive tenant or role mismatch — needs an
+  operator); webhook-lag cases keep showing synchronization pending.
+- `apps/web/app/sign-in/[[...sign-in]]/page.tsx` and
+  `sign-up/[[...sign-up]]/page.tsx`: removed links to the deleted /login
+  page; honest configuration notices instead.
+- `apps/web/proxy.ts`: replaced Clerk's deprecated route-matcher helper
+  with plain path checks reusing `is_public_path` plus the two
+  signature/constant public API routes; authorization remains
+  resource-level in handlers.
+- `tests/auth/clerk-surface.test.ts`: locks no-/login-links, the
+  projection-backed onboarding resolution, and the removal of the
+  deprecated matcher.
+
+### Verification
+
+- `npx vitest run tests/auth tests/web` — 123/123 passed.
+- `npx tsc --noEmit -p apps/web` — clean.
+- `npm run build:web` — production build passed.
+
+---
+
+## [2026-07-17] feat: Platform-only manager appointment (G6.3)
+
+### Summary
+
+Implemented the plan-required `appointManager` operation on the platform
+tenants router. Manager appointment was previously only possible as the
+initial invitation during university creation; existing universities had no
+governed way to appoint an additional or replacement manager. The E2E test
+named "cannot appoint a manager" now actually calls the appointment
+endpoint.
+
+### Changes
+
+- Added `appoint_manager` service
+  (`apps/ai/server/services/provisioning/appoint-manager.ts`):
+  platform-role asserted inside the service (defense in depth), the
+  single-membership rule enforced before Clerk is called, a typed
+  `AlreadyTenantMemberError` for active same-university members, an
+  idempotent manager invitation, projection upsert, and an
+  `appoint_manager` audit record.
+- Extracted the production member ports out of the tenant members router
+  into shared `production-member-ports.ts` (DRY), extended them with an
+  idempotent `create_manager_invitation` (reuses a pending invitation
+  instead of minting another) and a role-derived invitation projection
+  (`org:manager`/`org:admin` project as manager; user roles as user).
+- Added `platformTenants.appointManager` (platformAdminProcedure) mapping
+  membership conflicts onto CONFLICT.
+- `tests/provisioning/appoint-manager.test.ts`: six cases — appoint,
+  pending-invitation replay, non-platform caller rejected, other-university
+  email rejected, already-active member rejected, missing Clerk
+  organization rejected.
+- `tests/e2e/clerk-auth.spec.ts`: the student denial test now POSTs
+  `platformTenants.appointManager` and expects 401/403.
+
+### Verification
+
+- `npx vitest run tests/provisioning tests/auth` — 12 files / 134 tests
+  passed.
+- `npx tsc --noEmit -p apps/web` — clean.
+- `npx tsx scripts/security/scan-private-boundaries.ts` — 0 violations.
+- `npm run build:web` — production build passed (exit 0).
+
+---
+
+## [2026-07-17] feat: Move formula AI generation onto the governed run API (G6.2)
+
+### Summary
+
+The formulas page AI-suggest flow no longer calls the legacy ReAct
+raw-materials endpoint. It now starts a governed `formulation` run through
+the versioned run API and streams typed events — validation findings,
+evidence, clarification questions, and the manager approval checkpoint that
+commits the confirmed formula — directly inside the suggest modal.
+
+### Changes
+
+- `apps/web/app/formulas/page.tsx`: `handleAiSuggest` starts a governed run
+  via `useAgentRun` (agent key `formulation`, detailed responses, Thai
+  auto-detection); the modal embeds `AiRunView` for run progress,
+  clarifications, and approvals; a completion effect refreshes the list and
+  auto-opens only a genuinely new committed AI draft (an unapproved run
+  produces an artifact, not a Formula document); cancel/close discards the
+  stream safely.
+- `tests/web/agent-run-ui-wiring.test.ts`: the formulas page joins the
+  governed-run boundary tests — must use `useAgentRun` + `AiRunView` and
+  must not reference the legacy ReAct endpoint or its request shape.
+
+### Verification
+
+- `npx vitest run tests/web/agent-run-ui-wiring.test.ts` — 4/4 passed.
+- `npx tsc --noEmit -p apps/web` — clean.
+- Workspace ESLint on the page — 0 errors.
+- `npm run build:web` — production build passed (exit 0).
+
+---
+
+## [2026-07-17] feat: Make the droplet stack able to enable login and run governed AI (G6.1)
+
+### Summary
+
+Closed the deployment gap where the droplet compose stack could neither enable
+Clerk authentication nor complete queued governed AI runs. The web image now
+inlines the Clerk publishable key at build time, compose injects the full
+Clerk runtime contract, a new private worker service processes governed run
+jobs, and the deployment script refuses to deploy a stack that would be
+unable to sign users in or account for AI usage.
+
+### Changes
+
+- Added `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` as a build argument and inline
+  environment value to both web Dockerfiles (`Dockerfile`,
+  `apps/web/Dockerfile`).
+- Added `apps/ai/Dockerfile.worker`: three-stage Node 24 image that bundles
+  the governed run worker via `npm run build:worker` and ships only the
+  bundle plus the generated Prisma client, running as a non-root user.
+- Added the `worker` service to `docker-compose.yml` with the full worker
+  environment contract (Gemini credential, required usage pricing bigints,
+  rate card, embedding contract, compose-internal Qdrant URL, optional
+  Google Custom Search pair, tuning knobs) and added the Clerk
+  secret/webhook/cutover/role variables to the `web` service.
+- Extended `scripts/deploy-droplet.sh`: reusable `env_value`/
+  `require_env_value` helpers, always-required worker pricing variables,
+  the full Clerk key set required when `CLERK_CUTOVER=true`, the new
+  publishable-key build argument, and a worker container health probe.
+- Replaced the stale legacy-auth section of `.env.example` with the real
+  Clerk contract and documented the governed worker variables.
+- Extended `tests/architecture/deployment-image.test.ts` to lock the Clerk
+  build/runtime injection, the worker image shape, the worker compose
+  service, and the deployment-script validation.
+
+### Verification
+
+- `npx vitest run tests/architecture/` — 6 files / 70 tests passed,
+  including the extended deployment-image contract.
+- `bash -n scripts/deploy-droplet.sh` — clean.
+- `docker compose config --quiet` — valid (expected warnings for unset
+  required variables only).
+- `npm run build:worker` — bundle builds (5.4 MB, esbuild).
+- `docker build -f apps/ai/Dockerfile.worker .` — image built (422 MB);
+  running it without credentials fails closed with
+  `worker.start_failed`, exit 1 (boot path and Prisma client resolution
+  proven inside the container).
+- Tests that assert on the touched deployment files
+  (`public-ai-secrets`, `clerk-surface`, `commercial-verification`) —
+  18/18 passed.
+
+### Release boundary
+
+No droplet deployment is claimed. Clerk credentials, provider credentials,
+and the hosted rollout remain external gates (G6.8/G6.9).
+
+---
+
+## [2026-07-16] test: Make all-agent credential-free staging verification executable
+
+### Summary
+
+Closed the two missing self-contained G5 verification paths without weakening
+the reviewed release gate. The immutable 150-case corpus now runs through both
+native evaluator adapters and emits integrity-linked test reports; the default
+comparator rejects those credential-free artifacts unless the explicit CI
+adapter mode is active. A non-production-only browser adapter now drives the
+real governed run client, typed SSE reducer, evidence UI, clarification and
+manager-approval checkpoints for all three agent keys.
+
+### Changes
+
+- Added `eval:legacy` and `eval:ooda` full-corpus commands and wired them before
+  the numerical comparison in the exact verifier.
+- Added explicit `credential_free_test` versus `reviewed_release` evidence
+  classes so generated CI artifacts cannot become rollout evidence.
+- Added the non-production commercial agentic console and strict synthetic run
+  API adapter for raw-material, formulation, and sales-R&D browser flows,
+  including Last-Event-ID replay, tenant isolation, hard-budget failure, and
+  emergency disable.
+- Added Playwright HTML evidence and automatic pinned Chromium installation to
+  the commercial verifier.
+- Repaired the droplet deployment image for npm workspace hoisting, Node 24,
+  Prisma generation/runtime packaging, and the `@rnd-ai/ai-orchestration`
+  workspace; added a public constant `/api/health` endpoint for Docker Compose,
+  Nginx, and external liveness checks.
+- Made the exact verifier build the real droplet deployment image after the web
+  build, so deploy-artifact regressions fail the same credential-free gate.
+
+### Verification
+
+- Evaluation campaign: 150/150 cases executed per adapter; legacy test baseline
+  50%, agentic candidate 100%; all 14 credential-free comparison gates passed.
+  Final integrity hashes: legacy
+  `5a5a9d72974c02923b757254c61fcb57d47f95fe26f7a63d47d81b740ac7579a`,
+  agentic
+  `1e1ee68ea450343074f6332ec919970d203b3abe483306583226592cfef2b876`.
+- Exact `COMMERCIAL_TEST_ADAPTER_MODE=credential_free npm run
+  verify:commercial`: exit 0; 99 files / 901 tests, 8 resilience assertions,
+  three 50-stream load runs, zero boundary findings, 6 agentic browser cases,
+  production web build, and droplet Docker image build all passed. The 7 Clerk
+  staging-only browser cases correctly skipped without hosted credentials.
+- GitHub-hosted commercial verification passed on commit `fa849f2` in 7m13s:
+  [run 29501948770](https://github.com/Organics-AI-Team/rnd_ai_webapp/actions/runs/29501948770).
+  The workflow uploaded `commercial-verification-29501948770`; hosted campaign
+  integrity hashes were legacy
+  `9f0796f47f9d42c967481d1056bffdd10baf77b40d8b1753275a52c595483244`
+  and agentic
+  `f2c046876e83870f56956ba5c5cc61876c3c45ce45eb56d34e881bbe49ac33b0`.
+- Built and ran the droplet image locally; `/api/health` returned HTTP 200 with
+  `{"status":"ok"}`.
+
+### Release boundary
+
+Credential-free reports remain local/CI regression evidence. Clerk/provider
+staging credentials, signed tagged-executor reports, hosted canaries, rollout,
+restore-window observation, dependency-advisory remediation/review, and legacy
+retirement remain external gates. No DigitalOcean droplet deployment was
+claimed; the branch was not copied to or started on the remote host.
+
+---
+
+## [2026-07-16] feat: Complete governed commercial runtime implementation
+
+### Summary
+
+Closed the remaining credential-free G3/G4/G5 implementation gaps without
+claiming that external release operations have happened. The authenticated run
+API now admits a policy/context/budget/deployment-pinned run transactionally;
+the deployable private worker reconstructs current authorization, drives the
+checkpointed agentic loop, persists events before acknowledgement, and retains
+an explicitly pinned rollback-only legacy executor. Formula drafts/revisions
+use the canonical validated artifact contract, confirmation is bound to an
+exact durable manager approval, and knowledge/web capabilities are real
+fail-closed production adapters.
+
+The final `web.search` port uses the server-only Google Custom Search JSON API
+with a strict 1–10 result cap, 512 KiB response limit, response validation,
+HTTP(S)-only citations, bounded text, request abort propagation, safe retryable
+errors, and no provider-body/key logging. Both Google search credentials must
+be present or the worker fails closed; when both are absent the tool remains
+`NOT_WIRED`.
+
+### Changes
+
+- Added the production runtime/worker bundle, durable approval/runtime/tool
+  repositories, pinned executors, safe heartbeat/retry/poison handling, and
+  worker commands/environment contract.
+- Wired canonical formula artifacts through validation, idempotent durable
+  persistence, exact checkpoint approval, and tenant-owned formula commit.
+- Completed Qdrant collection partitioning, ingestion/upload authorization,
+  evidence/citation isolation, and the provisioned web-search adapter.
+- Completed the typed run client/UI, commercial operations/governance,
+  evaluation/scoring/shadow/rollout/resilience/load/CI implementation, and
+  reconciled the G4/G5 evidence manifests.
+- Added an ESLint 9 backend boundary, a package-local shared-types tsconfig,
+  fixed the new React hook/error-boundary findings, and made the Next.js 16 E2E
+  dev server explicitly use webpack.
+
+### Verification
+
+- Full Vitest suite: 94 files, 883 tests passed.
+- Root typecheck and lint: passed; private-boundary scan: 0 violations.
+- Worker production bundle and import smoke: passed; Next.js production build:
+  passed.
+- Resilience: 8/8; three-run 50-stream synthetic load: passed with zero errors,
+  duplicate commits, cross-tenant events, or unreconciled usage.
+- Playwright starts successfully; seven Clerk staging tests skip without staged
+  credentials.
+- The comparison CLI correctly exits 1 because no approved `legacy-frozen`
+  artifact exists. The exact Docker verifier is additionally unavailable while
+  the local Docker daemon is stopped. These are recorded release gates, not
+  implementation-pass claims.
+
+### External release gates
+
+Credential rotation/provisioning, signed legacy/candidate evaluation artifacts,
+hosted Docker verification, credentialed full-story staging, cohort promotion,
+100% rollout, restore-window observation, legacy retirement, release tag, and
+owner sign-off remain pending. See
+`docs/commercial/evidence/g5-release.md`.
+
+---
+
+## [2026-07-16] feat: Commercial verification wiring and AI indexes
+
+### Summary
+
+Made the G5 commercial verification entrypoints callable through the root
+package and GitHub workflow, without turning the incomplete evaluation layer
+into a false-positive gate. Resilience and load commands use their existing
+credential-free runners. `eval:compare` now loads two strictly validated named
+metric artifacts, evaluates the canonical release thresholds, prints only an
+aggregate safe summary, and exits non-zero for missing/invalid evidence or any
+failed gate. The repository contains no approved frozen/candidate artifacts or
+full-corpus generators yet, so the release gate intentionally fails closed
+instead of manufacturing a baseline.
+
+Expanded `setup:commercial-indexes` from 10 identity indexes to 38 deployment
+indexes. The 28 additions cover the current control-plane, rollout, run,
+budget, approval, artifact, queue, event replay, tool idempotency, and aggregate
+operations query patterns. This includes the finalize persistence uniqueness
+key `{ tenantId, runId, contentHash }` for `ai_artifacts`.
+
+### Changes
+
+- `package.json` — routed `verify:commercial` through the fail-fast shell
+  verifier and added backed `test:resilience`, `test:load`, and `eval:compare`
+  entrypoints.
+- `.github/workflows/commercial.yml` — calls the root verification command so
+  local and hosted execution use the same boundary.
+- `evals/runner/compare-evaluations.ts` + `evals/README.md` — added the strict
+  artifact comparison CLI and documented its credential-free input contract.
+- `apps/ai/scripts/setup-commercial-indexes.ts` — added repository-shaped
+  compound, unique, replay, lease, range, and operational indexes for 16 new AI
+  collections.
+- `apps/ai/.env.example` — documented the private worker's required token-price
+  units plus rate-card, embedding, timeout, lease, heartbeat, backoff, and poll
+  settings in the backend-only example.
+- Commercial architecture, Mongo deployment, and evaluation tests now pin the
+  complete wiring contract and fail-closed process status.
+
+### Verification
+
+- TDD RED observed missing entrypoints/env keys/index collections and the absent
+  comparator module; GREEN focused suite: 20/20 assertions.
+- Related run/queue/event/approval/rollout/usage/tool/operations suites: 92/92.
+- `npm run test:resilience`: 8/8.
+- `npm run test:load -- --repetitions=1`: 50 synthetic streams, zero errors,
+  duplicate commits, cross-tenant events, or unreconciled usage; accepted p95
+  4.285 ms, simple completion p95 146.794 ms, formula completion p95 87.12 ms.
+- Root typecheck, focused standalone TypeScript compile, security scan (zero
+  violations), shell syntax, and diff hygiene: pass.
+- `npm run eval:compare -- --baseline=legacy-frozen --candidate=ooda-current`:
+  expected fail-closed exit 1 because `legacy-frozen.json` is not present.
+- Full workspace lint now passes after the later governed-runtime completion
+  change added explicit package boundaries and fixed the new web findings. The
+  full Docker verifier remains fail-closed on external release evidence.
+
+---
+
+## [2026-07-16] fix: Canonical governed-tool permissions
+
+### Summary
+
+Bound the governed AI `ToolPermission` contract to the shared-auth `Permission`
+union and replaced the stale pre-integration literals used by tool definitions and
+capability cards. The canonical mappings are `formula.search -> formula:read`,
+`formula.draft -> formula:draft:create`, `formula.revise ->
+formula:draft:update_own`, `formula.comment -> formula:comment:create`,
+`formula.confirm -> formula:confirm`, and `knowledge.search ->
+tenant:knowledge:read`. `web.search` intentionally uses `ai:run`, the narrowest
+existing permission for an operation within an authorized AI run; no new auth
+permission was added.
+
+The model-visible Zod input/output schemas and all tool execution behavior remain
+unchanged. Capability-card registration still compares raw parsed frontmatter to
+the now-typed definition, so invalid or stale card permissions fail closed as
+card drift without treating unvalidated markdown as a trusted `Permission`.
+
+### Verification
+
+- TDD RED: capability-card mapping test failed on exactly the five stale values
+  (1 failed, 14 passed), then GREEN (15/15).
+- Full AI-control suite: 110/110.
+- Focused capability/executor/context/integration suites: 58/58.
+- Full parallel suite: 849/852 passed; the only failures were three 5-second
+  whole-tree scanner timeouts. All timed-out scanner suites passed serially
+  (26/26), confirming no boundary findings.
+- Full single-worker suite initially passed 852/852. After concurrent runtime
+  work added another test, the final shared-tree rerun passed 853/853 assertions
+  but Vitest reported one unhandled external Qdrant rejection from the dirty,
+  excluded `run-api-runtime` path; that suite passes alone (3/3).
+- `npm run typecheck`: pass.
+- `npm run security:scan`: 0 private-boundary violations.
+
+---
+
+## [2026-07-15] feat: Legacy AI executor import boundary (G4.11)
+
+### Summary
+
+Extended the private-boundary scanner with a `LEGACY_ENTRY_POINT_IMPORT` rule
+that keeps the governed orchestration path free of the legacy AI executor tree, so
+an agentic run can never fall back into a legacy ReAct/pipeline/agent-manager path.
+Within `packages/ai-orchestration/` and `apps/ai/server/services/ai-gateway/`, any
+static import, dynamic `import()`, or `require()` that resolves into
+`apps/ai/agents/**` (matched as a `/agents/` path segment, so relative, `@/ai`
+aliased, and workspace forms all resolve while words like `subagents` never trip)
+is rejected. The legacy tree itself (retired in G5) and test files are not policed.
+
+### Changes
+
+- `scripts/security/scan-private-boundaries.ts` — added the
+  `LEGACY_ENTRY_POINT_IMPORT` finding code, `GOVERNED_ORCHESTRATION_PATHS` +
+  `LEGACY_AI_ENTRY_POINT_FRAGMENTS` constants, `is_legacy_entry_point_scanned` /
+  `is_legacy_entry_point_specifier` / `module_specifier_of` /
+  `find_legacy_entry_point_imports` helpers, the exported
+  `reject_legacy_entry_point_import`, and wired it into `scan_private_boundaries`.
+- `tests/security/legacy-entry-point-boundary.test.ts` — 8 fixtures (relative,
+  aliased, dynamic `import()`, `require()`, sanctioned imports, out-of-scope legacy
+  tree, `subagents` non-match, governed-path test-file exemption).
+- `docs/commercial/evidence/g4-release.md` — recorded the new rule and refreshed
+  the G4.9/G4.11 status and pending list.
+
+### Verification
+
+- RED then GREEN on the new suite (8/8); full suite 639/639.
+- `npm run typecheck` 0 errors; `npm run security:scan` 0 violations on the tree
+  (the governed path imports no legacy module).
+
+---
+
+## [2026-07-15] feat: Governed AI run API route handlers (G4.9g, credential-free subset)
+
+### Summary
+
+Assembled the three governed-run HTTP routes on top of the already-tested G4.9
+building blocks, completing the credential-free half of G4.9g. All run-specific
+routing, validation, and error mapping lives in pure, framework-free handlers
+(`run-api-handlers.ts`) that take injected collaborators and return Web
+`Response`s, so they are exercised directly with fakes — no Clerk session,
+MongoDB, or provider credential required. The thin Next.js route files resolve
+the verified principal and tenant context, assemble the production
+collaborators, and delegate.
+
+### Behaviour
+
+- `POST /api/ai/runs` — verified principal + `ai:run`; identity derived from the
+  session (never the body); idempotent 202; invalid input -> 400
+  `AI_RUN_INPUT_INVALID`; disabled tenant -> 403 `AI_DISABLED`; create
+  composition not yet wired -> 503 `RUN_API_NOT_WIRED`.
+- `GET /api/ai/runs/[runId]/events` — authorizes the run tenant-scoped
+  (cross-tenant/missing -> 404), replays ordered SSE frames after `Last-Event-ID`
+  (the event `sequence` is the SSE `id:`), then tails with heartbeats until a
+  terminal event (`run.completed`/`run.failed`) or an aborted request; a
+  disconnected browser ends only the stream, never the run.
+- `POST /api/ai/runs/[runId]/resume` — strict clarification/approval payload only
+  (-> 400 `RESUME_REQUEST_INVALID`); cross-tenant/missing -> 404; otherwise 202,
+  and the private worker resumes the graph (never the HTTP request).
+
+### Scope and pending gate
+
+- The create path fronts run creation with a placeholder gateway that surfaces a
+  retryable 503 `RUN_API_NOT_WIRED` until the concrete policy/context/budget
+  adapters and provider credentials land (PENDING_EXTERNAL_ROTATION) — the same
+  external gate blocking the worker's model execution. Events and resume are
+  fully wired to MongoDB now.
+- The anonymous/suspended-tenant cases remain the reused `with_request_principal`
+  guard's responsibility (G0) and are not re-tested here (DRY).
+- Still credential-gated (unchanged): end-to-end execution cases (completion,
+  provider failure, live clarify/approval resume), live SSE tailing against a
+  running worker, and the Playwright reconnect spec.
+
+### Changes
+
+- Added `apps/ai/server/services/ai-gateway/run-api-handlers.ts` — pure
+  create/events/resume handlers with injected collaborators + `RunApiNotWiredError`.
+- Added `apps/ai/server/services/ai-gateway/run-api-runtime.ts` — production
+  composition seam (Mongo-backed event store/authorize/resume; not-wired create
+  gateway) + `tenant_context_from_principal`.
+- Added `apps/web/lib/server/tenant-context-route.ts` — shared principal ->
+  tenant-context resolution (403 on membership failure), reused by all three routes.
+- Added `apps/web/app/api/ai/runs/route.ts`,
+  `apps/web/app/api/ai/runs/[runId]/events/route.ts`,
+  `apps/web/app/api/ai/runs/[runId]/resume/route.ts`.
+- Added `tests/integration/ai-run-api.test.ts` — 12 handler tests (RED->GREEN).
+
+### Verification
+
+- RED then GREEN on the new suite (12/12); full suite 631/631.
+- `npm run typecheck` 0 errors (web + orchestration); `npm run security:scan` 0
+  violations; `npm run build:web` compiles all three routes as dynamic functions.
+
+---
+
+## [2026-07-15] feat: Raw-material MaterialEvidenceProvider — both G4.8 adapters done
+
+### Summary
+
+- Added `apps/ai/server/repositories/material-evidence-provider.ts`:
+  `create_material_evidence_provider` — the concrete `MaterialEvidenceProvider`
+  the gateway injects into `FormulaArtifactService.validate_draft`. A pure
+  platform-global catalogue read (`raw_materials_console`, **no credentials**): a
+  material is evidence-backed and available when it exists in the catalogue, with
+  its own `rm_code` recorded as the source; each match is keyed by both `rm_code`
+  and catalogue id so the validator's `evidence[material_id] ?? evidence[rm_code]`
+  lookup resolves either. Usage ranges are null here (the catalogue carries none;
+  they come from the knowledge layer, G3.5).
+- This completes **both** deferred G4.8 DI adapters (with the `FormulaApprovalGate`
+  from the prior commit) — neither needed provider credentials; only the model
+  gateway does.
+
+### Verification approach
+
+- `tests/integration/material-evidence-provider.test.ts` (4) against a real
+  in-memory MongoDB: available source-backed evidence for a catalogued material,
+  keyed by both rm_code and id, none for an unknown material, empty for no keys.
+- Four gates: full suite **612/612** (was 608; +4), typecheck 0 (new file clean),
+  security scan 0, production web build pass.
+
+## [2026-07-15] feat: Concrete FormulaApprovalGate over ai_approvals (G4.8 wiring)
+
+### Summary
+
+- Added `apps/ai/server/repositories/ai-approval-gate.ts`:
+  `create_ai_approval_gate` — the concrete `FormulaApprovalGate` the gateway
+  injects into `FormulaArtifactService.commit_confirmed`. It is a pure
+  tenant-scoped `ai_approvals` read (no model, **no provider credentials**):
+  `has_approved_artifact` returns true only when an approval for the tenant, run,
+  and artifact is in the `approved` state. This closes one of the two G4.8 DI
+  adapters that had been deferred to gateway wiring — correcting an earlier
+  mischaracterization that both needed provider credentials; only the model
+  gateway does.
+
+### Verification approach
+
+- `tests/integration/ai-approval-gate.test.ts` (5) against a real in-memory
+  MongoDB: approved match; pending/rejected → false; no approval → false;
+  different artifact/run → false; other tenant → false.
+- Four gates: full suite **608/608** (was 603; +5), typecheck 0 (new file clean),
+  security scan 0, production web build pass.
+
+### Remaining G4.8 adapter
+
+- The concrete `MaterialEvidenceProvider` (a raw-material/knowledge DB read —
+  also credential-free) still to wire.
+
+## [2026-07-15] feat: Private run-worker orchestration (G4.9f, core)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-gateway/run-worker.ts`: `process_one_job`
+  claims one leased job, loads the pinned AIRun, runs (or resumes) the governed
+  graph through an injected `RunExecutor`, appends the produced events, records the
+  run's terminal/interim status, and completes the job. A handled executor failure
+  releases the job with a backoff so it is retried; a vanished run's job is retired;
+  and a genuine crash runs no cleanup — the lease expires and another worker
+  reclaims it, so a run never depends on one process. An interrupt
+  (`waiting_approval`/`waiting_clarification`) pauses the run and completes the
+  start job, leaving a resume job to continue. The concrete `RunExecutor` (rebuilds
+  the runtime from the pinned run, drives the graph with the MongoDBSaver) is
+  injected, so this orchestration is verified without provider credentials.
+
+### Verification approach
+
+- `tests/integration/run-worker.test.ts` (5) against a real in-memory MongoDB with
+  the live queue/run-repository/event-store: run-to-completion, empty queue,
+  handled failure (released + reclaimable), interrupt (run paused), and a vanished
+  run (job retired).
+- Four gates: full suite **603/603** (was 598; +5), typecheck 0 (new file clean),
+  security scan 0, production web build pass.
+
+### Remaining (G4.9)
+
+- The three Next.js routes + integration test (G4.9g), and the concrete
+  `RunExecutor`/runtime factory + `worker.ts` poll-loop entrypoint — external-facing
+  wiring that needs provider credentials.
+
+## [2026-07-15] feat: AI gateway create_run — one authenticated run entry (G4.9e, part 2)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-gateway/ai-gateway.ts`: `create_run` validates
+  the input against `agent_run_input_v1_schema`, short-circuits on an already-
+  accepted run (via `find_by_idempotency`), compiles and pins the effective policy
+  (fail-closed with `AIDisabledError` when AI is off), assembles and pins the
+  context-pack hash, selects the executor, reserves budget idempotently, and — in a
+  single Mongo transaction — creates the AIRun and enqueues exactly one worker
+  `start` job. A retry returns the same run and re-compiles / re-reserves /
+  re-enqueues nothing; the request returns only `{ run_id, events_url }` and never
+  depends on staying alive. The heavy control-plane collaborators (policy compile,
+  context assembly, budget reserve) are injected as narrow ports, so the
+  orchestration is tested in isolation while concrete adapters bridge to the
+  `AIPolicyRepository` / `ContextAssembler` / `BudgetService` at wiring time.
+- Added the `executor` and `contextPackHash` fields the run must pin to the
+  `AIRun` model.
+
+### Verification approach
+
+- `tests/integration/ai-gateway.test.ts` (4) against a real in-memory Mongo replica
+  set (the create is transactional): a pinned agentic run with exactly one enqueued
+  job and one budget reservation; an idempotent retry (same run, one compile, one
+  reserve, one job); fail-closed when disabled (no run); and invalid input rejected
+  before any write.
+- Four gates: full suite **598/598** (was 594; +4), typecheck 0 (new files clean),
+  security scan 0, production web build pass; Prisma schema valid.
+
+### Remaining (G4.9)
+
+- The private `worker.ts` (G4.9f) that claims jobs and drives the loop, and the
+  three Next.js routes + integration test (G4.9g).
+
+## [2026-07-15] feat: Governed AI run persistence (G4.9e, part 1)
+
+### Summary
+
+- Added `apps/ai/server/repositories/ai-run-repository.ts`: the sanctioned access
+  point for the `ai_runs` collection. `create` is idempotent on
+  `[tenantId, idempotencyKey]` — a duplicate-key insert returns the existing run
+  with `created: false`, so a retried gateway call never double-creates (and the
+  same key is still allowed under different tenants). `get` and `mark_status` are
+  tenant-scoped with the canonical `AI_RUN_NOT_FOUND` shape; `find_by_idempotency`
+  supports the gateway's pre-transaction idempotency check. Access is by
+  `tenant_id` string (not a full execution context) because the worker rebuilds
+  tenant identity from a claimed job before it has one.
+
+### Verification approach
+
+- `tests/integration/ai-run-repository.test.ts` (5) against a real in-memory
+  MongoDB with the deployment's unique indexes: create + tenant-scoped read,
+  idempotent retry (one run), cross-tenant read denial, same key under different
+  tenants, and a tenant-scoped status transition.
+- Four gates: full suite **594/594** (was 589; +5), typecheck 0 (new file clean),
+  security scan 0, production web build pass.
+
+### Remaining (G4.9e, part 2)
+
+- The `ai-gateway` `create_run` itself: build the execution context, validate
+  input, compile/pin policy, assemble/pin the context pack, reserve budget, and
+  create the AIRun + enqueue one job in a single transaction, idempotent by key.
+
+## [2026-07-15] test: Real MongoDBSaver durability (G4.9d — closes G4.7)
+
+### Summary
+
+- Added `tests/integration/mongodb-checkpoint.test.ts`: drives a governed run to
+  an approval interrupt with one `MongoDBSaver`, then resumes it with a **second,
+  independently-constructed** `MongoDBSaver` over the same MongoDB — proving the
+  durable checkpoint state came from Mongo, not process memory. The approval
+  resolves exactly once and the commit tool runs once, exactly as the MemorySaver
+  case does. This closes the G4.7 remainder: real checkpoint durability now works
+  because the orchestration package resolves langgraph 1.4.x +
+  `langgraph-checkpoint-mongodb` 1.4.0 (the old 0.2.74 pin caused the
+  `pending_sends` incompatibility that forced the earlier deferral).
+- The test uses `MongoMemoryReplSet` (the saver uses transactions), and the stale
+  "deferred" note in `interrupt-resume.test.ts` now points at this test.
+
+### Verification approach
+
+- `tests/integration/mongodb-checkpoint.test.ts` (1): approval resume across a
+  fresh saver + graph instance (simulated restart) against a real in-memory Mongo
+  replica set — exactly-once approval, one commit.
+- Four gates: full suite **589/589** (was 588; +1), typecheck 0, security scan 0,
+  production web build pass.
+
+## [2026-07-15] feat: Run executor selection with rollback precedence (G4.9c)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-gateway/run-selector.ts`:
+  `select_run_executor(tenant_id, config)` decides once, before an AIRun is
+  created, whether a run is driven by the governed agentic loop or the legacy
+  executor. An explicit legacy pin always wins (a rollback kill-switch), then an
+  explicit agentic pin, then the configured default — so a tenant can always be
+  pulled back to legacy safely. The rollout config is injected (env/tenant-sourced,
+  never hard-coded); G5's canary assignment extends it. The chosen executor is
+  stored on the AIRun, so an agentic run never falls back and a legacy run never
+  invokes the loop.
+
+### Verification approach
+
+- `tests/integration/run-selector.test.ts` (5): default when unpinned, agentic
+  promotion over a legacy default, legacy rollback over an agentic default, legacy
+  precedence when a tenant is in both lists, and no effect on unrelated tenants.
+- Four gates: full suite **588/588** (was 583; +5), typecheck 0, security scan 0,
+  production web build pass.
+
+## [2026-07-15] feat: Ordered versioned run-event store (G4.9b)
+
+### Summary
+
+- Added the `AIRunEvent` Prisma model (`ai_run_events`) and
+  `apps/ai/server/services/ai-gateway/event-store.ts`. `append` persists every
+  `AgentRunEventV1` uniquely keyed by `[runId, sequence]` via an idempotent
+  `bulkWrite` upsert, so a retried append (or an append of a partly-stored tail)
+  stores only the genuinely new events. `replay(run, after_sequence)` returns the
+  events strictly after a Last-Event-ID in ascending order — the exact,
+  gap-free, duplicate-free stream a reconnecting client resumes from. Reads are
+  tenant-scoped, so a run's events can never be replayed across tenants.
+  `latest_sequence` reports the high-water mark (or -1).
+
+### Verification approach
+
+- `tests/integration/event-store.test.ts` (6) against a real in-memory MongoDB:
+  ordered append + full replay, replay after a Last-Event-ID, idempotent
+  re-append, appending only the new tail, cross-tenant read isolation, and the
+  latest-sequence high-water mark.
+- Four gates: full suite **583/583** (was 577; +6), typecheck 0 (new file clean),
+  security scan 0, production web build pass; Prisma schema valid.
+
+## [2026-07-15] feat: Durable run-job queue with compare-and-set leases (G4.9a)
+
+### Summary
+
+- Added the `AIRunJob` Prisma model (`ai_run_jobs`) and
+  `apps/ai/server/services/ai-gateway/run-job-queue.ts`: the durable work queue
+  that drives a governed run forward independently of any serverless request.
+  `enqueue` is idempotent on `[runId, command]` (unique index + `$setOnInsert`),
+  so a retried gateway call never double-schedules. `claim` is a single
+  `findOneAndUpdate` compare-and-set over available-or-expired jobs, so two
+  workers can never own the same job and a crashed worker's expired lease is
+  reclaimable on the next claim (attempts increment each claim). `heartbeat`,
+  `complete`, and `release` (with a backoff before re-availability) are all
+  owner-gated. The queue is deliberately platform-level, not tenant-scoped — the
+  worker rebuilds the tenant context from the pinned AIRun after claiming.
+- Context: the `@langchain/langgraph` upgrade this task nominally required is
+  already in place — the orchestration package resolves nested langgraph 1.4.7 /
+  core 1.2.2 / langgraph-checkpoint-mongodb 1.4.0 (isolated from apps/ai's legacy
+  0.2.74), and the suite already runs on it.
+
+### Verification approach
+
+- `tests/integration/run-job-queue.test.ts` (7) against a real in-memory MongoDB:
+  idempotent enqueue, distinct start/resume, single-worker claim, expired-lease
+  reclaim, owner-gated heartbeat (with steal-prevention), complete, and
+  backoff-gated release.
+- Four gates: full suite **577/577** (was 570; +7), typecheck 0 (new file clean
+  under apps/ai), security scan 0, production web build pass; Prisma schema valid.
+
+### Remaining (G4.9)
+
+- `event-store` (G4.9b), `run-selector` (G4.9c), real-`MongoDBSaver` durability
+  verification (G4.9d, closes G4.7), the `ai-gateway` `create_run` transaction
+  (G4.9e), the private `worker.ts` (G4.9f), and the three Next.js routes (G4.9g).
+
+## [2026-07-15] feat: Orchestration-boundary enforcement + G4 evidence (G4.11, core)
+
+### Summary
+
+- Added the **`OODA_GATEWAY_BYPASS`** rule to
+  `scripts/security/scan-private-boundaries.ts`: any production caller that drives
+  the governed loop graph directly — `compile_agent_loop_graph(...).invoke|stream`,
+  `build_agent_loop_graph(...).invoke|stream`, or a local variable bound to one of
+  those builders — is rejected, so no route or service can run an agentic loop
+  outside the AI gateway that binds policy, budget, and identity. The rule tracks
+  builder-derived graphs specifically (two-phase: collect bound vars, then flag
+  their invoke/stream), so legacy LangGraph graphs that happen to be named `graph`
+  (built from `StateGraph`) are never mistaken for the governed loop. The
+  orchestration package, the AI gateway, and test files are exempt.
+- Recorded the interim G4 release evidence in
+  `docs/commercial/evidence/g4-release.md`: the verified loop topology,
+  single-model-node invariant, context-pack pinning, exactly-once checkpoint
+  restart, interrupt authorization, deterministic formula validation + commit,
+  idempotent event reconnect, and loop-detection — each tied to its test — plus an
+  honest pending list for the G4.9 run/event API, the langgraph upgrade, and the
+  live-stream UI.
+
+### Verification approach
+
+- `tests/security/ooda-boundary.test.ts` (7): flags a loop graph held in a local
+  variable, any variable name, and a direct builder call; exempts the orchestration
+  package, the gateway, and tests; and does **not** flag unrelated `.invoke`/
+  `.stream` calls (llm, tools, chain, a legacy `this.graph`, a legacy `StateGraph`
+  named `graph`, or `streamEvents`).
+- `npm run security:scan` stays at **0 violations** on the production tree with the
+  new rule live.
+- Four gates: full suite **570/570** (was 563; +7), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.11, with G4.9)
+
+- The capability-card ↔ tool-definition CI consistency check, the legacy-entry-point
+  import rule (needs the gateway to define the boundary), the `agentic-run.spec.ts`
+  e2e, and provider-failure/budget-limit evidence exercised through the live run API.
+
+## [2026-07-15] feat: Versioned run-event view reducer (G4.10, core)
+
+### Summary
+
+- Added `apps/web/lib/agent_run_view.ts`: a pure, framework-free reducer that
+  folds the server's ordered `AgentRunEventV1` stream into the view state the AI
+  UI renders — lifecycle status, stage, evidence observations, tool actions,
+  pending clarification/approval interrupts, artifact references, and terminal
+  error — **without ever parsing model prose for control state**. `reduce_run_event`
+  validates each raw event against the versioned schema and drops any event whose
+  `sequence` was already seen, so a reconnect that replays earlier events is
+  idempotent ("render each event once"). `apply_typed_run_event` is the exhaustive
+  typed transition; interrupts clear when the loop resumes (`action.started`) or
+  the run ends.
+- This is the deterministic heart of plan Task 10. The live SSE hook
+  (`use_agent_run`), the React cards, and the reconnect e2e spec consume the
+  run/event API that G4.9 provides, so they land with G4.9; the reducer is
+  independently unit-tested now.
+
+### Verification approach
+
+- `tests/web/agent-run-view.test.ts` (9): a full run folds to completed with
+  observations/actions/artifact; a reconnect replay of earlier events does not
+  double-apply; duplicate observation ids are ignored; approval/clarification
+  surface and clear; a terminal failure records the typed error; a malformed event
+  is ignored; and the latest artifact version wins.
+- Four gates: full suite **563/563** (was 554; +9), typecheck 0 (apps/web reducer
+  clean), security scan 0, production web build pass.
+
+## [2026-07-15] feat: Approval-gated formula artifact commit (G4.8d-iii)
+
+### Summary
+
+- Added `FormulaArtifactService.commit_confirmed`: a manager holding
+  `formula:confirm`, with an approved AIApproval (checked through an injected
+  `FormulaApprovalGate` port — the concrete ai_approvals adapter is wired by the
+  gateway), commits a confirmed draft artifact to a real tenant `Formula`. It
+  maps the validated `FormulaArtifactV1` into a create payload (no `organizationId`
+  — a server-derived security field the tenant repository stamps itself), creates
+  and confirms the formula idempotently through the existing `FormulaRepository`
+  (`create_formula` → `confirm_formula`, replay-safe by idempotency key), then
+  links the formula back onto the artifact via `mark_confirmed`. A replay short-
+  circuits on the stored `confirmedFormulaId` and returns the same formula instead
+  of duplicating it. Permission is checked before any write, and a missing
+  approval raises the typed `FormulaCommitNotApprovedError`.
+- Added the `confirmedFormulaId` link field to the `AIArtifact` Prisma model and
+  extended `AIArtifactRepository.mark_confirmed` to persist it. All writes flow
+  through the scoped repository helpers, so the boundary scanner stays satisfied.
+
+### Verification approach
+
+- `tests/repositories/ai-artifact-repository.test.ts` grew to 10 against a real
+  in-memory MongoDB: the happy path (formula confirmed + artifact linked + confirm
+  version-log), idempotent replay (one formula, `already_committed`), missing
+  approval (rejected, zero formulas), a non-manager denied before the approval
+  check, and the missing-repository guard.
+- Four gates: full suite **554/554** (was 549; +5), typecheck 0 (new files clean
+  under apps/ai), security scan 0, production web build pass; Prisma schema valid.
+
+### Remaining (G4.8)
+
+- Only the concrete raw-material-backed `MaterialEvidenceProvider` and the
+  `FormulaApprovalGate` ai_approvals adapter remain — thin read-only adapters that
+  plug into the already-built injected interfaces when the AI gateway is wired
+  (G4.9). The deterministic artifact system (validate → quality → finalize →
+  persist → approval-gated commit) is complete and tested.
+
+## [2026-07-15] feat: Draft formula artifact persistence (G4.8d-ii)
+
+### Summary
+
+- Added `apps/ai/server/repositories/ai-artifact-repository.ts`: a tenant-scoped
+  repository over `ai_artifacts` built on the G2 `tenant-repository-base` helpers
+  (`persist_draft` forces `status: "draft"` and stamps tenant + owner from the
+  execution context; `get_artifact` and `mark_confirmed` are tenant-filtered with
+  the canonical `AI_ARTIFACT_NOT_FOUND` shape). All writes flow through
+  `insert_scoped_document`/`update_scoped_document`, so the private-boundary
+  scanner (G2.7) stays satisfied.
+- Extended `FormulaArtifactService` with `persist_draft(context, artifact,
+  validation, run_id)`: it stores the validated draft as an AIArtifact with a
+  canonical (key-order-independent) content hash, the recorded validation result,
+  and the deduplicated cited evidence sources. Callers persist the validation they
+  already computed, so the stored record matches what the reviewer saw. The
+  repository is an optional constructor dependency, so the loop-facing
+  `validate_draft` path is unaffected.
+
+### Verification approach
+
+- `tests/repositories/ai-artifact-repository.test.ts` (5) against a real in-memory
+  MongoDB: draft stamped with tenant/owner/draft status; read-back within the
+  tenant but `AI_ARTIFACT_NOT_FOUND` across tenants; idempotent confirm;
+  `persist_draft` records the hash + collected source ids; and the missing-repo
+  guard.
+- Four gates: full suite **549/549** (was 544; +5), typecheck 0 (new files clean
+  under apps/ai too), security scan 0 (new writes go through the repository
+  helpers), production web build pass.
+
+### Remaining (G4.8, tracked as G4.8d-iii)
+
+- `commit_confirmed`: a manager with `formula:confirm` and an approved `AIApproval`
+  idempotently mapping the artifact into a `Formula` (+ `FormulaVersionLog`) via
+  the existing `FormulaRepository`, then `mark_confirmed`. Straddles the
+  orchestration `TrustedRuntimeContext` vs app `TenantExecutionContext` boundary,
+  so it pairs with G4.9 gateway wiring.
+
+## [2026-07-15] feat: FormulaArtifactService validate_draft adapter (G4.8d-i)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-control/formula-artifact-service.ts`: the
+  concrete `ArtifactService` the AI gateway wires into the governed loop's
+  `artifacts` port (consumed by the G4.8c finalize node). `validate_draft` parses
+  the tool-produced payload with `formula_artifact_v1_schema` (fails closed with
+  `ARTIFACT_SCHEMA_INVALID` when it does not match), loads tenant-scoped material
+  evidence through an injected `MaterialEvidenceProvider` (the orchestration
+  package holds none by design), applies optional tenant/product constraints via
+  an injected `FormulaConstraintProvider`, runs `validate_formula_artifact` +
+  `compute_formula_quality_dimensions`, and returns the public
+  `ArtifactValidationV1` — findings mapped to safe messages, plus the computed
+  quality dimensions.
+- Exported `formula-finalizer` from the orchestration barrel so hosts can import
+  `compute_formula_quality_dimensions`.
+
+### Verification approach
+
+- `tests/ai-control/formula-artifact-service.test.ts` (4): a backed draft
+  validates with full evidence coverage; a non-conforming payload fails closed; an
+  unbacked material blocks with a safe message and lowered coverage; and injected
+  incompatibility constraints block. The barrel import resolves from apps/ai.
+- Four gates: full suite **544/544** (was 540; +4), typecheck 0 (new file also
+  clean under apps/ai's tsconfig), security scan 0, production web build pass.
+
+### Remaining (G4.8, tracked as G4.8d-ii)
+
+- Persistence: the `MaterialEvidenceProvider` backed by tenant raw-material/
+  knowledge data, draft `AIArtifact` persistence, and `commit_confirmed` — a
+  manager with `formula:confirm` and an approved `AIApproval` idempotently writing
+  `Formula` + `FormulaVersionLog` in one commit.
+
+## [2026-07-15] feat: Authoritative finalize node with artifact validation (G4.8c)
+
+### Summary
+
+- Extracted finalize into `packages/ai-orchestration/src/nodes/finalize.ts` and
+  made it the authoritative artifact gate. It recovers any produced tenant
+  artifact from the run's observations (newest `tool_result` whose tool is
+  registered `produces_artifact`), validates it through the injected
+  `ArtifactService` — the orchestration package still holds no material evidence
+  — and then:
+  - **valid** → completes with a draft `ArtifactReferenceV1` (id = the producing
+    observation's content hash) and the adapter-computed `quality_dimensions` +
+    validation results in the run output;
+  - **blocking, budget remaining** → routes back to the agent as a typed
+    `validation_finding` observation (mirroring `route_denial`) so the model can
+    revise, without completing or reconciling;
+  - **blocking, budget exhausted** → completes honestly with the findings
+    surfaced as warnings and no confirmable artifact.
+  Answer-only runs (no produced artifact) finalize exactly as before.
+- Graph rewire: `finalize` is registered with `ends: ["agent"]` alongside its
+  static `finalize → END` edge, so the terminal path returns a plain update while
+  the revision path returns a `Command`. `ArtifactValidationV1` gained an optional
+  `quality_dimensions`, and `build_output_document` now accepts optional
+  `quality_dimensions` / `artifacts` / `validation_results` / `extra_warnings`
+  (all backward-compatible defaults, so the fail node is unchanged).
+
+### Verification approach
+
+- `tests/orchestration/finalize-node.test.ts` (5): answer-only completion; valid
+  candidate → draft reference + quality passthrough; blocking with budget → routes
+  to agent, no completion/reconcile; blocking at budget exhaustion → completes with
+  warnings and no artifact; and the missing-proposal invariant.
+- `graph-shape.test.ts` updated to lock the plan-mandated `finalize → agent` edge.
+- Four gates: full suite **540/540** (was 535; +5), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.8, tracked as G4.8d)
+
+- `apps/ai/server/services/ai-control/formula-artifact-service.ts`: the concrete
+  `ArtifactService` adapter that loads evidence, runs `validate_formula_artifact` +
+  `compute_formula_quality_dimensions`, persists the draft `AIArtifact`, and lets a
+  manager with `formula:confirm` + an approved `AIApproval` commit it idempotently
+  to `Formula` + version/audit records.
+
+## [2026-07-15] feat: Deterministic formula finalizer / quality dimensions (G4.8b)
+
+### Summary
+
+- Added `packages/ai-orchestration/src/artifacts/formula-finalizer.ts`:
+  `compute_formula_quality_dimensions` maps a validated artifact + its material
+  evidence to the public `QualityDimensionsV1` contract with no model
+  involvement, so a replay reproduces the numbers exactly. Dimensions are
+  computed from what is actually measurable — evidence coverage (backed non-water
+  materials), source quality (materials with sources), groundedness (backed
+  materials + cited claims over all such units), validation rate (structural +
+  per-item checks minus blocking findings), completeness (artifact section
+  presence), risk severity (blocking → high, warnings → medium/low), with
+  contradiction state and source freshness taken from optional loop signals. The
+  result is `quality_dimensions_v1_schema.parse`d so an out-of-contract value
+  fails closed.
+- Added `to_validation_results`: blocking findings map to failed
+  `ValidationResultV1` records, warnings to passed-with-detail, for the run
+  output's decision summary.
+
+### Verification approach
+
+- `tests/orchestration/formula-finalizer.test.ts` (6): a fully valid artifact
+  tops every band; an unbacked material drops coverage and raises risk to high; an
+  uncited claim drops groundedness; a below-minimum (warning-only) artifact is low
+  risk yet valid; signals surface contradiction/freshness; and findings map to the
+  public validation-result shape.
+- Four gates: full suite **535/535** (was 529; +6), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.8, tracked as G4.8c–G4.8d)
+
+- `nodes/finalize.ts` (extract candidate artifact from observations, blocking
+  findings → agent observation bounded by budget, else output + artifact
+  reference + these quality dimensions) with the graph rewire, and the `apps/ai`
+  `formula-artifact-service.ts` draft persist + manager confirmed commit.
+
+## [2026-07-15] feat: Complete deterministic formula validator checks (G4.8a)
+
+### Summary
+
+- Extended `packages/ai-orchestration/src/artifacts/formula-validator.ts` with the
+  remaining deterministic checks the G4.8 plan enumerates, closing the validator
+  half of the G4.8 remainder:
+  - **amount-from-batch** (unconditional, blocking `AMOUNT_INCONSISTENT_WITH_BATCH`):
+    each ingredient's `amount` must equal its `percentage` of the batch, with
+    exact decimal.js arithmetic and same-family unit conversion (mass g/kg, volume
+    ml/L). A cross-family unit is unverifiable and surfaces as a warning
+    (`AMOUNT_UNIT_MISMATCH`) rather than blocking.
+  - **constraint-gated** checks that are no-ops unless configured, so pre-existing
+    drafts validate unchanged: `INCOMPATIBLE_MATERIALS` (co-present pairs),
+    `MISSING_REQUIRED_PHASE`, `PH_OUT_OF_RANGE` (blocking) / `PH_UNSPECIFIED`
+    (warning), and dated cost — `COST_MISSING`/`COST_UNDATED` (blocking) with
+    `COST_STALE` (warning) computed against a deterministic `as_of_iso`, never a
+    wall clock.
+- Added two backward-compatible optional schema fields in `formula-schema.ts`
+  (`FormulaArtifactV1.target_ph`, `FormulaIngredientV1.cost_as_of`) via `.optional()`
+  so existing typed fixtures compile unchanged, plus the `FormulaConstraintsV1`
+  contract and a frozen `EMPTY_FORMULA_CONSTRAINTS` default. The validator now
+  takes an optional third `constraints` argument.
+
+### Verification approach
+
+- `tests/orchestration/formula-artifact.test.ts` grew 11 → 23: amount consistent
+  with a same-unit and a kilogram batch, an inconsistent amount, cross-family unit
+  mismatch (warning), incompatible pair, missing required phase, pH out-of/in
+  range, undated cost, dated cost within window, and a stale-cost warning.
+- Four gates: full suite **529/529** (was 517; +12), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.8, tracked as G4.8b–G4.8d)
+
+- `formula-finalizer.ts` (compute quality_dimensions + evidence coverage),
+  `nodes/finalize.ts` (extract candidate artifact from observations, blocking
+  findings → agent observation bounded by budget, else output + artifact reference)
+  with the graph rewire, and the `apps/ai` `formula-artifact-service.ts` draft
+  persist + manager confirmed commit.
+
+## [2026-07-15] feat: Deterministic formula artifact validator (G4.8, core)
+
+### Summary
+
+- Added `packages/ai-orchestration/src/artifacts/formula-schema.ts`
+  (FormulaArtifactV1 with decimal-string percentages/amounts/costs, evidence
+  index types, the validation-finding shape, and the mandatory review statement)
+  and `formula-validator.ts`: `validate_formula_artifact` — the sole authority on
+  whether a draft may be finalized, using **decimal.js** (never floats) so
+  `|total - 100| <= 0.01` and usage-range checks are exact and replay-stable.
+  Checks: percentage total within tolerance, unique materials, non-water
+  materials evidence-backed (or explicitly external/unverified) and within their
+  evidence usage range, availability, cited claims, and the mandatory
+  laboratory/stability/safety/regulatory review statement. Blocking findings make
+  `valid` false; warnings are surfaced.
+
+### Verification approach
+
+- `tests/orchestration/formula-artifact.test.ts` (11): the 0.01-tolerance anchor
+  (99.98→invalid, 99.99/100.00/100.01→valid, 100.02→invalid), duplicate material,
+  unbacked-vs-external material, usage above the evidence limit, uncited claim,
+  and the required review statement.
+- Four gates: full suite **517/517** (was 506; +11), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G4.8, tracked)
+
+- `formula-finalizer.ts` + the `finalize` node rewrite (evidence-coverage checks,
+  quality_dimensions, blocking findings returned to the agent as bounded
+  observations, optional model-assisted review notes that can't pass a failed
+  check), `apps/ai/server/services/ai-control/formula-artifact-service.ts`
+  (draft persist + manager-approved idempotent `commit_confirmed`), and the
+  remaining deterministic checks (amount-from-batch, incompatibilities/pH,
+  required phases, dated-cost completeness).
+
+---
+
+## [2026-07-15] feat: Persist and resume agentic loop checkpoints (G4.7, core)
+
+### Summary
+
+- Replaced the clarification/approval stubs with durable interrupt nodes.
+  `request-clarification.ts` interrupts with the bounded questions and re-enters
+  the agent with the validated answer as a trusted-user observation.
+  `request-approval.ts` idempotently upserts the approval (replay returns the
+  same one — exactly once), interrupts with an ApprovalRequestV1, and records the
+  `verify_resume`-verified outcome; the interrupt is never wrapped in try/catch.
+- The gate now consumes a verified `approval_result` **pinned to the action's
+  arguments hash** — an approved result routes straight to `act` (and can never
+  be inherited by a different action; the executor also re-checks approval), a
+  denied result routes back to the agent with its denial observation. Added the
+  `approval_result` state channel and the approval/clarification contracts.
+- Extended the `ApprovalService` port with `verify_resume` and `count_for_run`.
+- Added `checkpoint.ts`: `build_checkpoint_thread_id` derives the LangGraph thread
+  key from INTERNAL tenant+thread IDs only (never a client key), plus a lazy
+  `get_mongodb_saver` (dynamic import — a deployment concern, not a module side
+  effect) and a re-export of Command/MemorySaver so callers resolve the same
+  LangGraph instance the graph uses.
+- Added `resume.ts`: `resume_run` re-verifies run existence, tenant ownership,
+  caller permission, and pinned-version availability before invoking the graph
+  with `Command({ resume })` — it never accepts a client checkpoint blob.
+- Added `apps/ai/scripts/setup-langgraph-checkpoints.ts` (deployment step).
+
+### Verification approach
+
+- `tests/orchestration/interrupt-resume.test.ts` (5) against a checkpointer:
+  an approval **resumes exactly once across a simulated restart** (a fresh graph
+  instance over the same saver) with `count_for_run === 1` and one commit
+  execution; a denied resume routes back to the agent with no commit; a
+  clarification answer re-enters as a trusted-user observation; and `resume_run`
+  rejects cross-tenant/forbidden/version-unavailable/missing resumes.
+- Four gates: full suite **506/506** (was 501; +5), typecheck 0, security scan 0,
+  production web build pass. Existing 47 orchestration tests unaffected.
+
+### Remaining (G4.7, tracked)
+
+- Real `MongoDBSaver` durability: the only published
+  `@langchain/langgraph-checkpoint-mongodb` bumps `@langchain/langgraph-checkpoint`
+  to a version incompatible with the pinned `@langchain/langgraph@0.2.74` (a
+  `pending_sends` runtime skew), so it is not added to package.json. The
+  MemorySaver cases prove the identical durable-resume + exactly-once semantics
+  through the same checkpointer interface; production Mongo wiring (a langgraph
+  upgrade + the saver dep) lands with the run API (G4.9).
+
+---
+
+## [2026-07-15] feat: Add specialist delegation through the governed loop (G4.6)
+
+### Summary
+
+- Added `packages/ai-orchestration/src/schemas/specialist.ts`: `SpecialistRequestV1`
+  (public — no tenant/actor/permission/provider/credential field) and
+  `SpecialistResultV1` (tenant_id/parent_run_id/depth stamped from the runtime;
+  proposals constrained to read|draft — never commit).
+- Added `delegation/delegation-registry.ts`: the three specialists
+  (raw_material_research, formulation, sales_rnd) with tool allowlists, iteration
+  ceilings, and budget fractions. Registration fails fast if any allowlist
+  contains a delegation tool, capping delegation depth at 1 at load time.
+- Added `delegation/delegate-tool-factory.ts`: `create_delegation_service` runs a
+  specialist as a **recursive invocation of the same compiled loop graph** —
+  a fresh child run with inherited tenant/actor, `parent_run_id`+`depth+1`
+  lineage, a context pack filtered to the specialist's allowlist, and a budget
+  slice reserved from the parent BEFORE dispatch (refused when it rounds to
+  nothing). The child runtime's policy is wrapped to deny any out-of-allowlist
+  tool at the gate, so even an adversarial child model cannot execute a
+  commit-class or delegation tool. `invoke_parallel` runs read-only specialists
+  concurrently, reserving all branch budgets up front. The recursive runner and
+  the child context-pack builder are injected so the package stays free of
+  provider/context-assembly wiring.
+- Added the three `cards/tools/delegate.*.md` operator cards (when to delegate,
+  budget cost, how to read proposals).
+
+### Verification approach
+
+- `tests/orchestration/delegation.test.ts` (9) runs the REAL graph recursively
+  via a scripted model: tenant/lineage inheritance and depth=1; unknown
+  specialist, depth-cap (a depth-1 runtime cannot delegate), and
+  budget-insufficient rejections; an injected child model that tries
+  `formula.confirm` is denied at the gate with zero executor calls (no commit);
+  read-only concurrent branches; and non-read-only parallel refusal. Updated the
+  capability-card test to treat the delegation cards as a distinct valid
+  category (still size-checked).
+- Four gates: full suite **501/501** (was 492; +9), typecheck 0 (incl.
+  orchestration package), security scan 0, production web build pass.
+
+---
+
+## [2026-07-15] feat: Add tenant AI administration and platform constraints (G3.6)
+
+### Summary
+
+- Added three governance routers wired into `appRouter`:
+  - `tenant-ai-settings.ts`: `read` (tenant:ai:read) returns stored settings +
+    platform ceilings so locked values render; `update` (tenant:ai:configure)
+    is **narrowing-only** — a requested value above the plan/platform ceiling is
+    rejected `FORBIDDEN`, the prospective effective policy is compiled fail-closed
+    before persistence, and the change is stored as a new revision (policyVersion
+    bump), never editing a deployment in place.
+  - `knowledge-sources.ts`: `list` (tenant:knowledge:read, metadata only),
+    `requestUpload`/`remove` (tenant:knowledge:manage); new sources are created
+    quarantined `pending` for the G3.5 ingestion pipeline.
+  - `platform-ai-settings.ts`: `getConstraints`/`setDefaults`
+    (platformAdminProcedure) and `emergencyDisable` (superAdminProcedure — the
+    kill switch is super-admin-only).
+- Added three server-rendered pages (`/settings/ai`, `/settings/ai/knowledge`,
+  `/platform/ai`) whose server-side caller enforces permissions; each shows an
+  access-denied fallback and never exposes tenant conversations or artifacts.
+
+### Verification approach
+
+- `tests/integration/ai-control-authorization.test.ts` (7) against in-memory
+  MongoDB, running authorized paths end-to-end: a tenant user is denied AI
+  read/configure and knowledge upload but may list; a manager configures within
+  the plan but is rejected when expanding `max_iterations` or selecting a
+  plan-forbidden model; a manager cannot reach platform surfaces; a platform
+  admin reads constraints but cannot emergency-disable; only a super admin can.
+- Four gates: full suite **492/492** (was 485; +7), typecheck 0, security scan 0,
+  production web build pass (all three new routes in the manifest).
+
+---
+
+## [2026-07-15] feat: Isolate platform and tenant AI knowledge (G3.5, core)
+
+### Summary
+
+- Added the knowledge isolation core under `apps/ai/server/services/knowledge/`:
+  - `qdrant-collections.ts`: versioned collection names
+    (`platform_knowledge_v<v>` / `tenant_knowledge_v<v>`), the server-authored
+    `tenant_filter`/`PLATFORM_FILTER`, the payload-index list, and
+    `payload_is_tenant_owned`/`payload_is_platform` validators.
+  - `knowledge-gateway.ts`: the single retrieval path. Callers choose only a
+    scope (platform | tenant | both) — never a collection or raw filter. The
+    gateway embeds the query, searches the platform and tenant collections
+    separately with enforced filters, and **re-validates every returned point**
+    against the enforced scope, so a mislabeled point in the store can never
+    cross a tenant boundary. Results merge with provenance retained and no
+    cross-embedding-version score comparison.
+  - `citation-builder.ts`: builds auditable citations (source id/name, content
+    hash, locator, capped excerpt, retrieved_at, scope, score) and rejects
+    fail-closed (`CARD_INVALID`) any evidence not traceable to a ready/active
+    source or whose source tenant does not match.
+  - `knowledge-source-repository.ts`: tenant-scoped `knowledge_sources` lookup
+    powering citation traceability; tenant lookups pin to the caller's tenant,
+    platform lookups never leak a tenant source.
+
+### Verification approach
+
+- `tests/knowledge/knowledge-isolation.test.ts` (6) drives the gateway through a
+  **deliberately leaky** vector port that ignores the filter and returns every
+  seeded point (platform, tenant A, tenant B, and two mislabeled points): a
+  tenant-A caller never receives tenant-B or mislabeled evidence in any scope;
+  plus the source repository's tenant scoping against in-memory MongoDB.
+- `tests/knowledge/citation-builder.test.ts` (4): ready-source citation with a
+  capped excerpt; orphaned, non-ready, and tenant-mismatch results all rejected.
+- Four gates: full suite **485/485** (was 475; +10), typecheck 0, security scan
+  0, production web build pass.
+
+### Remaining (G3.5, tracked)
+
+- Ingestion write-path: `ingestion-service.ts` (MIME/size/hash/malware/parser/
+  chunker/embedding verification, quarantine-until-ready, partial-point
+  cleanup), `upload-authorization.ts` (short-lived tenant/actor/source/object-key
+  scoped grant), `apps/web/app/api/knowledge/uploads/route.ts`, the
+  `qdrant-service.ts` public collection/filter parameter removal, and the
+  `@qdrant/js-client-rest` pin. These unblock wiring the G3.4
+  `knowledge.search` tool port to the gateway.
+
+---
+
+## [2026-07-15] feat: Wire repository-backed governed tool ports (G3.4, partial)
+
+### Summary
+
+- Added `apps/ai/server/services/ai-control/tools/repository-adapters.ts`:
+  `create_repository_backed_tool_ports({ tenant_context, formula_repository })`
+  builds the governed tool ports for one run over a resolved, frozen
+  `TenantExecutionContext`. The `formula.search`, `formula.comment`, and
+  `formula.confirm` ports now delegate to the tenant-scoped `FormulaRepository`
+  (no more `NOT_WIRED` for these): search lists only the caller's formulas and
+  filters deterministically; comment/confirm surface cross-tenant IDs as
+  `FORMULA_NOT_FOUND`; confirm targets `current+1` and reads the version back
+  from the confirmed document (replay-safe with the executor idempotency key).
+  Every adapter re-asserts the trusted tenant matches the bound run context.
+- `formula.draft`, `formula.revise`, `knowledge.search`, and `web.search` remain
+  fail-closed `NOT_WIRED` here: they depend on the Qdrant formulation/knowledge
+  gateway (G3.5) and the approved external web-search adapter. No legacy handler
+  is ever imported or called.
+
+### Verification approach
+
+- `tests/ai-control/tool-repository-adapters.test.ts` (7 cases) against an
+  in-memory MongoDB: search returns only the caller's tenant rows; comment and
+  confirm succeed in-tenant and reject cross-tenant with `FORMULA_NOT_FOUND`;
+  confirm bumps to v01; a trusted-context tenant mismatch fails
+  `TOOL_INPUT_INVALID`; the four unwired ports fail `NOT_WIRED`.
+- Four gates: full suite **475/475** (was 468; +7), typecheck 0, security scan 0,
+  production web build pass.
+
+### Remaining (G3.4, tracked → G3.5)
+
+- Wire `formula.draft`/`formula.revise` (Qdrant formulation pipeline),
+  `knowledge.search` (partitioned Qdrant gateway), and `web.search` (external
+  adapter) once G3.5 lands the knowledge partition.
+
+---
+
+## [2026-07-15] feat: Reserve and reconcile tenant AI usage (G3.3)
+
+### Summary
+
+- Added `usage-ledger.ts`: append-only ledger entry shapes (reservation/actual/
+  release/adjustment, all bigint amounts) and the pure `assert_budget_available`
+  decision — per-run token/cost ceilings, tenant + per-user monthly request/
+  token/cost ceilings, and the concurrency ceiling — throwing a typed
+  `UsageBudgetError` carrying the exceeded `dimension`.
+- Added `ai-usage-repository.ts`: Mongo-backed ledger with `with_transaction`,
+  `locked_month_totals` (signed sum; active runs = reservations minus releases,
+  append-only), `insert_reservation` (bumps a shared per-tenant-month counter so
+  concurrent reservations conflict and serialize), and the release/expiry
+  helpers. Amounts persist as integer strings (micro-USD), never float/Decimal.
+- Added `budget-service.ts`: `reserve_usage` (transactional, idempotent replay
+  returns the existing reservation), `reconcile_usage` (appends actual + a
+  release cancelling the reservation, exactly once; flags the run
+  BUDGET_RECONCILIATION_REQUIRED when the actual exceeds the reservation beyond
+  tolerance), `release_usage` (provider-failure path), and
+  `expire_stale_reservations` (releases only terminal/absent runs, per-run job
+  idempotency key).
+- Added `BUDGET_EXCEEDED` / `BUDGET_RECONCILIATION_REQUIRED` governance codes.
+
+### Verification approach
+
+- `tests/ai-control/usage-ledger.test.ts` (13 cases) against an in-memory
+  repository whose `with_transaction` serializes (mirroring the Mongo write-
+  conflict abort): within-limit grant; every rejection dimension (tenant/user
+  request-token-cost, per-run token/cost, max concurrency); three concurrent
+  half-budget reservations → exactly two granted; duplicate-key replay returns
+  the same reservation with one entry; provider-failure release frees budget;
+  reconcile below estimate (no flag, net = actual) and above tolerance (run
+  flagged); replayed completion is exactly-once; stale-expiry releases only
+  terminal runs and is idempotent.
+- Four gates: full suite **468/468** (was 455; +13), typecheck 0, security scan
+  0, production web build pass. New files clean under the stricter apps/ai target.
+
+---
+
+## [2026-07-15] feat: Compile an effective tenant AI policy (G3.2)
+
+### Summary
+
+- Reconciled `apps/ai/server/services/ai-control/policy-types.ts` to **re-export**
+  the canonical `EffectiveAIPolicy`/`AIApprovalRequirement` from
+  `@rnd-ai/shared-types` (G3.1) instead of a structural duplicate — the earlier
+  "tracked integration TODO" is resolved; the tool catalogue, executor, and
+  context assembler now share the one canonical contract.
+- Added `policy-compiler.ts`: `compile_effective_policy(layers)` folds four
+  ordered layers (platform → plan → tenant → deployment) monotonically —
+  enabled = AND (false wins), provider_models/allowed_tools = intersection,
+  numeric maxima = minimum (bigint-safe), approval_rules = strongest-of (a
+  tenant can never relax an approval). An empty provider/model intersection on
+  an enabled policy is rejected (`POLICY_NO_PROVIDER`); request preferences may
+  only narrow to locale/detail/model-alias-in-allowlist, any unknown field is
+  `POLICY_INPUT_INVALID`. The canonical JSON is SHA-256 hashed (key-order
+  independent, reusing `hashing.ts`) and returned with an explainable
+  `constraint_trace` naming the constraining layer per field.
+- Added `platform-ai-constraints.ts` (provider/tool universe, approval floors,
+  env-tunable ceilings with named defaults — no bare literals) and
+  `plan-entitlements.ts` (starter/growth/enterprise entitlement catalogue,
+  `build_plan_layer` throws `POLICY_UNKNOWN_PLAN`).
+- Added `ai-policy-repository.ts`: loads the active `TenantAIProfile` +
+  `AgentDeployment`, folds them through the compiler (fail-closed
+  `POLICY_DISABLED` when no active profile), and persists the canonical
+  snapshot + version + hash on the `AIRun`.
+- Added the `POLICY_INPUT_INVALID`/`POLICY_NO_PROVIDER`/`POLICY_UNKNOWN_PLAN`
+  governance error codes. All new BigInt values use `BigInt(...)` (not `123n`
+  literals) to stay valid under the sub-ES2020 `apps/ai` target.
+
+### Verification approach
+
+- RED first, then GREEN: `tests/ai-control/policy-compiler.test.ts` (18 cases)
+  covers each restriction direction, fail-closed disablement, empty-intersection
+  rejection, request-preference validation, key-order-independent hashing, the
+  constraint trace, the plan builders, and the repository against an in-memory
+  MongoDB (compile-from-stored-state + snapshot pinning + fail-closed).
+- Four gates: full suite **455/455** (was 437; +18), typecheck 0 (apps/web +
+  orchestration), security scan 0, production web build exit 0. New files also
+  typecheck clean under the stricter `apps/ai` project.
+
+---
+
+## [2026-07-15] feat: Enforce tenant ownership + repository-bypass scanner (G2.7, G2 complete)
+
+### Summary
+
+- Made `tenantId` **required** on the 14 tenant-owned business Prisma models
+  (Product, StockEntry, Formula, FormulaVersionLog, FormulaComment, Order,
+  CreditTransaction, ProductLog, Conversation, Feedback, AiResponse, ChatThread,
+  ChatMessage, PriceCalculation). `UserLog` stays optional (it has a
+  platform/tenant `scope` discriminator); `PromptVersion`/`KnowledgeSource` stay
+  optional (platform-scoped rows have no tenant); `RawMaterial` stays
+  platform-global. `organizationId` is retained for rollback comparison only,
+  never as an authorization source. No code reads these models via Prisma (raw
+  Mongo driver), so the change is type-only — `prisma generate` clean.
+- Extended the AST boundary scanner with a `TENANT_REPOSITORY_BYPASS` rule:
+  direct access to a tenant-owned collection (`db.collection('formulas'|...)`)
+  or a tenant Prisma control-plane model (`prisma.aIRun|...`) is a CI failure
+  unless the file is in an allowed path — the repository layer
+  (`apps/ai/server/repositories/**`), migration scripts (`apps/ai/scripts/**`),
+  or the documented legacy ReAct tools (`apps/ai/agents/react/tool-handlers/**`,
+  tenant-scoped in G2.6, retired in G5). The rule matches aliased db handles and
+  chained collection calls. products/orders are intentionally out of the
+  enforced set (the sanctioned public `submitClientOrder` ingress has no tenant
+  context by design).
+- Fixed a real bypass: `apps/web/app/api/index-data/route.ts` read the `formulas`
+  collection unscoped (a cross-tenant read in the legacy Pinecone indexer).
+  Formula indexing now runs only through the tenant-scoped
+  `apps/ai/scripts/index-qdrant.ts` path.
+- Recorded `docs/commercial/evidence/g2-release.md` (task map, enforcement
+  detail, isolation tests, code gates, and the PENDING_EXTERNAL_STAGING data
+  gates to record during cutover). G2 is now complete (G2.1–G2.7).
+
+### Verification approach
+
+- RED first: `tests/security/tenant-repository-boundary.test.ts` (8 cases,
+  including the failing-test anchor + a full production-tree scan) — the anchor
+  failed before the rule existed, green after.
+- Four gates: full suite **437/437** (was 429; +8), typecheck 0, security scan 0
+  (with the new rule active), production web build exit 0, `prisma generate`
+  clean.
+
+---
+
+## [2026-07-15] fix: Tenant-scope all legacy AI tools + lock down mongo_query (G2.6 complete)
+
+### Summary
+
+- Completed G2.6: every legacy ReAct tool that touches a tenant collection now
+  injects the tenant predicate from the trusted execution context, never from a
+  model-supplied argument. A model can name a record ID; deterministic code
+  decides which tenant the lookup runs against.
+- Extended `apps/ai/agents/react/tenant-tool-scope.ts` with two reused helpers
+  (`tenant_match_clause`, `tenant_scoped_query_filter`) and refactored
+  `tenant_scoped_id_filter` onto the shared clause (DRY). The provenance field
+  (`tenantId`, added by G2.2) is defined once as `TENANT_PROVENANCE_FIELD`.
+- Converted four handlers: `get-formula-with-comments` and `revise-formula` now
+  pin the formula load (and parent-formula load) to the caller's tenant —
+  cross-tenant/missing IDs return the generic "Formula not found" shape with no
+  existence oracle; `search-reference-formulas` ANDs a mandatory tenant clause
+  into every query and **fails closed (empty result) when no tenant scope is
+  present** — an unscoped multi-document search would have leaked every tenant's
+  formulas; `generate-formula` stamps `tenantId` on the persisted formula and
+  its version log so later tenant-scoped reads can find AI-generated formulas.
+- Rewrote `mongo-query-handler` from a free-form (model supplies collection +
+  filter + aggregation pipeline — a direct cross-tenant exfiltration vector)
+  into a locked-down named-diagnostic surface: the model may only pick an
+  allowlisted diagnostic by name (`tenant_formula_count`,
+  `tenant_formula_status_breakdown`, `tenant_recent_formulas`,
+  `raw_material_count`) plus allowlist-validated scalar params (status, limit).
+  Server-authored templates own the collection/filter/stages; tenant diagnostics
+  fail closed without a verified tenant. Updated the tool declaration and the
+  ReAct system prompt so the model no longer attempts collection/filter usage.
+- Threaded the trusted tenant end-to-end: `ReactAgentRequest.tenant_id` →
+  `ToolHandlerContext.tenant_id`; the tool-handler dispatch map now passes `ctx`
+  to every tenant-scoped tool; the `raw-materials-agent` route sources
+  `tenant_id` from `principal.active_tenant_id` (never the body).
+
+### Verification approach
+
+- RED first: `tests/integration/tenant-ai-tool-isolation.test.ts` extended with a
+  MongoMemoryServer-backed two-tenant fixture; 9 cross-tenant assertions failed
+  against the pre-conversion handlers (the concrete exploit paths). GREEN after
+  conversion: 17/17 in that file.
+- Four gates: full suite **429/429** (was 416; +13), typecheck 0, security scan 0
+  private-boundary violations, production web build exit 0.
+
+### Remaining (tracked)
+
+- G2.7 (now unblocked): extend the boundary scanner so tenant collections may
+  only be accessed inside `apps/ai/server/repositories/**`; the remaining
+  `TODO(G2.6)` raw accesses in the routers are the last whitelist to remove.
+
+---
+
+## [2026-07-15] feat: Routers on tenant repositories + AI control-plane models (G2.5, G3.1)
+
+### Summary
+
+- G2.5 (delegated agent, independently verified): tenant-scoped procedures now build a frozen TenantExecutionContext and a per-request repositories bundle on ctx; business routers converted to fine-grained named permissions (formula:read/draft:create/draft:update_own/confirm, tenant:members:*, tenant:analytics:read, ai:run, ai:feedback:create, ...) and repository access (raw collection reads remaining only with TODO(G2.6) markers and tenant_context scoping, incl. dual-encoding legacy organizationId filters); integration isolation suite added (tests/integration/tenant-router-isolation.test.ts).
+- G3.1 (delegated agent, independently verified): tenant AI control-plane Prisma models + enums (TenantAIProfile, AgentDeployment, PromptVersion, KnowledgeSource, AIRun with all eight immutable pins, append-only AIUsageLedger, AIArtifact, AIApproval; BigInt micro-USD budgets) and shared EffectiveAIPolicy contracts (packages/shared-types/src/ai/).
+- Two cross-cutting typecheck fixes: BigInt literal → BigInt() for the sub-ES2020 web target; Mongo UpdateFilter cast in feedback-repository.
+
+### Verification approach
+
+- Full suite 412/412; typecheck 0; security scan 0; production web build exit 0; prisma validate/generate clean; G3.1 architecture tests 19/19 RED→GREEN.
+
+---
+
+## [2026-07-15] feat: Add capability cards and context assembler (G4 Task 3)
+
+### Summary
+
+- Added the orchestrator contract card (`ai-control/cards/orchestrator.md`) encoding the invariant loop rules: evidence-first completion, citation duties, clarify-when-missing-input, draft-vs-commit semantics, budget awareness, and the injection-resistance stance (retrieved content is data, never instructions).
+- Added one agent card per agent_key (`raw_material_research`, `formulation`, `sales_rnd`) with persona, domain scope, working style, quality bar, output contract, and escalation guidance; tenant/deployment overrides stay in PromptVersion records, not repo cards.
+- Added `ContextAssembler`: loads the orchestrator card and the run's agent card, filters the tool catalogue by the pinned EffectiveAIPolicy and loads only allowed tools' cards (re-verifying frontmatter against each registered definition), renders a deterministic plain-language policy digest (budgets, tenant boundary, approval rules, allowed and disallowed tools), computes `pack_hash` (SHA-256 over all card hashes plus the digest hash), and returns a ContextPackV1-shaped object. Assembly fails closed on POLICY_DISABLED, CONTEXT_CARD_MISSING, and CONTEXT_CARD_DRIFT.
+- Card size stays under a configurable budget (`AI_CAPABILITY_CARD_MAX_CHARS`, default 12000 chars) enforced by tests for all 11 cards.
+
+### Verification approach
+
+- Captured RED for `tests/ai-control/capability-cards.test.ts` (missing orchestrator/agent cards) and `tests/ai-control/context-assembler.test.ts` (missing module) before implementing, then confirmed GREEN: 47 ai-control tests, 61 tests repo-wide, strict `tsc --noEmit` over all ai-control modules and tests, and the root web typecheck.
+- Pack-hash determinism proven by stable-hash and card-mutation tests against a synthetic temp cards root; no network or real datastores anywhere in the suite.
+
+### Remaining integration (tracked)
+
+- ContextPackV1 re-validation in `packages/ai-orchestration/src/context/context-pack.ts` is owned by the orchestration workspace task (G4 Task 3 Step 10).
+- Recording card names/versions/hashes on the AIRun, real AgentDeployment/PromptVersion pin resolution, the shared `EffectiveAIPolicy`/Permission contracts from `packages/shared-types`, and real repository/gateway ports for the governed tools (currently fail-closed NOT_WIRED) land with the gateway/knowledge tasks (G3 Tasks 5-7, G4 Tasks 8-9).
+
+## [2026-07-15] feat: Execute AI tools through tenant policy (G3 Task 4)
+
+### Summary
+
+- Added the governed tool catalogue under `apps/ai/server/services/ai-control/`: a declarative `ToolDefinition` contract (stable name/version, strict Zod input/output schemas, named permission, side-effect class read|draft_write|commit, approval requirement, timeout/retry policy, required `capability_card_path`, and `execute(args, trusted_context)`).
+- Added `ToolCatalogue` with policy-allowlist filtering; registration fails when the input schema is not strict, declares identity/scope/datastore fields, or when the capability card is missing or its frontmatter drifts from the definition (agentic design §4.2/§4.3 pulled forward because card enforcement is part of registration).
+- Added `ToolExecutor` — the only path from a model-proposed tool call to a side effect: policy allowlist and enabled check, permission check, recursive forbidden-key scan (tenant/org/user/actor/permission/provider-key/collection/Mongo-operator fields rejected with TOOL_INPUT_INVALID), strict input validation, strongest-of(definition, policy) approval evaluation against a durable manager-approval port, deterministic call idempotency key (SHA-256 of run/step/tool@version/canonical arguments), duplicate side-effect suppression, trusted-context injection, per-attempt timeout with bounded read-only retry (writes never retry), output validation, usage metering via an injected UsageService port, and an append-only audit event for every attempt.
+- Registered seven governed tools replacing both legacy tool systems (ReAct declarations and the Zod registry): `formula.search`, `formula.draft`, `formula.revise`, `formula.comment`, `formula.confirm` (commit-class, manager approval), `knowledge.search`, `web.search`. Tools delegate to narrow injected ports; production ports fail closed with `NOT_WIRED` until gateway/repository integration lands — no legacy handler is imported or called.
+- Added a hand-rolled strict frontmatter card loader (gray-matter deliberately not added to keep the dependency graph frozen), SHA-256 card pinning with an in-process content-hash cache, and seven operator-grade tool capability cards grounded in the audited legacy semantics (Thai domain vocabulary preserved).
+
+### Verification approach
+
+- Captured the RED run of `tests/ai-control/tool-executor.test.ts` (module-not-found failures for all governed modules) before implementation, then confirmed 24/24 tests pass, plus the existing architecture/regression/security suites (38 tests total) and a strict `tsc --noEmit` over every new module.
+- Deterministic tests only: usage, audit, approval, idempotency, and every tool port are in-process fakes; no network, Qdrant, Mongo, or Gemini access.
+
+## [2026-07-15] feat: Implement deterministic governor for agentic loop (G4 Task 5)
+
+### Summary
+
+- Implemented the gate node: per-action re-check via the injected policy engine (emergency disable, pinned policy/deployment status, tool allowlist, permission, budget reservation, approval class); non-fatal denials return to the agent as typed, safe policy_denied observations (trusted_system, reason-coded) so the model re-plans within the run; fatal denials (POLICY_EMERGENCY_DISABLED, POLICY_DEPLOYMENT_REVOKED) end the run; approval-class actions route to request_approval. The gate never executes a tool.
+- Implemented normalized-action loop detection (tool name + canonical arguments hash) counting both denied and executed proposals in the decision log; at the configured threshold the run fails with LOOP_DETECTED — the gate routes directly to fail so a stuck model cannot burn another reasoning turn.
+- Implemented the act node: exactly one ToolExecutor invocation per deterministic idempotency key (run:iteration:tool:arguments-hash), retries only executor-reported retryable failures within the definition's retry budget, validates output against the tool's output schema (violations become TOOL_OUTPUT_INVALID observations, not run failures), trust-labels results from the tool definition, and runs deterministic evaluators on every result: evidence bookkeeping, contradiction flags for identical arguments with diverging content, and freshness. Blocking artifact validation returns to the agent as a validation_finding observation; warnings surface on the run.
+- Implemented the fail node: safe partial output (evidence references, action rationales, usage — never hidden reasoning), usage reconciliation, run.failed persistence and event. No path anywhere falls back to a legacy executor.
+- Wired routing.ts + graph.ts to the final topology and replaced the reasoning/governor stubs; finalize is an interim deterministic minimal implementation (schema-validated output, completion persistence) until Task 8 adds artifact validators; interrupt nodes remain typed stubs until Task 7.
+
+### Verification approach
+
+- RED first (modules missing), then GREEN: 28 governor + graph-shape tests, including gate denial observations, loop-detection trips (denials and allowed repeats), idempotency-key stability, retry budgets, output-schema violations, blocking artifact findings, contradiction flagging, fail-node partial output, and four full end-to-end loop runs on the compiled graph (complete, deny-and-replan, LOOP_DETECTED, LIMIT_MAX_ITERATIONS). Full repository suite 97/97 with orchestration typecheck clean.
+
+---
+
+## [2026-07-15] feat: Implement agentic reasoning node and ingress (G4 Task 4)
+
+### Summary
+
+- Implemented the deterministic ingress node: re-validates AgentRunInputV1, fail-closed context-pack validation, orchestrator-version and context-pack-hash pin verification, trusted observation seeding (user message + optional thread summary through injected ports), and typed run.accepted / stage.changed / observation.added events. Ingress never loads authorization from input; on verification failure it sets a typed error that the agent node routes to fail before any model call.
+- Implemented the agent reasoning node — the only model-facing node: deterministic LIMIT_MAX_ITERATIONS / LIMIT_DEADLINE / LIMIT_TOKENS / LIMIT_COST budget checks BEFORE the model call (decimal-safe cost comparison), exactly one native tool-calling turn per iteration, a single bounded retry with a system-authored correction for malformed/unknown/no-tool turns, then MODEL_OUTPUT_INVALID — never a fallback executor.
+- DecisionRecordV1 is derived from the model's native tool call (kind tool/clarify/finalize, arguments hash, ≤600-char safe rationale); pending_action routes to gate / request_clarification / finalize via Command.
+- Implemented message-builder: system prompt rendered only from the hash-pinned context pack; observations rendered as provenance-labeled data blocks (type, source, IDs, content hash, trust, retrieved_at, scope); untrusted content is fenced, labeled, and framed as data never instructions — it is never concatenated into the system section.
+
+### Verification approach
+
+- RED first (module missing), then GREEN: 19 tests covering fresh-request tool proposal, conversation reuse, bounded clarification, finalize routing, unknown-tool retry-then-fail, malformed-turn recovery, prompt-injection containment (injected directives stay fenced; an injected tool name never becomes a pending action), and all four LIMIT_* pre-model failures with zero model calls. Full orchestration suite 59/59 with package typecheck clean.
+
+---
+
+## [2026-07-15] feat: Define agentic loop contracts and state (G4 Task 2)
+
+### Summary
+
+- Added versioned public AI contracts in packages/shared-types/src/ai/contracts.ts: strict AgentRunInputV1 (no tenant/user/role/policy/model/tool/provider fields), the 12-type AgentRunEventV1 discriminated union (stage.changed is derived UI bookkeeping, not graph phase state), AgentRunOutputV1 with named quality dimensions (strict — a lone scalar confidence cannot be attached), DecisionRecordV1 as a derived audit record of the model's native tool call (max 600-char safe rationale), and RunErrorV1 with stable codes (LIMIT_*, LOOP_DETECTED, MODEL_OUTPUT_INVALID, POLICY_*, CONTEXT_PACK_INVALID...).
+- Added loop-internal contracts (ProposedActionV1 tool/clarification/finalize union, ActionResultV1, RunBudgetV1, RunPinsV1, LoopUsageV1) and the trust-labeled ObservationV1 schema.
+- Added ContextPackV1 with fail-closed validation in packages/ai-orchestration/src/context/context-pack.ts: structural schema, per-card SHA-256 integrity, and a binding pack hash (covers the orchestration-package half of plan Task 3 Step 10).
+- Added AgentLoopState (Annotation.Root) with reducer channels for observations/action_results/decision_log/events/warnings and replace channels for pending_action/output/error; deliberately no phase channel.
+- Added the StateGraph shell with exactly ingress, agent, gate, act, request_clarification, request_approval, finalize, fail and only the governed edges; gate additionally routes to fail so LOOP_DETECTED terminates without another model hop.
+
+### Verification approach
+
+- RED first (2 files failed: modules missing), then GREEN: 37 tests across contracts and graph shape, including a static scan asserting agent is the only model-facing node, plus a clean package typecheck.
+
+---
+
+## [2026-07-15] feat: Scaffold isolated agentic orchestration package (G4 Task 1)
+
+### Summary
+
+- Created the private `@rnd-ai/ai-orchestration` workspace (type=commonjs, src entrypoint) with exactly the pinned governed-loop dependencies: @langchain/langgraph 1.4.7, @langchain/core 1.2.2, @langchain/langgraph-checkpoint-mongodb 1.4.0, mongodb 6.21.0, zod 3.25.76, decimal.js 10.6.0, @rnd-ai/shared-types 1.0.0. The apps/ai legacy graph keeps its own 0.2.x LangGraph via nested workspace resolution, so the two never share an instance.
+- Defined the injected port contracts (ModelGateway with one native tool-calling turn per call, KnowledgeGateway, ToolExecutor, ArtifactService, RunRepository, ApprovalService, UsageService, PolicyEngine, Clock, IdGenerator, LoopLogger) — every method receives TrustedRuntimeContext outside model input.
+- Exported ORCHESTRATOR_VERSION="agentic-1.0.0" with a supported-version assertion that rejects resuming a run pinned to an unknown orchestrator version instead of falling back to any legacy executor.
+- Added a boundary test that walks the workspace's import specifiers (static, dynamic, export-from, require) and rejects apps/ai/agents, apps/ai/services, apps/web, @langchain/langgraph/prebuilt, and provider SDKs; a missing workspace is itself a violation so the contract cannot silently pass.
+- Added root scripts typecheck:orchestration and chained it into root typecheck.
+
+### Verification approach
+
+- Captured the RED run (3 failed: workspace missing) before creating the package, then GREEN (3 passed) plus a clean `tsc --noEmit` for the package after implementation.
+
+---
+
+## [2026-07-15] feat: Tenant-scoped domain repositories (G2.4)
+
+### Summary
+
+- Added the tenant repository layer — the only allowed data-access surface for tenant collections from G2.7 on: `tenant-repository-base.ts` (`tenant_scope(context)` accepting only a TenantExecutionContext; typed `ResourceNotFoundError` with identical shape for cross-tenant, missing, and malformed IDs; `PermissionDeniedError`; security-field rejection before any DB access) plus product/stock/order/formula/calculation/conversation/feedback/audit-log repositories.
+- Every read/write filter is `{_id, tenantId}`; nested resources (formula comments/version logs, chat messages) also require the tenant-scoped parent; creates overwrite tenant/actor/owner fields from context and reject inputs carrying security fields; owner rules (own-draft/own-thread updates) and manager gates (`formula:confirm`, review queue) live in the repositories; formula confirm uses an idempotency key with a compensating writeState (documented: standalone Mongo has no transactions) so partial writes are visible and repairable.
+- Documented deviation: tenantId is filtered as a string (matching the G2.3 backfill and G1.2 projections), not the plan anchor's ObjectId.
+
+### Verification approach
+
+- TDD RED (module missing) → GREEN 46/46 table-driven tests against mongodb-memory-server (tenant A/B sharing secondary keys; identical not-found shapes; nested scoping; owner/manager rules; security-field rejection; audit scoping); suite 245/245; verify:commercial exit 0. Implemented by a delegated subagent; independently re-verified.
+
+---
+
+## [2026-07-15] feat: Verified tenant ownership backfill (G2.3)
+
+### Summary
+
+- Added `tenant-ownership-mapper.ts`: pure deterministic `resolve_tenant_ownership` (direct organizationId mapping → parent tenant → uniquely mapped legacy actor; disagreement/absence → quarantine with candidates and reason — never a silent assignment), plus the audit engine covering all 14 backfill collections with parent-cache resolution (formulas→version logs/comments, chat_threads→messages).
+- `tenant:audit` (dry run) emits JSON totals (already_scoped/resolvable/ambiguous/orphaned/malformed/conflicts), by_collection, by_tenant, SHA-256 bucket hashes, and an overall audit_hash. `tenant:backfill` requires `--apply --audit-hash=<hash>`, refuses when data changed after the reviewed audit, applies conditional `{_id, tenantId: null}` updates (replay cannot overwrite concurrent assignments), quarantines the rest into `tenant_ownership_quarantine`, and writes `migration_receipts` per collection. `tenant:verify` repeats the audit and exits non-zero while anything remains unscoped — blocking G2.4 enforcement on dirty data.
+- Runbook `docs/commercial/runbooks/tenant-backfill.md`: backup, dry-run, review, apply, verify, quarantine repair, `TENANT_ENFORCEMENT=shadow` rollback, and evidence commands.
+
+### Verification approach
+
+- TDD RED → GREEN 8/8 mapper fixtures (direct/parent/user-unique/agreeing matches, conflicting evidence, no-owner, malformed ObjectId as absent evidence, deterministic replay); suite 199/199; verify:commercial exit 0.
+
+---
+
+## [2026-07-15] feat: Tenant provenance on every private schema (G2.2)
+
+### Summary
+
+- Expanded 15 Prisma models (Product, StockEntry, Formula, FormulaVersionLog, FormulaComment, Order, CreditTransaction, ProductLog, Conversation, Feedback, AiResponse, ChatThread, ChatMessage, PriceCalculation, UserLog) with nullable `tenantId String? @db.ObjectId`; `organizationId` stays for dual-read comparison and tenantId becomes required only after the G2.3/G2.4 backfill verifies.
+- Added `actorProfileId` wherever free-form createdBy/userId/performedBy attribution exists and `ownerProfileId` to Conversation, ChatThread, Formula, Feedback, and AiResponse (owner-level rules); UserLog gains an explicit platform/tenant `scope`.
+- Added compound tenant indexes per lookup key ([tenantId,formulaId], [tenantId,threadId], [tenantId,ownerProfileId], [tenantId,status], [tenantId,createdAt], [tenantId,materialId], [tenantId,productId], [tenantId,isActive]).
+- RawMaterial stays platform-global (pinned by test); legacy Account/Session/User/Organization documented as frozen. Full per-collection scope/source/conflict/owner/enforcement table in docs/commercial/data/tenant-ownership-map.md — every row resolved.
+
+### Verification approach
+
+- TDD RED (29 schema assertions failing) → GREEN 30/30 after expansion; prisma format+validate+generate clean; suite 191/191; verify:commercial exit 0.
+
+---
+
+## [2026-07-15] feat: Tenant execution and ownership contracts (G2.1)
+
+### Summary
+
+- Added `packages/shared-types/src/tenant.ts`: frozen `TenantExecutionContext` (tenant_id, actor, clerk identifiers, membership, role, permissions, access_mode member|support, support_grant_id, correlation_id, request_started_at) — the scope every repository will require from G2.4 on — plus `SupportAccessGrantView`, the diagnostic-permission allowlist, and the 72h grant ceiling.
+- Added `build_tenant_execution_context(principal, support_grant, extras)`: member mode requires an active membership; support mode requires a non-expired, non-revoked grant approved by a different profile and restricts permissions to the grant's diagnostic set; requested/body tenant mismatches raise `TENANT_MISMATCH`; the returned context is `Object.freeze`d so tenant_id cannot be swapped mid-request.
+- Added the `SupportAccessGrant` Prisma model (unique correlationId; [tenantId,expiresAt] and [platformProfileId,expiresAt] indexes), the support-access repository (request/approve/revoke/find_active_for), request validation (diagnostic allowlist, duration ceiling), and the `platformSupportAccess` router: request via platformAdminProcedure; approve/revoke via superAdminProcedure with self-approval rejected; request/approval/revocation audited.
+
+### Verification approach
+
+- TDD RED first, then 7/7 context tests (member, suspended, platform-admin-without-grant, expired grant, self-approved/revoked grant, support-mode permission restriction, tenant mismatch, frozen mutation rejection); suite 161/161; `npm run verify:commercial` exit 0; `prisma generate` clean.
+
+---
+
+## [2026-07-15] feat: Authentication cut over to Clerk (G1.7 — G1 complete)
+
+### Summary
+
+- Custom client authentication is retired: deleted `apps/web/lib/auth-context.tsx`, `/login`, and `/signup`; `authRouter` now exposes only a public health probe (login/logout/me/signup procedures removed, including bcrypt verification and custom session creation). Onboarding is invitation-only through Clerk.
+- New purpose-built `apps/web/lib/app-auth.tsx` adapts Clerk session state (useUser/orgRole/signOut) plus the tenant-scoped organizations query into the narrow `{user, organization, isLoading, logout}` view the UI consumes; 17 consumer files swept to it. No tokens in localStorage or JavaScript-readable cookies — Clerk manages its own httpOnly session. Deployments without a publishable key render the signed-out state.
+- Route contract updated: public paths are `/sign-in`, `/sign-up`, `/onboarding`; anonymous protected traffic redirects to `/sign-in` (regression tests updated to the post-cutover contract). The legacy resolver remains only as the `CLERK_CUTOVER=false` rollback adapter for existing cookie sessions.
+- E2E scaffold: `@playwright/test@1.61.1` pinned, `test:e2e` script + `playwright.config.ts` (webServer `dev:web`), and `tests/e2e/clerk-auth.spec.ts` with 7 staged cases that self-skip without `E2E_CLERK_CONFIGURED=true` (staging execution recorded in G1 evidence).
+- Recorded `docs/commercial/evidence/g1-release.md` with the gate map, code-side command evidence, and the PENDING_EXTERNAL_STAGING checklist (dashboard snapshot, staged migration+reconciliation, webhook health, staged e2e, rollback rehearsal).
+
+### Verification approach
+
+- Full suite 154/154 after the sweep (regression tests pin the new /sign-in contract); `npm run verify:commercial` exit 0; playwright lists 7 tests; the security scanner confirms no localStorage tokens, no custom password/session code paths, no public org creation.
+
+---
+
+## [2026-07-15] feat: Legacy bcrypt identities imported into Clerk (G1.6)
+
+### Summary
+
+- Added `legacy-import.ts` service + `migrate:clerk` CLI: imports active legacy accounts as Clerk users with `passwordDigest`/`passwordHasher="bcrypt"` and `externalId` = the legacy Account ObjectId, then links `clerkUserId`+`legacyAccountId` on the UserProfile — valid users keep their passwords (Clerk verifies the bcrypt digest and upgrades transparently on first sign-in).
+- Replay safety at every step: already-linked profiles count as `replayed`; a partially created Clerk user (found by externalId) is linked without a second `createUser`; duplicate emails are reported as `failed/duplicate_email`; invalid digests, missing user profiles, and inactive accounts are skipped with stable reasons.
+- Dry-run is the default; writes require BOTH `--apply` and `--report=<path>`. Reports and results carry counts and stable record IDs only — a test pins that no password digest ever appears in any result.
+- No university is created from a legacy organization: `legacy_org_resolution` reports `matched_tenant_id` (via `Tenant.legacyOrganizationId`) or `unresolved_reason: no_tenant_mapping` for explicit platform-admin approval.
+- Added `docs/commercial/runbooks/clerk-migration.md`: snapshot, dry run, apply, sampled sign-in verification, reconciliation, cutover (`CLERK_CUTOVER=true`), and rollback commands.
+
+### Verification approach
+
+- TDD RED first, then 9/9 tests: bcrypt import + replay (single createUser, hasher pinned), partial-creation linking, duplicate email, invalid digest, missing user, digest-free results, org resolution matched/unresolved, dry-run-versus-apply write behavior.
+- Full suite 154/154; `npm run verify:commercial` exit 0.
+
+---
+
+## [2026-07-15] feat: Clerk membership lifecycle synchronization (G1.5)
+
+### Summary
+
+- Added the signed Clerk webhook ingress (`apps/web/app/api/webhooks/clerk/route.ts` → `handle_clerk_webhook`): svix v1 signature verified (timing-safe, 5-minute tolerance) before any parsing; processed event IDs stored in `clerk_webhook_receipts` (unique index added to `setup:commercial-indexes`) so duplicates acknowledge 200 without reapplying; projection writes use monotonic `clerkSyncedAt` guards so an older event never overwrites newer state; deletions mark records `revoked`/`deleted`, never hard-delete identity.
+- Multiple-membership containment: when a webhook reveals a second active membership for a profile, authorization is suspended, both projections are preserved for repair, and a `membership_reconciliation_required` audit event is recorded — the system never silently picks a side.
+- Added `invite_tenant_user`/`suspend_tenant_user` services and the `tenantMembers` router (`list`/`inviteUser`/`suspendUser` behind the fine-grained tenant permissions): managers invite students only (the Clerk role is always the user role — this path cannot mint a manager; appointment stays platform-side), and the single-membership rule rejects any email with an active or pending university elsewhere (`MULTIPLE_MEMBERSHIPS_DISABLED`), while same-tenant re-invites stay idempotent.
+- Added `reconcile:clerk --tenant=<id>`: compares Clerk memberships against internal projections, emits a JSON report, repairs safe missing projections, and marks contradictory roles for manual repair.
+- Added the manager members page (`/settings/members`): list, invite student, suspend — no role-promotion UI (and the server rejects it regardless).
+- Scanner: `/api/webhooks/` routes are exempt from the principal-guard rule because webhook ingress authenticates by signature verification (fixture-tested).
+- Deviation: webhook signature verification is implemented against the documented svix v1 scheme with node:crypto (timing-safe) rather than `@clerk/backend/webhooks`' `verifyWebhook`, so tests exercise real signatures deterministically; the scheme and secret format are identical.
+
+### Verification approach
+
+- TDD RED first, then 14 new tests green: invalid signature (400, nothing touched), duplicate event applied once, out-of-order event ignored, soft-delete, membership revocation, multi-membership suspension with preserved projections, invitation acceptance; manager-invites-user-only, student caller rejected, cross-university active/pending memberships rejected, same-tenant idempotent re-invite, manager suspension, student suspension rejected.
+- Full suite 145/145; `npm run verify:commercial` exit 0.
+
+---
+
+## [2026-07-15] feat: Platform-controlled university provisioning (G1.4)
+
+### Summary
+
+- Added `apps/ai/server/services/provisioning/`: `provision_university(actor, input, ports)` runs an idempotent state machine — Tenant(provisioning) keyed by a client-generated UUID idempotency key → ensure Clerk organization (create-or-get with private metadata `internal_tenant_id`; never a second organization) → persist `clerkOrganizationId` → ensure the initial manager invitation (create-or-get by normalized email, role from the configured `CLERK_ORG_ROLE_MODE` mapper) → persist `TenantInvitationProjection` → activate + platform audit event. Membership projections are created only when Clerk reports an accepted membership (G1.5).
+- When a retry cannot prove external Clerk state, the tenant parks in `repair_required` with a correlation ID (`ClerkStateUnprovableError` path) — provisioning never risks a duplicate organization.
+- Input contract: normalized lower-case slug, allowlisted data-residency region, stored plan key, manager email, UUID idempotency key (strict zod schema).
+- New `platformTenants` router: `list` and `create` behind `platformAdminProcedure`; `grantPlatformRole` behind `superAdminProcedure` only (audited, database-authoritative). Production ports adapt `@clerk/backend` at one explicit boundary (`ClerkBackendLike`).
+- Platform console (`apps/web/app/platform/`): server-side role-checked layout, tenant metadata table, and the exact create form (idempotency key generated once per form instance). No tenant business data, no impersonation shortcut.
+
+### Verification approach
+
+- TDD RED first, then 10/10 provisioning tests: success, non-platform caller rejected before any side effect, duplicate slug, replay after failure injection at each of the four external steps without duplicate Clerk objects, unprovable-state repair_required with correlation ID, and input normalization/allowlist enforcement.
+- Full suite 131/131; `npm run verify:commercial` exit 0 (a real ClerkClient/structural-type mismatch was caught by typecheck and resolved with the explicit boundary adapter).
+
+---
+
+## [2026-07-15] feat: Server authorization from Clerk sessions (G1.3)
+
+### Summary
+
+- Added `apps/ai/server/auth/clerk-principal-resolver.ts`: `resolve_clerk_principal(auth_state, repositories)` turns verified `await auth()` values (userId, orgId, orgRole, sessionId) into a database-authoritative `RequestPrincipal`. Platform roles read from the `UserProfile` record, never session claims; a platform admin gets `active_tenant_id=null`/`tenant_role=null` and a tenant request never fabricates membership from a platform role. One mapping function handles Clerk roles (`org:manager`/`org:admin` → manager; `org:user`/`org:member` → user); any Clerk/internal role mismatch is rejected and appends a `role_reconciliation` record to `platform_audit_events`.
+- Expanded `Permission` to the complete platform + university catalogue from design §6.2 (colon-separated literals mapping 1:1 to dotted policy names) with per-role permission sets; the G0 coarse names remain as documented transitional aliases until the G2.5 router conversion.
+- Procedure stack extended in `apps/ai/server/trpc.ts`: `tenantMemberProcedure`, `tenantPermissionProcedure(permission)`, `platformAdminProcedure`, `superAdminProcedure` (typed TRPCError codes), alongside the existing `authenticatedProcedure`/`tenantProcedure`/`managerProcedure`.
+- Cutover discipline: both the tRPC context and the direct-route guard now select exactly one resolver per request — `CLERK_CUTOVER=true` may only call the Clerk resolver, false may only call the G0 legacy resolver — and record `resolver_used` on the request context/audit log. New `apps/ai/server/auth/identity-repositories.ts` assembles the projection-repository ports.
+- Added `require_platform_admin`/`require_super_admin` assertions to `apps/ai/server/auth/authorize.ts`.
+
+### Verification approach
+
+- TDD RED first (resolver missing), then 11/11 resolver tests: role mapping (custom + compatibility), missing user, inactive profile, platform-only principal, no-fabricated-membership, unknown organization, suspended tenant, revoked membership, role-mismatch reconciliation audit, manager and user permission sets.
+- Full suite 121/121; `npm run verify:commercial` exit 0.
+
+---
+
+## [2026-07-15] feat: Internal identity, tenant, and membership projections (G1.2)
+
+### Summary
+
+- Added Prisma models `UserProfile`, `Tenant`, `TenantMembershipProjection`, and `TenantInvitationProjection` with lifecycle enums (`UserProfileStatus`, `PlatformRole`, `TenantType`, `TenantStatus`, `TenantRole`, `MembershipStatus`) — internal projections with stable ObjectIds; Clerk remains the identity source.
+- Added `apps/ai/scripts/setup-commercial-indexes.ts` (`setup:commercial-indexes`): idempotent partial unique indexes for nullable external identifiers (`UserProfile.legacyAccountId`, `Tenant.clerkOrganizationId`, `Tenant.legacyOrganizationId`, `TenantMembershipProjection.clerkMembershipId`) using `partialFilterExpression` on the string BSON type — never Prisma `@unique`, because provisioning-phase records hold null — plus the non-null unique indexes (clerkUserId, slug, provisioningKey, tenant+profile membership, clerkInvitationId).
+- Added repositories with explicit active-record lookups only (`find_active_*`; no generic findOne filter reaches routers): `user-profile-repository`, `tenant-repository`, `membership-repository` under `apps/ai/server/repositories/`.
+- Added `apps/ai/scripts/bootstrap-super-admin.ts` (`bootstrap:super-admin`): single-use — requires `--clerk-user-id` and `--email`, succeeds only while no active platform role exists, writes one `super_admin` UserProfile plus one `platform_audit_events` record, and exits non-zero on any later invocation.
+- Test infrastructure: `mongodb-memory-server` (root devDependency) provides a real mongod for index-semantics tests; also reusable for the G4.7 checkpoint integration tests.
+
+### Verification approach
+
+- TDD RED first (models/repositories/scripts missing), then 9/9 tests against a real in-memory MongoDB: duplicate-present/allow-null partial index semantics for every external ID, idempotent re-setup, tenant/profile membership uniqueness, active-only lookups rejecting suspended records, Clerk-org tenant lookup, and single-use bootstrap with audit trail.
+- `npx prisma generate` clean; `npm run verify:commercial` exit 0 (typecheck + 110 tests + security scan + web build).
+
+---
+
+## [2026-07-15] feat: Clerk authentication surface (G1.1)
+
+### Summary
+
+- Pinned `@clerk/nextjs@7.5.18` (apps/web) and `@clerk/backend@3.11.5` (apps/ai). Route code will use `@clerk/nextjs/server`; framework-neutral provisioning code (G1.4+) uses `@clerk/backend`.
+- `apps/web/proxy.ts` now runs `clerkMiddleware` with `createRouteMatcher`, `frontendApiProxy` enabled, and `await auth.protect()` for application, API, and tRPC paths — gated by two runtime switches in `apps/web/lib/server/clerk-config.ts`: the Clerk surface activates only when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is configured, and enforcement applies only when `CLERK_CUTOVER=true`. Before cutover the legacy cookie flow keeps guarding pages (documented G1 rollback lever); `/sign-in`, `/sign-up`, `/onboarding`, `/api/webhooks/clerk`, `/api/health` are public, and legacy `/login`/`/signup` stay public until G1.7.
+- `ClerkProvider` renders inside the body element (conditional on configuration, so builds succeed without Clerk credentials). Clerk `SignIn`/`SignUp` catch-all pages added; sign-up is invitation-only and no `OrganizationSwitcher`/`CreateOrganization` is rendered anywhere (pinned by test).
+- `/onboarding` shows three explicit states from the server-side Clerk principal only (invitation pending, membership synchronization pending, contact support) and never queries tenant business data.
+- `.env.example` documents the Clerk names without secrets, including `CLERK_CUTOVER=false` and `CLERK_ORG_ROLE_MODE=custom`.
+- PENDING_EXTERNAL_DASHBOARD: Clerk Dashboard settings (disable end-user org creation, invitation-required production sign-up, `org:manager`/`org:user` custom roles, MFA for platform admins) are an external deployment gate; the non-secret settings snapshot goes into G1 release evidence at cutover.
+
+### Verification approach
+
+- TDD RED first (6 of 7 surface tests failing before installation/wiring), then GREEN; full suite 101/101, `npm run typecheck` 0 errors, `npm run security:scan` 0 violations, `npm run build:web` succeeds without Clerk credentials.
+- Legacy behavior pinned: the G0.2 regression tests still pass against the legacy guidance path (public `/login`/`/signup`, anonymous protected pages redirect to `/login`).
+
+---
+
+## [2026-07-15] ci: Private server boundaries enforced by scanner (G0.7 — G0 complete)
+
+### Summary
+
+- Added `scripts/security/scan-private-boundaries.ts` (TypeScript-AST based) behind `npm run security:scan` and `npm run verify:commercial`: deterministic findings with file:line for `PUBLIC_BUSINESS_PROCEDURE` (publicProcedure outside auth.ts; client-order ingress outside orders.ts), `UNGUARDED_ROUTE_HANDLER` (direct API handler not behind with_request_principal; tRPC adapter and OPTIONS exempt), `CLIENT_IDENTITY_FIELD` (identity destructured from request JSON or read from query params), `LOCALSTORAGE_AUTH_TOKEN`, `ORG_CREATION_OUTSIDE_PROVISIONING` (reserved for the G1 provisioning service), and `IGNORED_TYPE_ERRORS`.
+- The scanner immediately caught and we fixed: `apps/web/lib/auth-context.tsx` now uses the auth cookie as the single client-side token store (no localStorage writes), and the orphaned duplicate `apps/ai/lib/auth-context.tsx` (zero importers) was deleted.
+- Recorded G0 release evidence in `docs/commercial/evidence/g0-release.md` (commands, UTC timestamps, commit SHAs, exit codes, output). G0 exit criteria are met; external provider-console credential rotation remains a documented deployment gate (`PENDING_EXTERNAL_ROTATION`).
+- Remaining limitation carried to G1: legacy cookie sessions and public auth.login/logout/me stay until the Clerk cutover (G1.7).
+
+### Verification approach
+
+- TDD RED first (missing scanner module), then 9/9 scanner tests including a production-tree zero-findings assertion; the production scan itself found the two real localStorage violations before the fix — evidence the rules bite.
+- `npm run verify:commercial` (typecheck + 94 tests + security scan + production web build) observed exit 0.
+
+---
+
+## [2026-07-15] fix: Guarded direct API handlers and removed body identity (G0.6)
+
+### Summary
+
+- Added `apps/web/lib/server/with-request-principal.ts`: every direct route handler now runs behind `with_request_principal(request, permission, handler)`, which verifies the legacy session cookie, asserts one named permission, recursively rejects client-supplied identity fields (`userId`/`orgId`/`organizationId`/`tenantId`/`actorId`/`accountId`, case- and separator-insensitive, anywhere in the JSON body) with `400 IDENTITY_FIELD_NOT_ALLOWED`, and passes the verified `RequestPrincipal` plus the screened body to the handler. Anonymous/invalid sessions get 401; suspended memberships get 403.
+- Guarded all 13 direct route files: agent routes, AI chat/enhanced/cosmetic routes, and the LangGraph module with `ai:run`; `index-data` and `ai-chat/refresh` with `tenant:settings:write`; the three RAG retrieval routes with `tenant:read`. `apps/web/app/api/trpc/[trpc]` stays outside the wrapper because its tRPC context performs the same verification (G0.5).
+- Deleted every body/query identity fallback: handlers now derive `userId`/`organizationId` exclusively from the principal (including `enhanced-chat` GET, which previously took `userId` from query params), and the web pages (raw-materials AI, sales AI, formulas AI-suggest, feedback PUTs) no longer send identity fields.
+- Test injection point: `set_identity_store_for_testing()` lets route tests run against an in-memory identity store with no MongoDB.
+
+### Verification approach
+
+- TDD RED first: 38 of 43 new table-driven tests failing against unguarded routes (each of the 13 handlers invoked without a cookie, with an expired cookie, and with forged identity fields); GREEN after guarding.
+- Full suite 85/85; `npm run typecheck` 0 errors; `npm run build:web` completes.
+
+---
+
+## [2026-07-15] fix: Verified principals required for all tRPC operations (G0.5)
+
+### Summary
+
+- `createTRPCContext` now resolves the `auth_token` cookie once per request through `resolve_legacy_principal` (Mongo-backed `LegacyIdentityStore`) and exposes only `{ principal, auth_error, legacy_user }`. Request bodies are never an identity source; resolution failures fail closed.
+- New procedure stack in `apps/ai/server/trpc.ts`: `authenticatedProcedure` (anonymous → `UNAUTHORIZED`; suspended membership → `FORBIDDEN`), `tenantProcedure(permission)` (active tenant + named permission), and `managerProcedure`. `protectedProcedure` is deleted.
+- All 16 business routers converted; `publicProcedure` survives only in `auth.ts`. Permission mapping: reads → `tenant:read`; AI surfaces → `ai:run`; formula create/update/delete/comments → `formula:draft`; `formulas.confirm` and any status transition to confirmed/approved → `formula:confirm`; credits/user administration and shipping-cost billing → manager only.
+- `auth.signup` is closed: it now always returns `PRECONDITION_FAILED` ("universities are provisioned by platform administration"). `auth.logout` derives the logged identity from the session record, not the request body.
+- Organizations/users/orders are tenant-scoped: cross-tenant `getById`/credit/order access is rejected; the anonymous list-all-organizations and all-tenants transaction views are removed; targets and acting identity (`performedBy`, `createdBy`, `organizationId`) derive from the verified principal, and those fields were removed from input schemas and web call sites.
+- Deliberate exception: `orders.submitClientOrder` remains anonymous on a dedicated `publicClientOrderProcedure` because the public client order form is a preserved G0.2 route contract; the architecture test pins it to exactly one usage.
+- Known behavior change: `ctx.user.id` previously evaluated to `undefined` at runtime (untyped raw document); conversation/feedback records now carry the real internal user ID. Legacy records with undefined IDs are handled by the G2 backfill.
+- Test infra: root `vitest.config.ts` now mirrors the web webpack aliases (`@/ai`, `@/server`, `@/` → apps/web) so router-level caller tests run against the real `appRouter`.
+
+### Verification approach
+
+- TDD RED first: 8 of 9 new architecture/caller tests failing against the public routers; GREEN after conversion (28 auth tests, 42 total across 6 files).
+- `npm run typecheck` exits 0 (after removing client-supplied identity fields from 4 web call sites) and `npm run build:web` completes.
+
+---
+
+## [2026-07-15] feat: Provider-neutral request principal (G0.4)
+
+### Summary
+
+- Added provider-neutral authorization contracts to `packages/shared-types/src/auth.ts`: `PlatformRole`, `TenantRole`, `Permission`, `RequestPrincipal`, and per-role permission catalogues (`TENANT_ROLE_PERMISSIONS`, `PLATFORM_ROLE_PERMISSIONS`). Platform and tenant role dimensions are separate types; neither converts into the other.
+- Added `apps/ai/server/auth/legacy-principal-resolver.ts`: `resolve_legacy_principal(token, db, now)` resolves a verified legacy session through one session query plus an account/user/organization lookup sequence against an injected read-only `LegacyIdentityStore` port (Prisma adapter lands with tRPC wiring in G0.5; tests use in-memory fakes).
+- Legacy role mapping grants no platform authority: legacy `admin` maps to tenant `manager`; `shipper`/`shopper` map to tenant `user`; `platform_role` is always null for legacy identities.
+- Added `apps/ai/server/auth/authorize.ts` (`require_permission`, `require_active_tenant`) and `apps/ai/server/auth/errors.ts` (`AuthorizationError` with stable codes `UNAUTHENTICATED`, `MEMBERSHIP_INACTIVE`, `FORBIDDEN`).
+- Rejection semantics: missing/unknown/expired session, inactive or missing account, missing user profile, and missing organization raise `UNAUTHENTICATED`; suspended/inactive user or inactive organization raise `MEMBERSHIP_INACTIVE`.
+
+### Verification approach
+
+- TDD: captured the RED run (2 test files failing on missing modules), then GREEN with 19 passing auth tests covering all rejection cases, role mapping, and authorization assertions.
+- Full suite remains green (33 tests across 5 files) and `npm run typecheck` passes; the four new modules also pass an isolated `tsc --strict` check.
+
+---
+
+## [2026-07-15] docs: Dynamic agentic orchestrator design supersedes fixed OODA pipeline
+
+### Summary
+
+Replaced the planned twelve-fixed-node OODA StateGraph with a governed agentic loop per product-owner direction ("dynamic pure agentic with orchestrator and .md inject"). One model-driven reasoning node owns flow (which tool, when to clarify, when to finalize); a deterministic governor (ingress, gate, act, validators, finalize, fail) owns authorization, budgets, checkpoints, loop detection, and side effects. The orchestrator understands its capabilities through injected markdown capability cards — one .md per tool and per agent — assembled at ingress, filtered by tenant policy, and pinned by content hash on the run. Specialists become delegation tools running the same loop recursively with narrowed allowlists and reserved budgets.
+
+### Rationale (OODA on the AI architecture)
+
+- Observe: the audited system has ~9 executor paths with only 2 user-reachable, both funneling into one hardcoded ReAct agent with silent fallbacks; two disjoint tool systems with inline mixed-language description strings; prompts split across hardcoded TS and orphaned .md files.
+- Orient: OODA as emergent loop behavior (tool result = observe, reasoning turn = orient+decide, gated execution = act, deterministic validators = evaluate) preserves every governance guarantee of the fixed graph while cutting 3-4 structured-output model calls per cycle to 1 native tool-calling turn and removing the OrientationV1/DecisionV1 structured-output failure mode.
+- Decide: keep LangGraph for durability only (checkpoints, interrupts, streaming); keep all public contracts, formula validation, run API/worker, typed UI events, and boundary scanning from the prior plan.
+- Act: rewrote the G4 plan in place; program gate references remain valid.
+
+### Documentation
+
+- Added docs/superpowers/specs/2026-07-15-agentic-orchestrator-design.md (supersedes section 11 of the tenancy design; includes current-state audit appendix).
+- Rewrote docs/superpowers/plans/2026-07-15-ooda-agent-orchestration.md as the Agentic Orchestration Implementation Plan (11 tasks: workspace, contracts, capability cards + context assembler, agent node, deterministic governor, delegation tools, checkpoints/interrupts, formula artifacts, run API, typed UI events, boundary enforcement).
+- Updated docs/superpowers/plans/2026-07-15-commercialization-program.md G4 exit criteria and architecture summary.
+
+---
+
+## [2026-07-15] fix: Remove public AI credential fallbacks
+
+### Summary
+
+- Added a private, runtime-neutral `@rnd-ai/server-config` workspace contract that loads Gemini, OpenAI, Qdrant, and Google web-search credentials only from explicit server environment input, performs no import-time environment reads, and never accepts a public credential fallback.
+- Removed public provider-key build arguments, container variables, deployment-script forwarding, duplicated environment-example names, and the tracked production environment file; tightened environment-file ignore rules while retaining committed examples.
+- Routed server provider construction through the canonical credential loader, preserved lazy request-time initialization, and moved client chat retrieval to the existing server-backed unified-search API client.
+- Added a repository scanner that rejects public credential-shaped names, client provider construction/imports, client imports of the private credential package, and tracked non-example environment files while allowing the Clerk publishable key and public API URLs.
+- Recorded the required provider/environment rotation and revocation ledger as `PENDING_EXTERNAL_ROTATION`; local source containment does not claim provider-console rotation.
+
+### Root cause
+
+- Historical provider integrations reused browser-prefixed variables as server fallbacks and passed those names through Docker build layers, runtime configuration, deployment automation, examples, and client-side service construction.
+- Credential loading was duplicated across web routes and AI agents, so later integrations could silently preserve the insecure fallback instead of consuming one private server contract.
+
+### Verification approach
+
+- Captured the focused scanner RED result across application source, client components, Docker configuration, environment examples, and deployment automation before production edits, then confirmed the complete focused security suite passes.
+- Confirmed the root TypeScript check, private package TypeScript check, web ESLint command, and Next.js production build pass without provider credentials at build time.
+- Confirmed the AI workspace lint command remains unavailable because that workspace has no ESLint 9 flat configuration; no lint infrastructure was added in this containment change.
+- Deferred the global `npm run security:scan` gate to G0 Task 7 because its planned scanner entry point is not present yet.
+
+## [2026-07-15] build: Upgrade to patched Next and React baseline
+
+### Summary
+
+- Pinned the web runtime to Next.js 16.2.10, React/React DOM 19.2.7, matching React type packages, and eslint-config-next 16.2.10; pinned the AI workspace MongoDB driver to 6.21.0.
+- Replaced the removed `next lint` command with ESLint, migrated the configuration from the obsolete FlatCompat adapter to Next.js 16 native flat exports, restored explicit TypeScript checking, removed the build-time TypeScript bypass, and migrated redirect-only request guidance from `middleware.ts` to the Next.js 16 `proxy.ts` convention.
+- Repaired the existing TypeScript contract drift in legacy agent calls, LangGraph state annotations, logger errors, cosmetic regulatory and threshold types, dashboard metrics, and formula router outputs/statuses.
+- Cleared the React 19 lint baseline without suppressions by deriving query-backed chat state, reconciling optimistic messages by server ID, moving pagination resets into user events, and making effect-driven external data updates asynchronous and cleanup-safe.
+- Deferred environment-dependent Gemini and MongoDB client construction until request-time use so production builds do not require runtime secrets.
+- Kept the existing webpack configuration active under Next.js 16 by selecting webpack explicitly for production builds.
+- Resolved the G0 Task 2 review findings while preserving the binding G0 route contract: `/login` and `/signup` remain public, anonymous protected pages redirect to `/login`, and the Clerk-style route rename stays deferred to G1.
+- Added privacy-safe structured proxy lifecycle logs, hydration-safe App Router search-parameter handling for the public order form, one-time chat-thread default pinning across refetch reordering, and schema-backed formula-status narrowing without an `any` assertion.
+
+### Verification approach
+
+- Installed the pinned workspace dependency graph and confirmed the exact top-level package versions.
+- Ran the web lint command, root TypeScript check, focused framework architecture test, and Next.js 16 production build with TypeScript validation enabled.
+- Reviewed all touched React components against the repository's component, hook, rendering, accessibility, and type-safety conventions.
+- Added and ran an eight-case review regression suite, then verified both public auth routes and their bidirectional navigation in a real browser with no console, runtime, or Next error-overlay failures.
+
+---
+
+## [2026-07-15] test: Add commercial verification baseline
+
+### Summary
+
+- Added a root Vitest harness with reproducible test and watch commands.
+- Added root typecheck, private-boundary security scan, and combined commercial verification commands for later commercialization gates.
+- Added an architecture baseline that pins the intended patched Next.js and React versions and prohibits bypassing TypeScript build validation.
+- Deliberately retained the current framework versions and `ignoreBuildErrors` setting so the architecture baseline remains RED until the framework upgrade task completes.
+
+### Verification approach
+
+- Captured the initial missing-test-script failure before installing the harness.
+- Re-ran the focused architecture test after installation to confirm it now reaches the deliberate framework baseline failures.
+
+---
+
+## [2026-07-15] chore: Prepare isolated commercialization worktree
+
+### Summary
+
+- Ignored the project-local `.worktrees/` directory so the `v2/dev` commercialization branch can be developed in an isolated Git worktree without polluting repository status.
+
+---
+
+## [2026-07-15] docs: Commercial migration implementation program
+
+### Summary
+
+Added the execution-ready program and six gated implementation plans for commercializing R&D AI. The plans translate the approved Clerk tenancy and OODA design into test-driven tasks with exact file ownership, interfaces, dependency pins, failing-test anchors, implementation anchors, verification commands, rollback evidence, and commit boundaries.
+
+### Plans
+
+- Added docs/superpowers/plans/2026-07-15-commercialization-program.md for gate order, shared invariants, rollback mapping, and release criteria.
+- Added docs/superpowers/plans/2026-07-15-commercial-security-containment.md for the patched Next.js/React baseline, route protection, server-derived identity, public-secret removal, credential rotation, and static boundary enforcement.
+- Added docs/superpowers/plans/2026-07-15-clerk-identity-tenant-provisioning.md for Clerk sessions, identity projections, platform-created universities, invitation/webhook reconciliation, bcrypt import, and cutover.
+- Added docs/superpowers/plans/2026-07-15-tenant-data-authorization.md for tenant provenance, audited backfill/quarantine, scoped repositories, support access, and router/tool conversion.
+- Added docs/superpowers/plans/2026-07-15-tenant-ai-control-plane.md for effective policy, deployments, quotas, usage, tool governance, upload quarantine, and Qdrant knowledge isolation.
+- Added docs/superpowers/plans/2026-07-15-ooda-agent-orchestration.md for versioned contracts, bounded specialist subgraphs, OODA nodes, durable interrupts/checkpoints, formula validation, private workers, one run API, and typed UI events.
+- Added docs/superpowers/plans/2026-07-15-commercial-evaluation-rollout.md for the frozen baseline, quantitative release thresholds, shadow/canary, load and resilience, operations, tenant lifecycle, CI, and legacy retirement.
+
+### Additional implementation decisions
+
+- Pinned the planned web baseline to Next.js 16.2.10, React 19.2.7, and Clerk Next.js 7.5.18 based on current package compatibility.
+- Isolated current LangGraph 1.4.7 in a new orchestration workspace so legacy LangChain dependencies can coexist until cutover.
+- Added partial unique MongoDB index setup for nullable Clerk/legacy IDs instead of invalid nullable Prisma uniqueness assumptions.
+- Added a separate invitation projection because an invited email may not yet have a Clerk user or internal user profile.
+- Stored AI cost as integer micro-USD because Prisma Decimal is unsupported by the MongoDB connector.
+- Added explicit public AI key removal and rotation, one-membership enforcement, bounded specialist subgraphs, upload authorization/quarantine, private run workers, support grants, and load/failure recovery gates found during plan self-review.
+
+---
+
+## [2026-07-15] docs: Commercial Clerk tenancy and OODA AI migration design
+
+### Summary
+
+Added the evidence-backed commercial architecture specification for replacing custom authentication with Clerk, introducing separate platform and university role scopes, enforcing tenant isolation across application and AI data, and consolidating overlapping AI paths into a governed LangGraph OODA orchestrator.
+
+### Repository audit findings
+
+- Identified public organization creation with automatic admin assignment, JavaScript-readable custom session tokens, cookie-presence middleware, and API routes excluded from middleware.
+- Counted 20 sensitive public procedures across organization, user, order, and credit routers and 12 direct API route files without verified server authentication.
+- Flagged client-controlled AI identity fields and formula tools that load or mutate records without tenant predicates.
+- Documented missing tenant provenance across AI conversations, responses, feedback, formula discussions, and version history.
+- Flagged overlapping ReAct, fixed pipeline, legacy LangGraph, agent-manager, cosmetic, and sales execution paths with silent fallbacks.
+- Confirmed the deployed boundary currently bundles AI source into the web runtime despite separate workspace naming.
+- Recorded missing standard tests, CI gates, evaluation corpus, quota ledger, durable approvals, and commercial data-governance operations.
+
+### Architecture decisions
+
+- Clerk owns identity, sessions, organizations, memberships, and invitations; MongoDB owns application and tenant AI state.
+- Platform roles (`super_admin`, `admin`) are independent from university roles (`manager`, `user`).
+- Only platform admins create universities and appoint managers; managers invite students and govern tenant AI within platform limits.
+- Every resource and AI operation derives tenant context from verified server state and enforces named permissions at the resource boundary.
+- Tenant AI policy controls models, tools, prompts, knowledge, quotas, retention, approvals, and usage.
+- A typed LangGraph `Observe -> Orient -> Decide -> Act` loop becomes the sole production AI architecture.
+- Deterministic code authorizes actions, injects tenant filters, validates artifacts, controls budgets, and commits side effects.
+- Existing bcrypt account hashes are eligible for Clerk import, avoiding a mandatory reset for valid records.
+- Implementation is decomposed into six gated subprojects from immediate containment through canary and deprecation.
+
+### Documentation
+
+- Added `docs/superpowers/specs/2026-07-15-commercial-clerk-tenancy-ooda-design.md`.
+
+---
+
 ## [2026-03-30] feat: Show chat history threads in main navigation sidebar
 
 ### Summary
@@ -1546,3 +4578,41 @@ QdrantRAGService exposes all these as snake_case methods per project convention.
 - `.env.production` — NEW: Production env template for droplet
 - `scripts/deploy-droplet.sh` — NEW: Droplet deployment automation
 - `CHANGELOG.md` — This file
+
+## [2026-07-28] v2/dev — Fix TS2739: MongoDBSaver vs BaseCheckpointSaver type-identity skew
+
+### Root Cause
+- `@langchain/langgraph-checkpoint-mongodb@1.4.0` is hoisted to the workspace-root
+  `node_modules`, where its `@langchain/langgraph-checkpoint` peer (declared `^1.0.0`)
+  resolves to the legacy `0.0.18` copy kept for the old `@langchain/langgraph@0.2.74`
+  consumers. Its `MongoDBSaver` d.ts therefore extended the 0.x base class, which
+  predates the `toJSON`/`getDeltaChannelHistory` members of the 1.x
+  `BaseCheckpointSaver` that `packages/ai-orchestration` compiles against
+  (nested `@langchain/langgraph@1.4.8` → checkpoint `1.1.3`) → TS2739 at
+  `packages/ai-orchestration/src/checkpoint.ts:66`. Deeper members (`serde`,
+  `getTuple` configs) were also nominally skewed via the duplicated `@langchain/core`.
+
+### Fix (types-only, zero runtime delta)
+- `packages/ai-orchestration/tsconfig.json` — added `compilerOptions.paths` pinning
+  `@langchain/langgraph-checkpoint`, `@langchain/core/runnables`, and
+  `@langchain/core/embeddings` to this package's nested 1.x copies, so the hoisted
+  mongodb saver's d.ts binds the dependency set its declared peer range requires.
+  `checkpoint.ts` is untouched; vitest and all runtimes ignore tsconfig `paths`.
+
+### Verification
+- `npm run typecheck:orchestration` → exit 0 (was TS2739).
+- `npm run test -- tests/orchestration` → 11 files, 135 tests passed.
+
+### Known Pre-existing Issue (out of scope, NOT introduced here)
+- `npm run typecheck` (full) still fails in its FIRST step
+  (`tsc --noEmit -p apps/web/tsconfig.json`) with 28 pre-existing errors at HEAD:
+  the web project reaches `packages/ai-orchestration/src` + `apps/ai` sources via
+  `@/ai`/`@/server` aliases and recompiles them under `"strict": false`
+  (`packages/shared-config/tsconfig.base.json`), where zod `z.infer` collapses
+  (all-optional objects, `never` unions) — 27 inference errors plus the web-program
+  view of the saver mismatch. Forcing `--strictNullChecks` fixes all orchestration
+  errors but surfaces 60 errors in web's own sources; mapping the langchain paths in
+  the web tsconfig is unsafe (legacy `@langchain/*` 0.x stack still used by
+  `apps/ai/services/providers/*`). Proper remediation: project references (consume
+  the orchestration package via emitted declarations) or strict-null adoption in
+  `apps/web` — tracked as follow-up.

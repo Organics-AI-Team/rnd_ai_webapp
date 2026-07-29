@@ -47,6 +47,8 @@ interface AIChatMessagesAreaProps {
   onFeedback?: (messageId: string, isPositive: boolean) => void;
   /** Set of message IDs that already have feedback submitted */
   feedbackSubmitted?: Set<string>;
+  /** Typed governed-run activity rendered after the conversation messages. */
+  runContent?: React.ReactNode;
 }
 
 export function AIChatMessagesArea({
@@ -64,6 +66,7 @@ export function AIChatMessagesArea({
   onQuickAction,
   onFeedback,
   feedbackSubmitted = new Set(),
+  runContent,
 }: AIChatMessagesAreaProps) {
   const bottom_ref = useRef<HTMLDivElement>(null);
   const scroll_container_ref = useRef<HTMLDivElement>(null);
@@ -141,6 +144,7 @@ export function AIChatMessagesArea({
               />
             ))
           )}
+          {runContent}
           {isLoading && (
             <AILoadingIndicator
               message={loadingMessage}

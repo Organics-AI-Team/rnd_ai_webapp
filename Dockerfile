@@ -4,7 +4,7 @@
 
 # Stage 1: Dependencies
 # Install all dependencies needed for building
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 
 # Add libc6-compat for compatibility with certain npm packages on Alpine Linux
 RUN apk add --no-cache libc6-compat
@@ -20,19 +20,20 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/shared-database/package.json ./packages/shared-database/
+COPY packages/server-config/package.json ./packages/server-config/
+COPY packages/ai-orchestration/package.json ./packages/ai-orchestration/
 
 # Install all workspace dependencies
 RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder
 # Build the Next.js application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 
 # Copy workspace configuration
 COPY package.json package-lock.json ./
@@ -44,21 +45,26 @@ COPY apps/web ./apps/web
 # Copy AI service (needed for imports)
 COPY apps/ai ./apps/ai
 
+# Generate the Prisma client used by imported server repositories.
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN npx prisma generate
+
 # Set environment to production for optimized build
 ENV NODE_ENV=production
 
 # Disable Next.js telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Only NEXT_PUBLIC_* variables are needed at build time (inlined by Next.js)
-# Server-side secrets (MONGODB_URI, API keys, etc.) are injected at runtime via env vars
-ARG NEXT_PUBLIC_GEMINI_API_KEY
-ARG NEXT_PUBLIC_OPENAI_API_KEY
+# Public URLs and the Clerk publishable key are inlined by Next.js at build
+# time. Provider credentials are injected only into the runtime container.
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_APP_URL
 
-ENV NEXT_PUBLIC_GEMINI_API_KEY=$NEXT_PUBLIC_GEMINI_API_KEY
-ENV NEXT_PUBLIC_OPENAI_API_KEY=$NEXT_PUBLIC_OPENAI_API_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
 # Build the Next.js app from web workspace
 WORKDIR /app/apps/web
@@ -67,7 +73,7 @@ WORKDIR /app
 
 # Stage 3: Runner
 # Final stage with minimal size for running the app
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 
@@ -87,6 +93,10 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
+# Preserve Prisma's generated client and native engine in the standalone image.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+
 # Copy public assets if they exist
 RUN mkdir -p ./apps/web/public
 
@@ -94,14 +104,14 @@ RUN mkdir -p ./apps/web/public
 USER nextjs
 
 # Expose port 3000
-# Railway will map this to a public URL
+# Docker Compose publishes this port to the droplet reverse proxy
 EXPOSE 3000
 
 # Set port environment variable
 ENV PORT=3000
 
 # Set hostname to listen on all network interfaces
-# Required for Railway to properly route traffic
+# Required so the droplet reverse proxy can reach the container
 ENV HOSTNAME="0.0.0.0"
 
 # Start the Next.js application

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { FormulaForm } from "@/components/formula-form";
 import { Button } from "@/components/ui/button";
 import { useRouter, useSearchParams } from "next/navigation";

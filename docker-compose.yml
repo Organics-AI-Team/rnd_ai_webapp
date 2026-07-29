@@ -1,7 +1,5 @@
-version: '3.8'
-
 # R&D AI Management - Docker Compose Configuration
-# This file allows you to run both web and AI services together locally
+# Production stack for the DigitalOcean droplet; also usable for local checks.
 
 services:
   # Web Frontend Application
@@ -11,21 +9,43 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
-        - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
-        - NEXT_PUBLIC_OPENAI_API_KEY=${NEXT_PUBLIC_OPENAI_API_KEY}
+        # Clerk publishable key is public and inlined by Next.js at build time
+        - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+        # Public app origin: invitation redirect targets and client base URL
+        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://rndai.erporganics.com}
     container_name: rnd-ai-web
     mem_limit: 1536m
     ports:
-      - "3000:3000"
+      # Localhost-only: nginx on the droplet proxies 80/443 -> 127.0.0.1:3000.
+      # Publishing on all interfaces exposed the app on the public IP,
+      # bypassing Cloudflare TLS/WAF (found + firewalled 2026-07-27).
+      - "127.0.0.1:3000:3000"
     environment:
       # Database
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${DATABASE_URL:-${MONGODB_URI}}
       - MONGODB_URI=${MONGODB_URI}
       - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI}
 
+      # Clerk authentication (invitation-only commercial identity)
+      # CLERK_CUTOVER=true switches the resolver to Clerk sessions; the
+      # webhook signing secret authenticates Clerk -> app projections.
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
+      - CLERK_WEBHOOK_SIGNING_SECRET=${CLERK_WEBHOOK_SIGNING_SECRET:-}
+      - CLERK_CUTOVER=${CLERK_CUTOVER:-false}
+      # Empty selects custom org role keys (org:manager/org:user);
+      # "built_in" maps to Clerk's org:admin/org:member instead.
+      - CLERK_ORG_ROLE_MODE=${CLERK_ORG_ROLE_MODE:-}
+
+      # Clerk frontend-API proxying (middleware runtime toggle)
+      - CLERK_FRONTEND_API_PROXY=${CLERK_FRONTEND_API_PROXY:-false}
+
+      # Invitation expiry display window (days; empty falls back to 30)
+      - CLERK_INVITATION_TTL_DAYS=${CLERK_INVITATION_TTL_DAYS:-}
+
       # AI API Keys
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-pro-preview}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
 
       # Vector Database (Qdrant)
@@ -36,14 +56,22 @@ services:
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
       - GOOGLE_SEARCH_CSE_ID=${GOOGLE_SEARCH_CSE_ID:-}
 
-      # Public Variables (inlined at build time)
-      - NEXT_PUBLIC_GEMINI_API_KEY=${NEXT_PUBLIC_GEMINI_API_KEY}
-      - NEXT_PUBLIC_OPENAI_API_KEY=${NEXT_PUBLIC_OPENAI_API_KEY}
+      # Public API URL (inlined at build time)
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://rndai.erporganics.com/api}
 
-      # Admin
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # Public app origin (invitation redirect targets; also inlined at build)
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://rndai.erporganics.com}
+
+      # Knowledge upload authorization HMAC secret (>=24 chars; uploads
+      # fail closed without it)
+      - KNOWLEDGE_UPLOAD_AUTH_SECRET=${KNOWLEDGE_UPLOAD_AUTH_SECRET:-}
+
+      # Governed-run admission stamps the rate card too — must match worker
+      - AI_RATE_CARD_VERSION=${AI_RATE_CARD_VERSION:-commercial-2026-07-v1}
+
+      # Next standalone chdir()s to /app/apps/web at boot, so the card
+      # loader's cwd-relative probes miss the copied cards — pin explicitly
+      - AI_CAPABILITY_CARDS_ROOT=/app/apps/ai/server/services/ai-control/cards
 
       # Node Environment
       - NODE_ENV=production
@@ -60,11 +88,64 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://0.0.0.0:3000/login"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://0.0.0.0:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Private Governed AI Run Worker
+  # Polls ai_run_jobs and drives checkpointed agentic runs; queued governed
+  # runs cannot complete in production without this service. No HTTP port.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/ai/Dockerfile.worker
+    container_name: rnd-ai-worker
+    mem_limit: 1024m
+    environment:
+      # Database (same Mongo as web; worker rebuilds tenant context per job)
+      - DATABASE_URL=${DATABASE_URL:-${MONGODB_URI}}
+      - MONGODB_URI=${MONGODB_URI}
+      - RAW_MATERIALS_REAL_STOCK_MONGODB_URI=${RAW_MATERIALS_REAL_STOCK_MONGODB_URI:-}
+
+      # AI provider (required; worker fails closed at boot without it)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+      # Usage cost accounting (required bigints; worker fails closed without)
+      - AI_GEMINI_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS=${AI_GEMINI_INPUT_PRICE_MICROUSD_PER_MILLION_TOKENS}
+      - AI_GEMINI_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS=${AI_GEMINI_OUTPUT_PRICE_MICROUSD_PER_MILLION_TOKENS}
+      - AI_RATE_CARD_VERSION=${AI_RATE_CARD_VERSION:-commercial-2026-07-v1}
+
+      # Embeddings for tenant knowledge retrieval
+      - AI_EMBEDDING_MODEL=${AI_EMBEDDING_MODEL:-gemini-embedding-001}
+      - AI_EMBEDDING_VERSION=${AI_EMBEDDING_VERSION:-v1}
+      - AI_EMBEDDING_DIMENSIONS=${AI_EMBEDDING_DIMENSIONS:-768}
+
+      # Vector Database (Qdrant, compose-internal)
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+
+      # Web Search (optional pair — both or neither; tool stays NOT_WIRED when absent)
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
+      - GOOGLE_SEARCH_CSE_ID=${GOOGLE_SEARCH_CSE_ID:-}
+
+      # Worker tuning (defaults match run_private_worker fallbacks)
+      - AI_RUN_TIMEOUT_MS=${AI_RUN_TIMEOUT_MS:-300000}
+      - AI_WORKER_POLL_MS=${AI_WORKER_POLL_MS:-500}
+      - AI_WORKER_MAX_ATTEMPTS=${AI_WORKER_MAX_ATTEMPTS:-5}
+
+      # Node Environment
+      - NODE_ENV=production
+
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+    networks:
+      - rnd-ai-network
+
+    restart: unless-stopped
 
   # Qdrant Vector Database
   qdrant:
@@ -104,25 +185,23 @@ volumes:
 # ------
 # 1. Copy .env.example to .env and fill in your values
 # 2. Build and start all services:
-#    docker-compose up -d
+#    docker compose up -d
 #
 # 3. View logs:
-#    docker-compose logs -f web
-#    docker-compose logs -f ai
-#    docker-compose logs -f qdrant
+#    docker compose logs -f web
+#    docker compose logs -f qdrant
 #
 # 4. Stop all services:
-#    docker-compose down
+#    docker compose down
 #
 # 5. Stop and remove volumes:
-#    docker-compose down -v
+#    docker compose down -v
 #
 # 6. Rebuild after code changes:
-#    docker-compose up -d --build
+#    docker compose up -d --build
 #
 # Access:
 # -------
 # Web App: http://localhost:3000
-# AI Service: http://localhost:3001
 # Qdrant: http://localhost:6333
 # Qdrant gRPC: http://localhost:6334

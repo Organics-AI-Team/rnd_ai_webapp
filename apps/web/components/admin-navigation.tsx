@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Database, Settings, ChevronLeft, ChevronRight, LogOut, Menu, X, Package } from "lucide-react";
 import { cn } from "@rnd-ai/shared-utils";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 

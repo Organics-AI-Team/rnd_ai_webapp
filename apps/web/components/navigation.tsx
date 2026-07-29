@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, LogOut, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Database, Sparkles, MessageSquare } from "lucide-react";
+import { Package, LogOut, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Database, Sparkles, MessageSquare, Users, Shield } from "lucide-react";
 import { cn } from "@rnd-ai/shared-utils";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
+import { OrgSwitcherPanel } from "@/components/org_switcher_panel";
+
+// Clerk components render only when the deployment configures Clerk — the
+// sidebar also renders in the legacy flow, where Clerk components throw
+// without ClerkProvider (same build-time check as app-auth.tsx).
+const clerk_enabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 /**
  * Main sidebar navigation - light mode, clean Cloudflare-style
@@ -20,6 +26,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
+  const [threadTimeReference] = useState(() => new Date().getTime());
 
   // --- Fetch recent chat threads for sidebar history ---
   const raw_materials_threads = trpc.chatThreads.list.useQuery(
@@ -30,6 +37,15 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     { agentType: 'sales_rnd_ai', limit: 5 },
     { refetchOnWindowFocus: false, enabled: !!user },
   );
+
+  // Display-only role view for link visibility; the server still authorizes
+  // every procedure behind these pages (auth.me is never an authz source).
+  const me = trpc.auth.me.useQuery(undefined, {
+    enabled: !!user,
+    refetchOnWindowFocus: false,
+  });
+  const is_tenant_manager = me.data?.tenant_role === "manager";
+  const has_platform_role = Boolean(me.data?.platform_role);
 
   /**
    * Map agent type to its recent threads.
@@ -44,13 +60,13 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Format relative time — ultra-short for sidebar display.
+   * Format relative time against the stable sidebar-mount reference.
    *
    * @param date - Date to format
-   * @returns Short time string (e.g. "now", "5m", "2h", "3d", "Mar 30")
+   * @returns Short time string (for example, "now", "5m", "2h", or "Mar 30")
    */
   const format_thread_time = (date: Date): string => {
-    const ms = Date.now() - new Date(date).getTime();
+    const ms = threadTimeReference - new Date(date).getTime();
     const min = Math.floor(ms / 60000);
     const hr = Math.floor(ms / 3600000);
     const day = Math.floor(ms / 86400000);
@@ -74,6 +90,15 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     { type: "section-title", label: "AI ASSISTANT" },
     { type: "link", href: "/ai/raw-materials-ai", label: "Stock Materials AI", icon: Database },
     { type: "link", href: "/ai/sales-rnd-ai", label: "Sales Formulation AI", icon: Sparkles },
+    ...(is_tenant_manager || has_platform_role
+      ? [{ type: "separator" }, { type: "section-title", label: "ADMINISTRATION" }]
+      : []),
+    ...(is_tenant_manager
+      ? [{ type: "link", href: "/settings/members", label: "Members", icon: Users }]
+      : []),
+    ...(has_platform_role
+      ? [{ type: "link", href: "/platform/tenants", label: "Platform", icon: Shield }]
+      : []),
   ];
 
   /**
@@ -278,6 +303,15 @@ export function Navigation({ children }: { children: React.ReactNode }) {
             })}
           </div>
         </nav>
+
+        {/* Org switcher: Clerk mode only — the sidebar also renders in the
+            legacy flow where Clerk components would throw. Collapsed sidebar
+            hides it (the popover needs horizontal room). */}
+        {clerk_enabled && !isSidebarCollapsed && (
+          <div className="px-2 py-2 border-t border-gray-200">
+            <OrgSwitcherPanel />
+          </div>
+        )}
 
         {/* User */}
         {user && organization && (

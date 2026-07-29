@@ -1,5 +1,5 @@
-# ChromaDB Server Dockerfile for Railway
-# Standalone ChromaDB service with persistent storage
+# Legacy standalone ChromaDB server image
+# Production droplet deployments use Qdrant from docker-compose.yml.
 
 FROM python:3.11-slim
 
@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir numpy==1.26.4 && \
     pip install --no-cache-dir chromadb==0.4.22
 
 # Create data directory for persistent storage
-# Railway will mount a volume here
+# Mount persistent storage here when running this legacy image
 RUN mkdir -p /chroma/data
 
 # Set working directory
@@ -26,8 +26,7 @@ ENV PERSIST_DIRECTORY=/chroma/data
 ENV IS_PERSISTENT=TRUE
 ENV ANONYMIZED_TELEMETRY=FALSE
 
-# Note: Removed Docker HEALTHCHECK - Railway handles healthchecks via railway.json
-# Railway will check /api/v1/heartbeat endpoint directly
+# Health checks are supplied by the container orchestrator.
 
 # Start ChromaDB server
 # --host 0.0.0.0 makes it accessible from outside the container

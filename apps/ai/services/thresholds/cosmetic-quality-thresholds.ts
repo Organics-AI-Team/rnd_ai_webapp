@@ -562,9 +562,16 @@ export class CosmeticQualityThresholdsService {
     const aseanEvaluation = this.evaluateComplianceLevel(compliance.aseanCompliant, thresholds.aseanCompliance);
 
     const overallCompliant = compliance.overallCompliant;
+    const overall_thresholds: ThresholdLevel = {
+      excellent: thresholds.overallCompliance.fullyCompliant,
+      good: thresholds.overallCompliance.partiallyCompliant,
+      acceptable: thresholds.overallCompliance.partiallyCompliant,
+      minimum: thresholds.overallCompliance.nonCompliant,
+      critical: thresholds.overallCompliance.criticalViolation
+    };
     const overallEvaluation = overallCompliant ?
-      this.evaluateScoreAgainstThresholds(1.0, thresholds.overallCompliance) :
-      this.evaluateScoreAgainstThresholds(0.0, thresholds.overallCompliance);
+      this.evaluateScoreAgainstThresholds(1.0, overall_thresholds) :
+      this.evaluateScoreAgainstThresholds(0.0, overall_thresholds);
 
     return {
       fda: fdaEvaluation,
@@ -742,7 +749,8 @@ export class CosmeticQualityThresholdsService {
     // Check role-specific critical thresholds
     const roleThresholds = this.thresholds.userRoleSpecific[context.userRole];
     if (roleThresholds) {
-      for (const [dimension, threshold] of Object.entries(roleThresholds.criticalThresholds)) {
+      const critical_thresholds = Object.entries(roleThresholds.criticalThresholds) as Array<[string, number]>;
+      for (const [dimension, threshold] of critical_thresholds) {
         const evaluation = dimensions[dimension] || cosmeticFactors[dimension];
         if (evaluation && evaluation.score < threshold) {
           return false;

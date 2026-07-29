@@ -4,8 +4,10 @@
  */
 
 import { get_tool_registry } from '../core/tool-registry';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { separatedSearchTools } from './tools/separated-search-tools';
 import { myskinSearchTools } from './tools/myskin-search-tools';
+import { RAW_MATERIALS_SYSTEM_PROMPT } from './prompts/system-prompt';
 
 /**
  * Initialize the raw materials agent with all tools
@@ -45,31 +47,10 @@ export function initialize_raw_materials_agent() {
  * Get enhanced system prompt that combines persona with tool instructions
  */
 export function get_agent_instructions(): string {
-  // Read the system prompt from the markdown file with multiple path attempts
-  const fs = require('fs');
-  const path = require('path');
-
-  // Try multiple possible paths for the system prompt file
-  const possiblePaths = [
-    path.join(__dirname, 'prompts', 'system-prompt.md'), // Relative path
-    path.join(process.cwd(), 'ai', 'agents', 'raw-materials-ai', 'prompts', 'system-prompt.md'), // Absolute from cwd
-    path.join(__dirname, '..', '..', 'agents', 'raw-materials-ai', 'prompts', 'system-prompt.md'), // Up from services
-  ];
-
-  let systemPromptContent = null;
-  let usedPath = null;
-
-  for (const possiblePath of possiblePaths) {
-    try {
-      if (fs.existsSync(possiblePath)) {
-        systemPromptContent = fs.readFileSync(possiblePath, 'utf8');
-        usedPath = possiblePath;
-        break;
-      }
-    } catch (error) {
-      // Continue to next path
-    }
-  }
+  // Bundled statically (prompts/system-prompt.ts) — runtime fs reads of .md
+  // files do not exist inside the standalone/webpack production images.
+  const systemPromptContent = RAW_MATERIALS_SYSTEM_PROMPT;
+  const usedPath = 'prompts/system-prompt.ts (bundled)';
 
   try {
     if (systemPromptContent) {
@@ -231,10 +212,9 @@ export const RawMaterialsAgent = {
   getInstructions: get_agent_instructions,
   // Add LangGraph agent
   LangGraphAgent: () => {
-    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY not found in environment variables');
-    }
-    return require('./langgraph-agent').createLangGraphRawMaterialsAgent(geminiApiKey);
+    const credentials = require_server_ai_credentials(process.env);
+    return require('./langgraph-agent').createLangGraphRawMaterialsAgent(
+      credentials.gemini_api_key,
+    );
   }
 };

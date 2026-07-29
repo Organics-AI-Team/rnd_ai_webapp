@@ -13,6 +13,9 @@ Welcome to the R&D AI Management System documentation. This documentation provid
   - Seeding initial data
   - Running the application
 
+### 🤖 Governed AI Orchestrator
+- **[Orchestrator Guide](./ai/orchestrator-guide.md)** - Architecture, reasoning chain, search strategy, the full tool inventory, how to author a new tool + capability card, and model configuration
+
 ### 🎯 Features
 - **[Features Documentation](./features.md)** - Detailed explanation of all system features
   - Authentication & User Management

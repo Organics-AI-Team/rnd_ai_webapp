@@ -1,0 +1,175 @@
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const repository_root = resolve(fileURLToPath(new URL("../../", import.meta.url)));
+
+/**
+ * Read a repo-relative source file.
+ *
+ * @param path - Repo-relative path.
+ * @returns File contents.
+ */
+function read_source(path: string): string {
+  return readFileSync(join(repository_root, path), "utf8");
+}
+
+/**
+ * Recursively list source files under a repo-relative directory.
+ *
+ * @param dir - Directory to walk.
+ * @returns Absolute file paths of .ts/.tsx sources.
+ */
+function list_sources(dir: string): string[] {
+  const results: string[] = [];
+  const walk = (current: string): void => {
+    for (const entry of readdirSync(current)) {
+      if (["node_modules", ".next", "dist"].includes(entry)) continue;
+      const full = join(current, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.(ts|tsx)$/.test(entry)) results.push(full);
+    }
+  };
+  walk(join(repository_root, dir));
+  return results;
+}
+
+describe("Clerk authentication surface (G1.1)", () => {
+  it("protects API and application paths with Clerk", () => {
+    const proxy_source = read_source("apps/web/proxy.ts");
+    expect(proxy_source).toContain("clerkMiddleware");
+    expect(proxy_source).toContain("auth.protect");
+    expect(proxy_source).toContain("/(api|trpc)(.*)");
+  });
+
+  it("routes Clerk enforcement to /sign-in, never the legacy /login page", () => {
+    const proxy_source = read_source("apps/web/proxy.ts");
+    expect(proxy_source).toContain('"/sign-in"');
+    // Traffic guidance uses plain path checks; the deprecated
+    // createRouteMatcher API is gone and authorization stays resource-level.
+    expect(proxy_source).not.toContain("createRouteMatcher");
+    // The legacy /login redirect may only exist in the pre-cutover fallback
+    // (legacy_guidance), never in the Clerk enforcement handler itself.
+    const clerk_section = proxy_source.slice(
+      proxy_source.indexOf("const clerk_proxy = clerkMiddleware("),
+      proxy_source.indexOf("export async function proxy"),
+    );
+    expect(clerk_section).not.toContain('new URL("/login"');
+    expect(clerk_section).toContain("auth.protect");
+  });
+
+  it("renders ClerkProvider inside the body element", () => {
+    const layout_source = read_source("apps/web/app/layout.tsx");
+    const body_index = layout_source.indexOf("<body");
+    expect(body_index).toBeGreaterThan(-1);
+    // The rendered ClerkProvider element must appear inside the body element,
+    // not merely as an import at the top of the file.
+    const provider_index = layout_source.indexOf("ClerkProvider", body_index);
+    const body_close_index = layout_source.indexOf("</body>");
+    expect(provider_index).toBeGreaterThan(body_index);
+    expect(provider_index).toBeLessThan(body_close_index);
+  });
+
+  it("never links auth pages to the deleted legacy /login page", () => {
+    for (const path of [
+      "apps/web/app/sign-in/[[...sign-in]]/page.tsx",
+      "apps/web/app/sign-up/[[...sign-up]]/page.tsx",
+      "apps/web/app/onboarding/page.tsx",
+    ]) {
+      expect(read_source(path)).not.toContain('href="/login"');
+    }
+  });
+
+  it("onboarding activates the sole organization membership on the session", () => {
+    // Plan 3 (Task 8): the OrganizationActivator is mounted globally in the
+    // authenticated layout (conditional-layout.tsx) rather than the onboarding
+    // page itself, so that every authenticated route benefits from the guard.
+    const layout = read_source("apps/web/components/conditional-layout.tsx");
+    expect(layout).toContain("OrganizationActivator");
+    const activator = read_source("apps/web/components/organization_activator.tsx");
+    expect(activator).toContain("useOrganizationList");
+    expect(activator).toContain("setActive");
+  });
+
+  it("every invitation path redirects invitees to our onboarding page", () => {
+    const member_ports = read_source(
+      "apps/ai/server/services/provisioning/production-member-ports.ts",
+    );
+    expect(member_ports).toContain("invitation_redirect_url");
+    // Both the student and the manager invitation calls carry the redirect.
+    expect(member_ports.match(/redirectUrl: invitation_redirect_url\(\)/g)).toHaveLength(2);
+    const provisioning_ports = read_source(
+      "apps/ai/server/services/provisioning/production-ports.ts",
+    );
+    expect(provisioning_ports).toContain("redirectUrl: process.env.NEXT_PUBLIC_APP_URL");
+  });
+
+  it("onboarding resolves the internal membership projection, not just the session", () => {
+    const onboarding = read_source("apps/web/app/onboarding/page.tsx");
+    expect(onboarding).toContain("resolve_clerk_principal");
+    expect(onboarding).toContain("create_identity_projection_repositories");
+    expect(onboarding).toContain('"ready"');
+    // Plan 3 renames reconciliation_required to a distinct content state; the
+    // state key itself is still exported from onboarding-state and rendered in
+    // the content map — verify the key is present as a content entry.
+    expect(onboarding).toContain("reconciliation_required");
+    expect(onboarding).toContain('href="/dashboard"');
+  });
+
+  it("provides Clerk sign-in and sign-up catch-all pages", () => {
+    expect(
+      existsSync(join(repository_root, "apps/web/app/sign-in/[[...sign-in]]/page.tsx")),
+    ).toBe(true);
+    expect(
+      existsSync(join(repository_root, "apps/web/app/sign-up/[[...sign-up]]/page.tsx")),
+    ).toBe(true);
+    expect(existsSync(join(repository_root, "apps/web/app/onboarding/page.tsx"))).toBe(
+      true,
+    );
+  });
+
+  it("never renders uncontrolled organization self-service components", () => {
+    // Plan 3 (Task 12): OrgSwitcherPanel wraps OrganizationSwitcher with the
+    // management popover buttons hidden (CSS display:none) and organizations-
+    // only mode — the component itself is permitted. CreateOrganization is
+    // still entirely blocked; users must be provisioned by platform admins.
+    for (const file of list_sources("apps/web")) {
+      const content = readFileSync(file, "utf8");
+      expect(content, file).not.toContain("CreateOrganization");
+    }
+    // OrganizationSwitcher must only appear inside the governed wrapper.
+    const switcher_sources = list_sources("apps/web").filter((file) =>
+      readFileSync(file, "utf8").includes("OrganizationSwitcher"),
+    );
+    expect(switcher_sources.length).toBeGreaterThan(0);
+    for (const file of switcher_sources) {
+      // All usage must be in the org_switcher_panel component or its
+      // re-exports — never in arbitrary page/layout files.
+      expect(file).toContain("org_switcher_panel");
+    }
+  });
+
+  it("documents the Clerk environment names without secret values", () => {
+    const env_example = read_source(".env.example");
+    for (const name of [
+      "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+      "CLERK_SECRET_KEY",
+      "CLERK_WEBHOOK_SIGNING_SECRET",
+      "NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in",
+      "NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up",
+      "CLERK_CUTOVER=false",
+      "CLERK_ORG_ROLE_MODE=custom",
+    ]) {
+      expect(env_example).toContain(name);
+    }
+    expect(env_example).not.toMatch(/CLERK_SECRET_KEY=sk_/);
+  });
+
+  it("pins the Clerk packages", () => {
+    const web_pkg = JSON.parse(read_source("apps/web/package.json"));
+    const ai_pkg = JSON.parse(read_source("apps/ai/package.json"));
+    expect(web_pkg.dependencies["@clerk/nextjs"]).toBe("7.5.18");
+    expect(ai_pkg.dependencies["@clerk/backend"]).toBe("3.11.5");
+  });
+});

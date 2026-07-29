@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import type { SetStateAction } from "react";
 
 interface UseSearchPaginationOptions {
   itemsPerPage?: number;
@@ -14,15 +15,25 @@ export function useSearchPagination({
   defaultSortDirection = "asc"
 }: UseSearchPaginationOptions = {}) {
   const [searchInput, setSearchInput] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTermState] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortField, setSortField] = useState(defaultSortField);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">(defaultSortDirection);
+  const [sortField, setSortFieldState] = useState(defaultSortField);
+  const [sortDirection, setSortDirectionState] = useState<"asc" | "desc">(defaultSortDirection);
 
-  // Reset to page 1 when search term, sort field, or sort direction changes
-  useEffect(() => {
+  const setSearchTerm = (value: SetStateAction<string>) => {
+    setSearchTermState(value);
     setCurrentPage(1);
-  }, [searchTerm, sortField, sortDirection]);
+  };
+
+  const setSortField = (value: SetStateAction<string>) => {
+    setSortFieldState(value);
+    setCurrentPage(1);
+  };
+
+  const setSortDirection = (value: SetStateAction<"asc" | "desc">) => {
+    setSortDirectionState(value);
+    setCurrentPage(1);
+  };
 
   const handleSearch = () => {
     setSearchTerm(searchInput);
@@ -38,15 +49,15 @@ export function useSearchPagination({
 
   const resetSearch = () => {
     setSearchInput("");
-    setSearchTerm("");
+    setSearchTermState("");
     setCurrentPage(1);
   };
 
   const clearFilters = () => {
     setSearchInput("");
-    setSearchTerm("");
-    setSortField(defaultSortField);
-    setSortDirection(defaultSortDirection);
+    setSearchTermState("");
+    setSortFieldState(defaultSortField);
+    setSortDirectionState(defaultSortDirection);
     setCurrentPage(1);
   };
 

@@ -1,0 +1,87 @@
+# Multi-stage Dockerfile for the private governed AI run worker (Monorepo)
+# Builds the esbuild worker bundle (apps/ai/dist/server/worker.js) and ships a
+# minimal runtime: Node 24 + the bundle + the generated Prisma client (the
+# bundle's only external dependency). The worker exposes no HTTP port; it is a
+# poll loop over ai_run_jobs and exits non-zero on invalid configuration.
+
+# Stage 1: Dependencies
+# Install all workspace dependencies (esbuild lives in apps/ai devDependencies)
+FROM node:24-alpine AS deps
+
+# Add libc6-compat for compatibility with certain npm packages on Alpine Linux
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Copy root workspace package files
+COPY package.json package-lock.json ./
+# Copy workspace package files
+COPY apps/web/package.json ./apps/web/
+COPY apps/ai/package.json ./apps/ai/
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/shared-config/package.json ./packages/shared-config/
+COPY packages/shared-utils/package.json ./packages/shared-utils/
+COPY packages/shared-database/package.json ./packages/shared-database/
+COPY packages/server-config/package.json ./packages/server-config/
+COPY packages/ai-orchestration/package.json ./packages/ai-orchestration/
+
+# Install all workspace dependencies
+RUN npm ci --legacy-peer-deps
+
+# Stage 2: Builder
+# Bundle the worker entrypoint and generate the Prisma client
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+# Copy dependencies from deps stage (npm workspaces hoists to root node_modules)
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy workspace configuration
+COPY package.json package-lock.json ./
+COPY packages ./packages
+
+# Copy the AI service source (worker entrypoint + governed runtime)
+COPY apps/ai ./apps/ai
+
+# Copy Prisma schema and config, then generate client
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN npx prisma generate
+
+# Set environment to production for the bundle build
+ENV NODE_ENV=production
+
+# Bundle the worker (esbuild, CJS, node24 target, @prisma/client external)
+RUN npm run build:worker
+
+# Stage 3: Runner
+# Minimal runtime: worker bundle + generated Prisma client only
+FROM node:24-alpine AS runner
+
+WORKDIR /app
+
+# Set environment to production
+ENV NODE_ENV=production
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 aiworker
+
+# Copy the bundled worker
+COPY --from=builder --chown=aiworker:nodejs /app/apps/ai/dist ./apps/ai/dist
+
+# Capability cards are runtime-read markdown (not part of the webpack bundle);
+# the governed loop fails closed with CARDS_ROOT_NOT_FOUND without them.
+COPY --from=builder --chown=aiworker:nodejs /app/apps/ai/server/services/ai-control/cards ./apps/ai/server/services/ai-control/cards
+
+# Copy Prisma client (engine binaries + generated types) — the bundle's only
+# external module, resolved from node_modules at runtime
+COPY --from=builder --chown=aiworker:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=aiworker:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+
+# Switch to non-root user
+USER aiworker
+
+# Start the private worker poll loop (no HTTP port; restart policy supervises)
+CMD ["node", "apps/ai/dist/server/worker.js"]

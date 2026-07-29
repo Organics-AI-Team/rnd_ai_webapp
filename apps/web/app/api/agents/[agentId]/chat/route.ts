@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AgentFactory } from '@/ai/agents/core/agent-factory';
 import { getRawMaterialsAIAgent } from '@/ai/agents/core/agent-usage-example';
 import { getSalesRndAIAgent } from '@/ai/agents/core/agent-usage-example';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 
 // Agent registry for easy lookup
 const AGENT_MAP: Record<string, () => any> = {
@@ -18,13 +19,16 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ agentId: string }> }
 ) {
+  return with_request_principal(request, 'ai:run', async (principal, body) => {
   try {
     const { agentId } = await params;
-    const { message, userId } = await request.json();
+    const { message } = (body ?? {}) as { message?: string };
+    // The acting user always derives from the verified principal.
+    const userId = principal.internal_user_id;
 
-    if (!message || !userId) {
+    if (!message) {
       return NextResponse.json(
-        { error: 'Message and userId are required' },
+        { error: 'Message is required' },
         { status: 400 }
       );
     }
@@ -89,6 +93,7 @@ export async function POST(
       { status: 500 }
     );
   }
+  });
 }
 
 /**
@@ -98,6 +103,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ agentId: string }> }
 ) {
+  return with_request_principal(request, 'ai:run', async () => {
   try {
     const { agentId } = await params;
 
@@ -145,4 +151,5 @@ export async function GET(
       { status: 500 }
     );
   }
+  });
 }

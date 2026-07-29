@@ -13,6 +13,7 @@
 import client_promise from '@rnd-ai/shared-database';
 import { ObjectId } from 'mongodb';
 import type { ToolHandlerContext } from '../types';
+import { tenant_scoped_id_filter } from '../tenant-tool-scope';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,8 +75,19 @@ export async function handle_confirm_formula(
       return JSON.stringify({ error: `Invalid formula_id format: "${params.formula_id}"` });
     }
 
+    // --- Tenant scope (G2.6): the model supplies the ID, but the tenant
+    // predicate comes from the trusted execution context. A cross-tenant or
+    // missing ID is indistinguishable from not-found. When tenant_id is
+    // absent (unconverted legacy call site) the lookup stays unscoped for
+    // backward compatibility until that call site is converted.
+    const scoped_filter = tenant_scoped_id_filter(params.formula_id, context?.tenant_id);
+    const load_filter = scoped_filter ?? { _id: object_id };
+    if (context?.tenant_id && !scoped_filter) {
+      return JSON.stringify({ error: `Formula not found: ${params.formula_id}` });
+    }
+
     // --- Load formula ---
-    const formula = await db.collection('formulas').findOne({ _id: object_id });
+    const formula = await db.collection('formulas').findOne(load_filter);
     if (!formula) {
       return JSON.stringify({
         error: `Formula not found: ${params.formula_id}`,

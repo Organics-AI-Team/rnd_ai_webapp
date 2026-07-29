@@ -1,12 +1,9 @@
 import { z } from "zod";
-import { router, protectedProcedure, publicProcedure } from "../trpc";
-import client_promise from "@rnd-ai/shared-database";
-import { FeedbackSchema, StoredAIResponseSchema } from "@/ai/types/feedback-types";
-import { ObjectId } from "mongodb";
+import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 
 export const feedbackRouter = router({
   // Submit feedback for an AI response
-  submit: protectedProcedure
+  submit: tenantProcedure("ai:feedback:create")
     .input(
       z.object({
         responseId: z.string(),
@@ -29,61 +26,56 @@ export const feedbackRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const client = await client_promise;
-      const db = client.db();
-
       console.log('📝 [feedback.submit] Submitting feedback:', {
-        userId: ctx.user.id,
+        tenantId: ctx.tenant_context.tenant_id,
+        actorProfileId: ctx.tenant_context.actor_profile_id,
         serviceName: input.service_name,
         type: input.type,
         score: input.score
       });
 
-      const feedback = {
-        ...input,
-        userId: ctx.user.id,
-        timestamp: new Date(),
-        processed: false,
-        context: {
-          length: input.aiResponse.length,
-          complexity: assessComplexity(input.aiResponse),
-          category: inferCategory(input.prompt)
-        }
-      };
+      try {
+        const created = await ctx.repositories.feedback.create_feedback(
+          ctx.tenant_context,
+          {
+            ...input,
+            timestamp: new Date(),
+            processed: false,
+            context: {
+              length: input.aiResponse.length,
+              complexity: assess_complexity(input.aiResponse),
+              category: infer_category(input.prompt)
+            }
+          },
+        );
 
-      // Insert feedback
-      const result = await db.collection("feedback").insertOne(feedback);
+        // Fold the feedback into the tenant's per-response rollup and log
+        // the analytics event (both tenant-scoped inside the repository).
+        await ctx.repositories.feedback.record_response_feedback(
+          ctx.tenant_context,
+          input.responseId,
+          created,
+        );
+        await ctx.repositories.feedback.record_feedback_event(ctx.tenant_context, {
+          type: 'feedback_submitted',
+          responseId: input.responseId,
+          feedbackType: input.type,
+          score: input.score,
+          timestamp: new Date(),
+          model: input.aiModel
+        });
 
-      // Update AI response with feedback
-      await db.collection("ai_responses").updateOne(
-        { id: input.responseId },
-        {
-          $push: { feedback: { ...feedback, _id: result.insertedId } } as any,
-          $inc: { totalFeedback: 1 },
-          $set: {
-            lastFeedbackAt: new Date(),
-            averageScore: await calculateAverageScore(db, input.responseId)
-          }
-        },
-        { upsert: true }
-      );
-
-      // Log the feedback for analytics
-      await db.collection("feedback_analytics").insertOne({
-        type: 'feedback_submitted',
-        responseId: input.responseId,
-        userId: ctx.user.id,
-        feedbackType: input.type,
-        score: input.score,
-        timestamp: new Date(),
-        model: input.aiModel
-      });
-
-      return { success: true, feedbackId: result.insertedId.toString() };
+        console.log('📝 [feedback.submit] Done:', {
+          feedbackId: created._id.toString(),
+        });
+        return { success: true, feedbackId: created._id.toString() };
+      } catch (error) {
+        throw_from_repository_error(error);
+      }
     }),
 
-  // Get feedback analytics
-  getAnalytics: protectedProcedure
+  // Get feedback analytics for the tenant
+  getAnalytics: tenantProcedure("tenant:analytics:read")
     .input(
       z.object({
         timeRange: z.enum(['24h', '7d', '30d', '90d', 'all']).default('30d'),
@@ -91,229 +83,58 @@ export const feedbackRouter = router({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      const client = await client_promise;
-      const db = client.db();
-
       const timeRange = input?.timeRange || '30d';
       const model = input?.model;
 
-      // Calculate date range
-      const now = new Date();
-      let startDate: Date;
+      console.log('📊 [feedback.getAnalytics] — start', {
+        tenantId: ctx.tenant_context.tenant_id,
+        timeRange,
+        model,
+      });
 
-      switch (timeRange) {
-        case '24h':
-          startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-          break;
-        case '7d':
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          break;
-        case '30d':
-          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          break;
-        case '90d':
-          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-          break;
-        default:
-          startDate = new Date(0); // Beginning of time
-      }
+      const analytics = await ctx.repositories.feedback.get_feedback_analytics(
+        ctx.tenant_context,
+        { start_date: start_date_for_range(timeRange), model },
+      );
 
-      // Build filter
-      const filter: any = {
-        timestamp: { $gte: startDate }
-      };
+      const totalFeedback = analytics.total_feedback;
+      const averageScore = analytics.average_score;
 
-      if (model) {
-        filter.aiModel = model;
-      }
-
-      // Get total feedback and average score
-      const totalFeedback = await db.collection("feedback").countDocuments(filter);
-
-      const scoreAggregation = await db.collection("feedback")
-        .aggregate([
-          { $match: filter },
-          {
-            $group: {
-              _id: null,
-              averageScore: { $avg: "$score" },
-              totalScore: { $sum: "$score" }
-            }
-          }
-        ])
-        .toArray();
-
-      const averageScore = scoreAggregation[0]?.averageScore || 0;
-
-      // Get feedback by type
-      const feedbackByType = await db.collection("feedback")
-        .aggregate([
-          { $match: filter },
-          {
-            $group: {
-              _id: "$type",
-              count: { $sum: 1 }
-            }
-          },
-          { $sort: { count: -1 } }
-        ])
-        .toArray();
-
-      const feedbackTypeData = feedbackByType.map(item => ({
+      const feedbackTypeData = analytics.feedback_by_type.map(item => ({
         type: item._id,
         count: item.count,
         percentage: (item.count / totalFeedback) * 100
       }));
 
-      // Get score trend over time
-      const scoreTrend = await db.collection("feedback")
-        .aggregate([
-          { $match: filter },
-          {
-            $group: {
-              _id: {
-                $dateToString: {
-                  format: "%Y-%m-%d",
-                  date: "$timestamp"
-                }
-              },
-              averageScore: { $avg: "$score" },
-              count: { $sum: 1 }
-            }
-          },
-          { $sort: { "_id": 1 } },
-          {
-            $project: {
-              date: "$_id",
-              score: { $round: ["$averageScore", 2] },
-              count: 1,
-              _id: 0
-            }
-          }
-        ])
-        .toArray();
-
-      // Get user engagement
-      const userEngagement = await db.collection("feedback")
-        .aggregate([
-          { $match: filter },
-          {
-            $group: {
-              _id: "$userId",
-              feedbackCount: { $sum: 1 },
-              averageScore: { $avg: "$score" }
-            }
-          },
-          { $sort: { feedbackCount: -1 } },
-          {
-            $project: {
-              userId: "$_id",
-              feedbackCount: 1,
-              averageScore: { $round: ["$averageScore", 2] },
-              _id: 0
-            }
-          }
-        ])
-        .toArray();
-
-      // Get model performance
-      const modelPerformance = await db.collection("feedback")
-        .aggregate([
-          { $match: filter },
-          {
-            $group: {
-              _id: "$aiModel",
-              averageScore: { $avg: "$score" },
-              totalResponses: { $addToSet: "$responseId" }
-            }
-          },
-          {
-            $project: {
-              model: "$_id",
-              averageScore: { $round: ["$averageScore", 2] },
-              totalResponses: { $size: "$totalResponses" },
-              _id: 0
-            }
-          }
-        ])
-        .toArray();
-
-      // Get response length analysis
-      const responseLengthAnalysis = await db.collection("feedback")
-        .aggregate([
-          { $match: filter },
-          {
-            $bucket: {
-              groupBy: {
-                $cond: {
-                  if: { $lt: ["$context.length", 100] },
-                  then: "Very Short",
-                  else: {
-                    $cond: {
-                      if: { $lt: ["$context.length", 300] },
-                      then: "Short",
-                      else: {
-                        $cond: {
-                          if: { $lt: ["$context.length", 600] },
-                          then: "Medium",
-                          else: {
-                            $cond: {
-                              if: { $lt: ["$context.length", 1000] },
-                              then: "Long",
-                              else: "Very Long"
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                },
-                boundaries: [0, 100, 300, 600, 1000, Infinity],
-                output: {
-                  averageLength: { $avg: "$context.length" },
-                  averageScore: { $avg: "$score" },
-                  count: { $sum: 1 }
-                }
-              }
-            }
-          },
-          {
-            $project: {
-              category: "$_id",
-              averageLength: { $round: ["$averageLength", 0] },
-              averageScore: { $round: ["$averageScore", 2] },
-              _id: 0
-            }
-          }
-        ])
-        .toArray();
-
       // Generate improvement suggestions
-      const improvements = generateImprovements(feedbackTypeData, averageScore, responseLengthAnalysis);
+      const improvements = generate_improvements(
+        feedbackTypeData,
+        averageScore,
+        analytics.response_length_analysis,
+      );
+
+      console.log('📊 [feedback.getAnalytics] — done', { totalFeedback });
 
       return {
         totalFeedback,
         averageScore,
         feedbackByType: feedbackTypeData,
-        scoreTrend,
-        userEngagement,
-        modelPerformance,
-        responseLengthAnalysis,
+        scoreTrend: analytics.score_trend,
+        userEngagement: analytics.user_engagement,
+        modelPerformance: analytics.model_performance,
+        responseLengthAnalysis: analytics.response_length_analysis,
         improvements
       };
     }),
 
-  // Get feedback for a specific response
-  getForResponse: protectedProcedure
+  // Get feedback for a specific response (tenant-scoped)
+  getForResponse: tenantProcedure("ai:run")
     .input(z.object({ responseId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      const feedback = await db.collection("feedback")
-        .find({ responseId: input.responseId })
-        .sort({ timestamp: -1 })
-        .toArray();
+      const feedback = await ctx.repositories.feedback.list_feedback_for_response(
+        ctx.tenant_context,
+        input.responseId,
+      );
 
       return feedback.map(item => ({
         ...item,
@@ -321,43 +142,34 @@ export const feedbackRouter = router({
       }));
     }),
 
-  // Get user's feedback history (optionally filtered by serviceName for isolated learning)
-  getUserHistory: protectedProcedure
+  // Get the acting profile's own feedback history (optionally filtered by
+  // serviceName for isolated learning)
+  getUserHistory: tenantProcedure("ai:run")
     .input(
       z.object({
-        userId: z.string().optional(),
         serviceName: z.string().optional(), // Filter by service for isolated learning
         limit: z.number().min(1).max(100).default(20),
         offset: z.number().min(0).default(0)
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      const client = await client_promise;
-      const db = client.db();
+      console.log('📥 [feedback.getUserHistory] Fetching feedback:', {
+        tenantId: ctx.tenant_context.tenant_id,
+        actorProfileId: ctx.tenant_context.actor_profile_id,
+        serviceName: input?.serviceName
+      });
 
-      // Build filter - use userId from input or context
-      const filter: any = {
-        userId: input?.userId || ctx.user.id
-      };
-
-      // Filter by serviceName if provided (for isolated learning per AI service)
-      if (input?.serviceName) {
-        filter.service_name = input.serviceName;
-        console.log('📂 [feedback.getUserHistory] Filtering by serviceName:', input.serviceName);
-      }
-
-      console.log('📥 [feedback.getUserHistory] Fetching feedback:', filter);
-
-      const feedback = await db.collection("feedback")
-        .find(filter)
-        .sort({ timestamp: -1 })
-        .skip(input?.offset || 0)
-        .limit(input?.limit || 20)
-        .toArray();
+      const feedback = await ctx.repositories.feedback.list_own_feedback(
+        ctx.tenant_context,
+        {
+          service_name: input?.serviceName,
+          limit: input?.limit || 20,
+          offset: input?.offset || 0,
+        },
+      );
 
       console.log('✅ [feedback.getUserHistory] Found feedback:', {
         count: feedback.length,
-        userId: filter.userId,
         serviceName: input?.serviceName
       });
 
@@ -369,7 +181,36 @@ export const feedbackRouter = router({
 });
 
 // Helper functions
-function assessComplexity(text: string): 'simple' | 'moderate' | 'complex' {
+
+/**
+ * Resolve the inclusive start date of an analytics time range.
+ *
+ * @param time_range - One of "24h" | "7d" | "30d" | "90d" | "all".
+ * @returns Start date; epoch zero when the range is "all".
+ */
+function start_date_for_range(time_range: '24h' | '7d' | '30d' | '90d' | 'all'): Date {
+  const now = Date.now();
+  switch (time_range) {
+    case '24h':
+      return new Date(now - 24 * 60 * 60 * 1000);
+    case '7d':
+      return new Date(now - 7 * 24 * 60 * 60 * 1000);
+    case '30d':
+      return new Date(now - 30 * 24 * 60 * 60 * 1000);
+    case '90d':
+      return new Date(now - 90 * 24 * 60 * 60 * 1000);
+    default:
+      return new Date(0); // Beginning of time
+  }
+}
+
+/**
+ * Heuristically classify how complex an AI response reads.
+ *
+ * @param text - The AI response text.
+ * @returns "simple" | "moderate" | "complex".
+ */
+function assess_complexity(text: string): 'simple' | 'moderate' | 'complex' {
   const avgSentenceLength = text.split('.').reduce((sum, sentence) =>
     sum + sentence.split(' ').length, 0) / text.split('.').length;
 
@@ -384,7 +225,13 @@ function assessComplexity(text: string): 'simple' | 'moderate' | 'complex' {
   return 'simple';
 }
 
-function inferCategory(prompt: string): string {
+/**
+ * Infer the coarse request category from the user prompt.
+ *
+ * @param prompt - The user's original prompt.
+ * @returns Category label, "general" when nothing matches.
+ */
+function infer_category(prompt: string): string {
   const lowerPrompt = prompt.toLowerCase();
 
   if (lowerPrompt.includes('how to') || lowerPrompt.includes('explain')) return 'explanation';
@@ -396,23 +243,15 @@ function inferCategory(prompt: string): string {
   return 'general';
 }
 
-async function calculateAverageScore(db: any, responseId: string): Promise<number> {
-  const result = await db.collection("feedback")
-    .aggregate([
-      { $match: { responseId } },
-      {
-        $group: {
-          _id: null,
-          averageScore: { $avg: "$score" }
-        }
-      }
-    ])
-    .toArray();
-
-  return result[0]?.averageScore || 0;
-}
-
-function generateImprovements(
+/**
+ * Derive prioritized improvement suggestions from analytics datasets.
+ *
+ * @param feedbackByType - Feedback type distribution with percentages.
+ * @param averageScore - Overall average feedback score.
+ * @param lengthAnalysis - Response-length bucket analysis.
+ * @returns Improvement suggestions sorted by priority.
+ */
+function generate_improvements(
   feedbackByType: any[],
   averageScore: number,
   lengthAnalysis: any[]

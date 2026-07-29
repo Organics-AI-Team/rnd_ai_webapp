@@ -4,10 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { createLangGraphRawMaterialsAgent } from '@/ai/agents/raw-materials-ai/langgraph-agent';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
 // Initialize LangGraph agent once on server
 let langGraphAgent: any = null;
@@ -16,15 +16,13 @@ let mlService: PreferenceLearningService | null = null;
 function initializeLangGraphServices() {
   if (langGraphAgent) return { langGraphAgent, mlService };
 
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY not configured');
-  }
+  const credentials = require_server_ai_credentials(process.env);
 
   console.log('🚀 [LangGraphRoute] Initializing LangGraph-powered services');
 
   try {
     // Initialize LangGraph agent
-    langGraphAgent = createLangGraphRawMaterialsAgent(GEMINI_API_KEY);
+    langGraphAgent = createLangGraphRawMaterialsAgent(credentials.gemini_api_key);
     console.log('✅ [LangGraphRoute] LangGraph agent initialized');
 
     // Initialize ML service for preference learning
@@ -149,12 +147,18 @@ async function getWorkflowStats(services: any): Promise<NextResponse> {
  * Main POST handler
  */
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   try {
     // Initialize services
     const services = initializeLangGraphServices();
 
     // Parse request body
-    const body = await request.json();
+    // Identity always derives from the verified principal, never the body.
+    const body: Record<string, any> = {
+      ...((guarded_body ?? {}) as Record<string, any>),
+      userId: principal.internal_user_id,
+      organizationId: principal.active_tenant_id,
+    };
     const { action = 'process' } = body;
 
     console.log(`📥 [LangGraphRoute] ${action} request received`);
@@ -185,12 +189,14 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
+  });
 }
 
 /**
  * GET handler for health check and basic info
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async () => {
   try {
     const services = initializeLangGraphServices();
 
@@ -224,4 +230,6 @@ export async function GET() {
       timestamp: new Date().toISOString()
     }, { status: 503 });
   }
+  });
 }
+

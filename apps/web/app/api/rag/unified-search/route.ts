@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 import { getUnifiedSearchService } from '@/ai/services/rag/unified-search-service';
 import { route_query_to_collections } from '@/ai/utils/collection-router';
 
@@ -11,10 +12,11 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'tenant:read', async (_principal, guarded_body) => {
   console.log('📨 [unified-search-api] Received request');
 
   try {
-    const body = await request.json();
+    const body = (guarded_body ?? {}) as any;
     const {
       query,
       serviceName = 'rawMaterialsAI',
@@ -111,6 +113,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 /**

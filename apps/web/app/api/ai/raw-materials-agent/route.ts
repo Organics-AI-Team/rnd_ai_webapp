@@ -4,14 +4,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { RawMaterialsAgent } from '@/ai/agents/raw-materials-ai/agent';
 import { GeminiToolService } from '@/ai/services/providers/gemini-tool-service';
 import { EnhancedHybridSearchService } from '@/ai/services/rag/enhanced-hybrid-search-service';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
 import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const MONGODB_URI = process.env.MONGODB_URI;
 
 // Initialize services once on server
 let toolService: GeminiToolService | null = null;
@@ -46,9 +45,8 @@ function get_react_agent(): ReactAgentService {
 function initialize_services() {
   if (toolService) return { toolService, searchService, mlService };
 
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY not configured');
-  }
+  const credentials = require_server_ai_credentials(process.env);
+  const mongodb_uri = process.env.MONGODB_URI;
 
   console.log('🚀 [RawMaterialsAgentAPI] Initializing services with optimizations');
 
@@ -57,7 +55,7 @@ function initialize_services() {
   const systemPrompt = RawMaterialsAgent.getInstructions();
 
   toolService = new GeminiToolService(
-    GEMINI_API_KEY,
+    credentials.gemini_api_key,
     toolRegistry,
     {
       model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
@@ -69,11 +67,11 @@ function initialize_services() {
   console.log('✅ [RawMaterialsAgentAPI] Gemini tool service initialized');
 
   // Initialize optimized search services (Qdrant-based, no Pinecone needed)
-  if (MONGODB_URI) {
+  if (mongodb_uri) {
     try {
       searchService = new EnhancedHybridSearchService(
         '', // Legacy param — not used by Qdrant-based service
-        MONGODB_URI,
+        mongodb_uri,
         'rnd_ai',
         'raw_materials_console',
         'raw_materials_myskin'
@@ -224,6 +222,7 @@ async function handleEnhancedResponse(
  * Health check and metrics endpoint
  */
 export async function GET(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async () => {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
 
@@ -287,6 +286,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 /**
@@ -294,10 +294,16 @@ export async function GET(request: NextRequest) {
  * Generate AI response with tool calling and enhanced features
  */
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   console.log('📥 [RawMaterialsAgentAPI] Received request');
 
   try {
-    const body = await request.json();
+    // Identity always derives from the verified principal, never the body.
+    const body: Record<string, any> = {
+      ...((guarded_body ?? {}) as Record<string, any>),
+      userId: principal.internal_user_id,
+      organizationId: principal.active_tenant_id,
+    };
     const {
       prompt,
       userId,
@@ -309,9 +315,9 @@ export async function POST(request: NextRequest) {
       preferences = {}
     } = body;
 
-    if (!prompt || !userId) {
+    if (!prompt) {
       return NextResponse.json(
-        { error: 'Missing required fields: prompt, userId' },
+        { error: 'Missing required field: prompt' },
         { status: 400 }
       );
     }
@@ -328,6 +334,8 @@ export async function POST(request: NextRequest) {
           prompt: body.prompt,
           user_id: body.userId,
           organization_id: body.organizationId,
+          // Tenant scope comes from the verified principal, never the body (G2.6).
+          tenant_id: principal.active_tenant_id ?? undefined,
           session_id: body.sessionId || body.conversationHistory?.[0]?.sessionId,
           conversation_history: body.conversationHistory?.map((m: any) => ({
             role: m.role || 'user',
@@ -407,6 +415,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -421,18 +430,21 @@ export async function POST(request: NextRequest) {
  * @returns JSON success/error response
  */
 export async function PUT(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   console.log('[RawMaterialsAgentAPI] PUT feedback - start');
 
   try {
     initialize_services();
 
-    const body = await request.json();
-    const { userId, feedback, messageId } = body;
+    const body = (guarded_body ?? {}) as Record<string, any>;
+    const { feedback, messageId } = body;
+    // Identity always derives from the verified principal.
+    const userId = principal.internal_user_id;
 
-    if (!userId || !feedback) {
+    if (!feedback) {
       console.warn('[RawMaterialsAgentAPI] PUT feedback - missing fields');
       return NextResponse.json(
-        { error: 'Missing required fields: userId, feedback' },
+        { error: 'Missing required field: feedback' },
         { status: 400 }
       );
     }
@@ -479,4 +491,5 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }

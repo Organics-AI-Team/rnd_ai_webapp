@@ -118,12 +118,12 @@ Use this table to map user phrases to the correct tool:
 
 | User Phrase (TH/EN)                                   | Tool               | Key Parameters                          |
 |--------------------------------------------------------|---------------------|-----------------------------------------|
-| "RM001234", "รหัส RM..."                               | mongo_query         | filter: {rm_code: "RM001234"}           |
+| "RM001234", "รหัส RM..."                               | qdrant_search       | query="RM001234", collection=raw_materials_myskin |
 | "หาสาร...", "แนะนำ...", "ค้นหา..."                      | qdrant_search       | query, collection                       |
 | "สารสำหรับลดริ้วรอย", "moisturizing active"             | qdrant_search       | query, collection=raw_materials_myskin  |
 | "มีไหม", "สั่งได้ไหม", "เรามีอะไร"                      | qdrant_search       | collection=raw_materials_myskin         |
 | "สารจาก MySkin", "MySkin วัตถุดิบ", "หาจาก myskin"      | qdrant_search       | collection=raw_materials_myskin         |
-| "หมวดหมู่ MySkin", "เปรียบเทียบสาร myskin"               | mongo_query         | database=rnd_ai, collection=raw_materials_myskin |
+| "สูตรของเรามีกี่สูตร", "how many formulas", "สรุปสถานะสูตร" | mongo_query      | query_name=tenant_formula_count / tenant_formula_status_breakdown |
 | "เท่าไหร่", "ราคา batch", "คำนวณต้นทุน"                 | formula_calculate   | operation=batch_cost                    |
 | "scale สูตร", "ขยาย batch"                              | formula_calculate   | operation=scale_formula, batch_size     |
 | "แปลงหน่วย", "กี่กรัม", "convert"                       | formula_calculate   | operation=unit_convert, target_unit     |
@@ -142,11 +142,16 @@ Use this table to map user phrases to the correct tool:
 - ALWAYS USE raw_materials_myskin as the PRIMARY collection (~4.6K cosmetic ingredients with benefits, CAS/EC, usage %)
 - raw_materials_myskin covers: ingredient search, availability, cosmetic formulation, safety data
 - Other collections (raw_materials_fda, raw_materials_stock, raw_materials_console, sales_rnd) are NOT yet indexed — do NOT use them
-- If a query needs data not in MySkin, use mongo_query as fallback
+- If a query needs data not in MySkin, prefer search_reference_formulas (your own formulas) or web_search (external)
 
-**Database selection for mongo_query:**
-- Ingredient & material records -> raw_materials
-- Formulas, orders, AI config -> rnd_ai`;
+**mongo_query is diagnostics-only (no free-form queries):**
+- You CANNOT pass a collection name, filter, or aggregation. Only these named,
+  automatically tenant-scoped diagnostics are available:
+  - tenant_formula_count — how many formulas you have (optional status filter)
+  - tenant_formula_status_breakdown — counts by lifecycle status
+  - tenant_recent_formulas — your most recently updated formulas
+  - raw_material_count — size of the shared raw-materials catalogue
+- For formula content search use search_reference_formulas; for ingredients use qdrant_search`;
 }
 
 /**
@@ -169,7 +174,7 @@ Follow this Reason-Act cycle for every query:
 Rules:
 - Execute tools ONE AT A TIME. Do not batch multiple calls in a single turn.
 - If a tool returns 0 results, try broadening the query (English <-> Thai, synonyms).
-- If a SEMANTIC_SEARCH returns low-score results (< 0.4), fall back to mongo_query with regex.
+- If a SEMANTIC_SEARCH returns low-score results (< 0.4), broaden the query or try search_reference_formulas.
 - Maximum tool calls per query: 8. If you reach 8, synthesize with whatever data you have.
 - For formula generation: typically 1 call (generate_formula). For complex briefs, search references first.
 - For formula revision: use get_formula_with_comments first to understand context, then revise_formula.`;
@@ -218,8 +223,9 @@ function build_safety_rules(): string {
 
   return `# SAFETY & GUARDRAILS
 
-1. **Read-only for mongo_query.** Never insert, update, or delete via mongo_query.
-   - mongo_query: only find, findOne, aggregate, count.
+1. **Read-only, tenant-scoped diagnostics for mongo_query.** mongo_query runs
+   only allowlisted, automatically tenant-scoped named diagnostics — it cannot
+   accept a collection, filter, or aggregation, and can never write.
    - The revise_formula tool may write revision_note comments — this is the ONLY permitted write path.
 
 2. **Result limits.** Never return more than 20 results per tool call.

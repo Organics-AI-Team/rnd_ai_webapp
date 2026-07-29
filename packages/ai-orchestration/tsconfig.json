@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["node"],
+    // The workspace root hoists @langchain/langgraph-checkpoint-mongodb next to
+    // the LEGACY @langchain/langgraph-checkpoint 0.0.18 + @langchain/core kept
+    // for the old 0.2.x langgraph consumers, so its d.ts would bind the 0.x
+    // base classes and fail against the 1.x BaseCheckpointSaver this package
+    // compiles with (TS2739 toJSON/getDeltaChannelHistory, plus nominal
+    // RunnableConfig/BaseMessage skew). Pin exactly the three specifiers that
+    // d.ts imports to this package's nested 1.x copies — the dependency set its
+    // declared peer range (@langchain/langgraph-checkpoint ^1.0.0) requires.
+    // Typecheck-only: vitest and the runtime never read these mappings.
+    "paths": {
+      "@langchain/langgraph-checkpoint": [
+        "./node_modules/@langchain/langgraph-checkpoint/dist/index.d.ts"
+      ],
+      "@langchain/core/runnables": [
+        "./node_modules/@langchain/core/dist/runnables/index.d.ts"
+      ],
+      "@langchain/core/embeddings": [
+        "./node_modules/@langchain/core/dist/embeddings.d.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

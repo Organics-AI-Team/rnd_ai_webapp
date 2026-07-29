@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
 import { PineconeRAGService } from '@/ai/services/rag/qdrant-rag-service';
 
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'tenant:read', async (_principal, guarded_body) => {
   try {
-    const body = await request.json();
+    const body = (guarded_body ?? {}) as any;
     const { query, topK = 5, similarityThreshold = 0.7 } = body;
 
     if (!query || typeof query !== 'string') {
@@ -52,11 +54,14 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 export async function GET(request: NextRequest) {
-  return NextResponse.json(
-    { error: 'GET method not supported. Please use POST.' },
-    { status: 405 }
-  );
+  return with_request_principal(request, 'tenant:read', async () => {
+    return NextResponse.json(
+      { error: 'GET method not supported. Please use POST.' },
+      { status: 405 }
+    );
+  });
 }

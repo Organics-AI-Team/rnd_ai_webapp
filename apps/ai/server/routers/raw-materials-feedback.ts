@@ -1,7 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
-import { raw_materials_client_promise } from "@rnd-ai/shared-database";
-import { ObjectId } from "mongodb";
+import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 
 const FeedbackSchema = z.object({
   responseId: z.string(),
@@ -15,72 +13,57 @@ const FeedbackSchema = z.object({
 
 export const rawMaterialsFeedbackRouter = router({
   // Submit feedback for a raw materials AI response
-  submit: protectedProcedure
+  submit: tenantProcedure("ai:feedback:create")
     .input(FeedbackSchema)
     .mutation(async ({ ctx, input }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
+      console.log('[rawMaterialsFeedback] submit — start', {
+        tenantId: ctx.tenant_context.tenant_id,
+        actorProfileId: ctx.tenant_context.actor_profile_id,
+        type: input.type,
+        score: input.score,
+      });
 
-      const feedback = {
-        ...input,
-        userId: ctx.user.id,
-        _id: new ObjectId(),
-        createdAt: new Date(),
-      };
+      try {
+        const created = await ctx.repositories.feedback.create_raw_material_feedback(
+          ctx.tenant_context,
+          input,
+        );
 
-      // Insert feedback into raw_materials_feedback collection
-      await db.collection("raw_materials_feedback").insertOne(feedback);
-
-      return { success: true, feedbackId: feedback._id.toString() };
+        console.log('[rawMaterialsFeedback] submit — done', {
+          feedbackId: created._id.toString(),
+        });
+        return { success: true, feedbackId: created._id.toString() };
+      } catch (error) {
+        throw_from_repository_error(error);
+      }
     }),
 
-  // Get feedback statistics for a user
-  getStats: protectedProcedure
+  // Get feedback statistics for the acting profile
+  getStats: tenantProcedure("tenant:analytics:read")
     .query(async ({ ctx }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
-
-      const totalFeedback = await db.collection("raw_materials_feedback")
-        .countDocuments({ userId: ctx.user.id });
-
-      const averageScore = await db.collection("raw_materials_feedback")
-        .aggregate([
-          { $match: { userId: ctx.user.id } },
-          { $group: { _id: null, avgScore: { $avg: "$score" } } }
-        ])
-        .toArray();
-
-      const feedbackByType = await db.collection("raw_materials_feedback")
-        .aggregate([
-          { $match: { userId: ctx.user.id } },
-          { $group: { _id: "$type", count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ])
-        .toArray();
+      const stats = await ctx.repositories.feedback.get_own_raw_material_feedback_stats(
+        ctx.tenant_context,
+      );
 
       return {
-        totalFeedback,
-        averageScore: averageScore[0]?.avgScore || 0,
-        feedbackByType,
+        totalFeedback: stats.total_feedback,
+        averageScore: stats.average_score,
+        feedbackByType: stats.feedback_by_type,
       };
     }),
 
-  // Get recent feedback
-  getRecent: protectedProcedure
+  // Get recent feedback for the acting profile
+  getRecent: tenantProcedure("ai:run")
     .input(
       z.object({
         limit: z.number().min(1).max(50).default(10),
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await raw_materials_client_promise;
-      const db = client.db();
-
-      const feedback = await db.collection("raw_materials_feedback")
-        .find({ userId: ctx.user.id })
-        .sort({ createdAt: -1 })
-        .limit(input.limit)
-        .toArray();
+      const feedback = await ctx.repositories.feedback.list_own_recent_raw_material_feedback(
+        ctx.tenant_context,
+        input.limit,
+      );
 
       return feedback.map(f => ({
         id: f._id?.toString(),

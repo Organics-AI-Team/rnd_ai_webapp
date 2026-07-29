@@ -7,6 +7,24 @@ import { z } from "zod";
 export * from "./messaging";
 
 // ============================================
+// PROVIDER-NEUTRAL AUTHORIZATION CONTRACTS
+// ============================================
+
+export * from "./auth";
+
+// ============================================
+// TENANT EXECUTION & OWNERSHIP CONTRACTS
+// ============================================
+
+export * from "./tenant";
+
+// ============================================
+// TENANT AI CONTROL-PLANE CONTRACTS
+// ============================================
+
+export * from "./ai";
+
+// ============================================
 // PRODUCT/INVENTORY SCHEMAS
 // ============================================
 

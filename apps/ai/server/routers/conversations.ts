@@ -1,11 +1,9 @@
 import { z } from "zod";
-import { router, protectedProcedure, publicProcedure } from "../trpc";
-import client_promise from "@rnd-ai/shared-database";
-import { ObjectId } from "mongodb";
+import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 
 export const conversationRouter = router({
-  // Save a message to conversation
-  saveMessage: protectedProcedure
+  // Save a message to the acting profile's conversation log
+  saveMessage: tenantProcedure("ai:run")
     .input(
       z.object({
         id: z.string(),
@@ -17,33 +15,26 @@ export const conversationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      const message = {
-        ...input,
-        userId: ctx.user.id,
-        _id: new ObjectId()
-      };
-
-      // Insert message into conversations collection
-      await db.collection("conversations").insertOne(message);
-
-      // Update user's last activity
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(ctx.user.id) },
-        {
-          $set: { lastActivityAt: new Date() },
-          $inc: { totalMessages: 1 }
-        },
-        { upsert: true }
-      );
-
-      return { success: true, messageId: message._id.toString() };
+      console.info('[conversations] saveMessage — start', {
+        tenantId: ctx.tenant_context.tenant_id,
+        actorProfileId: ctx.tenant_context.actor_profile_id,
+      });
+      try {
+        const message = await ctx.repositories.conversations.create_conversation(
+          ctx.tenant_context,
+          input,
+        );
+        console.info('[conversations] saveMessage — done', {
+          messageId: message._id.toString(),
+        });
+        return { success: true, messageId: message._id.toString() };
+      } catch (error) {
+        throw_from_repository_error(error);
+      }
     }),
 
-  // Get conversation history for a user
-  getHistory: protectedProcedure
+  // Get conversation history for the acting profile
+  getHistory: tenantProcedure("ai:run")
     .input(
       z.object({
         limit: z.number().min(1).max(100).default(40),
@@ -51,15 +42,10 @@ export const conversationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      const messages = await db.collection("conversations")
-        .find({ userId: ctx.user.id })
-        .sort({ timestamp: -1 })
-        .skip(input.offset)
-        .limit(input.limit)
-        .toArray();
+      const messages = await ctx.repositories.conversations.list_own_conversation_messages(
+        ctx.tenant_context,
+        { limit: input.limit, offset: input.offset },
+      );
 
       // Return in chronological order (oldest first)
       return messages.reverse().map(msg => ({
@@ -74,21 +60,17 @@ export const conversationRouter = router({
     }),
 
   // Get recent messages for AI context
-  getRecentMessages: protectedProcedure
+  getRecentMessages: tenantProcedure("ai:run")
     .input(
       z.object({
         limit: z.number().min(1).max(50).default(20)
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      const messages = await db.collection("conversations")
-        .find({ userId: ctx.user.id })
-        .sort({ timestamp: -1 })
-        .limit(input.limit)
-        .toArray();
+      const messages = await ctx.repositories.conversations.list_own_conversation_messages(
+        ctx.tenant_context,
+        { limit: input.limit, offset: 0 },
+      );
 
       // Return in chronological order and formatted for AI
       return messages.reverse().map(msg => ({
@@ -97,103 +79,47 @@ export const conversationRouter = router({
       }));
     }),
 
-  // Clear conversation history for a user
-  clearHistory: protectedProcedure
+  // Clear conversation history for the acting profile
+  clearHistory: tenantProcedure("ai:run")
     .mutation(async ({ ctx }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      const result = await db.collection("conversations")
-        .deleteMany({ userId: ctx.user.id });
-
-      // Reset user's message count
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(ctx.user.id) },
-        {
-          $set: { totalMessages: 0, lastClearedAt: new Date() }
-        },
-        { upsert: true }
+      console.info('[conversations] clearHistory — start', {
+        tenantId: ctx.tenant_context.tenant_id,
+        actorProfileId: ctx.tenant_context.actor_profile_id,
+      });
+      const deletedCount = await ctx.repositories.conversations.clear_own_conversation_messages(
+        ctx.tenant_context,
       );
-
-      return { success: true, deletedCount: result.deletedCount };
+      console.info('[conversations] clearHistory — done', { deletedCount });
+      return { success: true, deletedCount };
     }),
 
-  // Get conversation statistics
-  getStats: protectedProcedure
+  // Get conversation statistics for the acting profile
+  getStats: tenantProcedure("ai:run")
     .query(async ({ ctx }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      const totalMessages = await db.collection("conversations")
-        .countDocuments({ userId: ctx.user.id });
-
-      const userMessages = await db.collection("conversations")
-        .countDocuments({ userId: ctx.user.id, role: 'user' });
-
-      const assistantMessages = await db.collection("conversations")
-        .countDocuments({ userId: ctx.user.id, role: 'assistant' });
-
-      // Get oldest and newest message dates
-      const oldestMessage = await db.collection("conversations")
-        .find({ userId: ctx.user.id })
-        .sort({ timestamp: 1 })
-        .limit(1)
-        .toArray();
-
-      const newestMessage = await db.collection("conversations")
-        .find({ userId: ctx.user.id })
-        .sort({ timestamp: -1 })
-        .limit(1)
-        .toArray();
+      const stats = await ctx.repositories.conversations.get_own_conversation_stats(
+        ctx.tenant_context,
+      );
 
       return {
-        totalMessages,
-        userMessages,
-        assistantMessages,
-        firstMessageAt: oldestMessage[0]?.timestamp || null,
-        lastMessageAt: newestMessage[0]?.timestamp || null
+        totalMessages: stats.total_messages,
+        userMessages: stats.user_messages,
+        assistantMessages: stats.assistant_messages,
+        firstMessageAt: stats.first_message_at,
+        lastMessageAt: stats.last_message_at
       };
     }),
 
   // Get conversations with feedback for analytics
-  getConversationWithFeedback: protectedProcedure
+  getConversationWithFeedback: tenantProcedure("ai:run")
     .input(
       z.object({
         limit: z.number().min(1).max(50).default(20)
       })
     )
     .query(async ({ ctx, input }) => {
-      const client = await client_promise;
-      const db = client.db();
-
-      const conversations = await db.collection("conversations")
-        .aggregate([
-          { $match: { userId: ctx.user.id, role: 'assistant', responseId: { $exists: true } } },
-          {
-            $lookup: {
-              from: 'feedback',
-              localField: 'responseId',
-              foreignField: 'responseId',
-              as: 'feedback'
-            }
-          },
-          { $sort: { timestamp: -1 } },
-          { $limit: input.limit },
-          {
-            $project: {
-              id: 1,
-              content: 1,
-              role: 1,
-              timestamp: 1,
-              responseId: 1,
-              feedbackSubmitted: 1,
-              feedbackCount: { $size: '$feedback' },
-              averageScore: { $avg: '$feedback.score' }
-            }
-          }
-        ])
-        .toArray();
-
-      return conversations;
+      return ctx.repositories.conversations.list_own_conversation_messages_with_feedback(
+        ctx.tenant_context,
+        input.limit,
+      );
     })
 });

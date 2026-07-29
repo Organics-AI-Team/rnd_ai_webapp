@@ -45,16 +45,16 @@ model Session {
 }
 
 model User {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  accountId      String   @unique @db.ObjectId
-  organizationId String   @db.ObjectId
+  id             String     @id @default(auto()) @map("_id") @db.ObjectId
+  accountId      String     @unique @db.ObjectId
+  organizationId String     @db.ObjectId
   email          String
   name           String
-  role           UserRole @default(admin)
+  role           UserRole   @default(admin)
   status         UserStatus @default(active)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   account      Account      @relation(fields: [accountId], references: [id])
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -102,23 +102,26 @@ enum UserStatus {
 // ============================================
 
 model RawMaterial {
-  id          String  @id @default(auto()) @map("_id") @db.ObjectId
-  rm_code     String  @unique
-  trade_name  String
-  inci_name   String?
-  supplier    String?
-  rm_cost     Float?
+  id           String  @id @default(auto()) @map("_id") @db.ObjectId
+  rm_code      String  @unique
+  trade_name   String
+  inci_name    String?
+  supplier     String?
+  rm_cost      Float?
   company_name String?
   companies_id Int?
-  benefits    String?
-  details     String?
-  usecase     String?
+  benefits     String?
+  details      String?
+  usecase      String?
 
   @@map("raw_materials_console")
 }
 
 model Product {
   id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId          String   @db.ObjectId
+  actorProfileId    String?  @db.ObjectId
   organizationId    String   @db.ObjectId
   productCode       String
   productName       String
@@ -135,11 +138,16 @@ model Product {
 
   @@index([organizationId])
   @@index([productCode])
+  @@index([tenantId, isActive])
+  @@index([tenantId, createdAt])
   @@map("products")
 }
 
 model StockEntry {
   id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId       String      @db.ObjectId
+  actorProfileId String?     @db.ObjectId
   organizationId String      @db.ObjectId
   materialId     String
   materialCode   String
@@ -162,6 +170,8 @@ model StockEntry {
   @@index([materialId])
   @@index([status])
   @@index([expirationDate])
+  @@index([tenantId, status])
+  @@index([tenantId, materialId])
   @@map("stock_entries")
 }
 
@@ -176,25 +186,29 @@ enum StockStatus {
 // ============================================
 
 model Formula {
-  id                  String            @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId      String            @db.ObjectId
+  id                  String              @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId            String              @db.ObjectId
+  actorProfileId      String?             @db.ObjectId
+  ownerProfileId      String?             @db.ObjectId
+  organizationId      String              @db.ObjectId
   formulaCode         String?
   formulaName         String
-  version             Int               @default(1)
+  version             Int                 @default(1)
   client              String?
-  targetBenefits      String[]          @default([])
+  targetBenefits      String[]            @default([])
   ingredients         FormulaIngredient[]
   totalAmount         Float?
   remarks             String?
-  status              FormulaStatus     @default(draft)
+  status              FormulaStatus       @default(draft)
   // AI generation metadata
-  parentFormulaId     String?           @db.ObjectId
-  referenceFormulaIds String[]          @default([])
-  aiGenerated         Boolean           @default(false)
+  parentFormulaId     String?             @db.ObjectId
+  referenceFormulaIds String[]            @default([])
+  aiGenerated         Boolean             @default(false)
   generationPrompt    String?
   createdBy           String
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id])
   comments     FormulaComment[]
@@ -202,6 +216,8 @@ model Formula {
   @@index([organizationId])
   @@index([formulaCode])
   @@index([parentFormulaId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
   @@map("formulas")
 }
 
@@ -228,31 +244,34 @@ enum FormulaStatus {
 // ============================================
 
 model FormulaVersionLog {
-  id                String              @id @default(auto()) @map("_id") @db.ObjectId
-  formulaId         String              @db.ObjectId
-  version           Int                 // 0 = pre-confirm draft, 1+ = confirmed versions
-  previousVersion   Int?                // version before this change (null for initial creation)
-  changeType        FormulaChangeType   // what happened
-  updatedBySource   FormulaUpdateSource // ai or user
-  updatedByUserId   String              // user ID or "ai-system"
-  updatedByName     String              // display name
-  status            String              // formula status at this point in time
-  ingredientSnapshot Json?              // full ingredients array snapshot
-  changelog         Json?               // array of change entries
-  remarks           String?             // human-readable summary of this version
-  createdAt         DateTime            @default(now())
+  id                 String              @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId           String              @db.ObjectId
+  formulaId          String              @db.ObjectId
+  version            Int // 0 = pre-confirm draft, 1+ = confirmed versions
+  previousVersion    Int? // version before this change (null for initial creation)
+  changeType         FormulaChangeType // what happened
+  updatedBySource    FormulaUpdateSource // ai or user
+  updatedByUserId    String // user ID or "ai-system"
+  updatedByName      String // display name
+  status             String // formula status at this point in time
+  ingredientSnapshot Json? // full ingredients array snapshot
+  changelog          Json? // array of change entries
+  remarks            String? // human-readable summary of this version
+  createdAt          DateTime            @default(now())
 
   @@index([formulaId])
   @@index([formulaId, version])
+  @@index([tenantId, formulaId])
   @@map("formula_version_logs")
 }
 
 enum FormulaChangeType {
-  created           // initial AI generation
-  revised           // AI revised based on feedback
-  edited            // user manually edited
-  confirmed         // user confirmed draft → version bumped
-  status_changed    // status transition (e.g. confirmed → testing)
+  created // initial AI generation
+  revised // AI revised based on feedback
+  edited // user manually edited
+  confirmed // user confirmed draft → version bumped
+  status_changed // status transition (e.g. confirmed → testing)
 }
 
 enum FormulaUpdateSource {
@@ -262,8 +281,11 @@ enum FormulaUpdateSource {
 
 model FormulaComment {
   id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId        String      @db.ObjectId
+  actorProfileId  String?     @db.ObjectId
   formulaId       String      @db.ObjectId
-  version         Int         @default(0)  // formula version this comment belongs to
+  version         Int         @default(0) // formula version this comment belongs to
   userId          String
   userName        String
   content         String
@@ -279,6 +301,7 @@ model FormulaComment {
   @@index([formulaId, version])
   @@index([userId])
   @@index([parentCommentId])
+  @@index([tenantId, formulaId])
   @@map("formula_comments")
 }
 
@@ -296,38 +319,43 @@ enum CommentType {
 // ============================================
 
 model Order {
-  id               String      @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId   String      @db.ObjectId
-  productId        String?
-  productCode      String?
-  productName      String
-  price            Float
-  quantity         Int
-  channel          Channel
-  customerName     String
-  customerContact  String
-  shippingAddress  String
-  status           OrderStatus @default(pending)
-  createdBy        String
-  orderSource      OrderSource @default(admin)
-  orderDate        String?
+  id                String      @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId          String      @db.ObjectId
+  actorProfileId    String?     @db.ObjectId
+  organizationId    String      @db.ObjectId
+  productId         String?
+  productCode       String?
+  productName       String
+  price             Float
+  quantity          Int
+  channel           Channel
+  customerName      String
+  customerContact   String
+  shippingAddress   String
+  status            OrderStatus @default(pending)
+  createdBy         String
+  orderSource       OrderSource @default(admin)
+  orderDate         String?
   // Shipping costs
-  pickPackCost     Float       @default(0)
-  bubbleCost       Float       @default(0)
-  paperInsideCost  Float       @default(0)
-  cancelOrderCost  Float       @default(0)
-  codCost          Float       @default(0)
-  boxCost          Float       @default(0)
-  deliveryFeeCost  Float       @default(0)
-  totalShippingCost Float      @default(0)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  pickPackCost      Float       @default(0)
+  bubbleCost        Float       @default(0)
+  paperInsideCost   Float       @default(0)
+  cancelOrderCost   Float       @default(0)
+  codCost           Float       @default(0)
+  boxCost           Float       @default(0)
+  deliveryFeeCost   Float       @default(0)
+  totalShippingCost Float       @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
   @@index([organizationId])
   @@index([status])
   @@index([channel])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
   @@map("orders")
 }
 
@@ -357,6 +385,9 @@ enum OrderSource {
 
 model CreditTransaction {
   id               String                @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId         String                @db.ObjectId
+  actorProfileId   String?               @db.ObjectId
   organizationId   String                @db.ObjectId
   organizationName String
   type             CreditTransactionType
@@ -373,6 +404,7 @@ model CreditTransaction {
 
   @@index([organizationId])
   @@index([type])
+  @@index([tenantId, createdAt])
   @@map("credit_transactions")
 }
 
@@ -388,7 +420,10 @@ enum CreditTransactionType {
 // ============================================
 
 model ProductLog {
-  id             String          @id @default(auto()) @map("_id") @db.ObjectId
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId       String        @db.ObjectId
+  actorProfileId String?       @db.ObjectId
   date           String
   time           String
   productId      String
@@ -403,10 +438,11 @@ model ProductLog {
   organizationId String
   refId          String?
   notes          String?
-  createdAt      DateTime        @default(now())
+  createdAt      DateTime      @default(now())
 
   @@index([organizationId])
   @@index([productId])
+  @@index([tenantId, productId])
   @@map("product_logs")
 }
 
@@ -420,6 +456,10 @@ enum ProductAction {
 
 model UserLog {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId       String?  @db.ObjectId
+  actorProfileId String?  @db.ObjectId
+  scope          String? // "platform" or "tenant"; tenantId required for tenant events
   date           String
   time           String
   userId         String
@@ -433,6 +473,7 @@ model UserLog {
 
   @@index([organizationId])
   @@index([userId])
+  @@index([tenantId, createdAt])
   @@map("user_logs")
 }
 
@@ -441,16 +482,22 @@ model UserLog {
 // ============================================
 
 model Conversation {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String
-  sessionId String?
-  messages  ConversationMessage[]
-  metadata  Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String                @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId       String                @db.ObjectId
+  actorProfileId String?               @db.ObjectId
+  ownerProfileId String?               @db.ObjectId
+  userId         String
+  sessionId      String?
+  messages       ConversationMessage[]
+  metadata       Json?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   @@index([userId])
   @@index([sessionId])
+  @@index([tenantId, ownerProfileId])
+  @@index([tenantId, createdAt])
   @@map("conversations")
 }
 
@@ -461,22 +508,30 @@ type ConversationMessage {
 }
 
 model Feedback {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  responseId String?
-  userId     String?
-  rating     Int?
-  comment    String?
-  category   String?
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId       String   @db.ObjectId
+  actorProfileId String?  @db.ObjectId
+  ownerProfileId String?  @db.ObjectId
+  responseId     String?
+  userId         String?
+  rating         Int?
+  comment        String?
+  category       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
 
   @@index([userId])
   @@index([responseId])
+  @@index([tenantId, createdAt])
   @@map("feedback")
 }
 
 model AiResponse {
   id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId         String   @db.ObjectId
+  ownerProfileId   String?  @db.ObjectId
   conversationId   String?
   query            String
   response         String
@@ -488,6 +543,7 @@ model AiResponse {
   createdAt        DateTime @default(now())
 
   @@index([conversationId])
+  @@index([tenantId, createdAt])
   @@map("ai_responses")
 }
 
@@ -496,23 +552,29 @@ model AiResponse {
 // ============================================
 
 model ChatThread {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId  String    @db.ObjectId
-  userId          String    @db.ObjectId
-  agentType       AgentType
-  title           String
-  messageCount    Int       @default(0)
-  lastMessageAt   DateTime  @default(now())
-  isArchived      Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId       String    @db.ObjectId
+  actorProfileId String?   @db.ObjectId
+  ownerProfileId String?   @db.ObjectId
+  organizationId String    @db.ObjectId
+  userId         String    @db.ObjectId
+  agentType      AgentType
+  title          String
+  messageCount   Int       @default(0)
+  lastMessageAt  DateTime  @default(now())
+  isArchived     Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization Organization  @relation(fields: [organizationId], references: [id])
   messages     ChatMessage[]
 
   @@index([organizationId, agentType])
   @@index([userId, agentType])
   @@index([lastMessageAt])
+  @@index([tenantId, ownerProfileId])
+  @@index([tenantId, createdAt])
   @@map("chat_threads")
 }
 
@@ -523,6 +585,8 @@ enum AgentType {
 
 model ChatMessage {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId  String   @db.ObjectId
   threadId  String   @db.ObjectId
   role      String
   content   String
@@ -532,6 +596,7 @@ model ChatMessage {
   thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId])
+  @@index([tenantId, threadId])
   @@map("chat_messages")
 }
 
@@ -540,20 +605,599 @@ model ChatMessage {
 // ============================================
 
 model PriceCalculation {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId String
-  formulaId      String?
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  // G2.2 expansion: nullable until the backfill (G2.3/G2.4) verifies; organizationId kept for dual-read.
+  tenantId        String   @db.ObjectId
+  actorProfileId  String?  @db.ObjectId
+  organizationId  String
+  formulaId       String?
   calculationType String
-  ingredients    Json
-  totalCost      Float
-  markup         Float?
-  sellingPrice   Float?
-  notes          String?
-  createdBy      String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  ingredients     Json
+  totalCost       Float
+  markup          Float?
+  sellingPrice    Float?
+  notes           String?
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([organizationId])
   @@index([formulaId])
+  @@index([tenantId, createdAt])
   @@map("price_calculations")
+}
+
+// ============================================
+// COMMERCIAL IDENTITY & TENANCY PROJECTIONS (G1.2)
+// Clerk owns identity/sessions/orgs; these are internal projections with
+// stable ObjectIds and explicit lifecycle status. Nullable external IDs use
+// partial unique MongoDB indexes created by setup-commercial-indexes.ts —
+// never Prisma @unique — because multiple provisioning records may be null.
+// ============================================
+
+enum UserProfileStatus {
+  active
+  suspended
+  deleted
+}
+
+enum PlatformRole {
+  super_admin
+  admin
+}
+
+enum TenantType {
+  university
+}
+
+enum TenantStatus {
+  provisioning
+  active
+  suspended
+  repair_required
+  deleted
+}
+
+enum TenantRole {
+  manager
+  user
+}
+
+enum MembershipStatus {
+  invited
+  active
+  suspended
+  revoked
+}
+
+model UserProfile {
+  id               String                       @id @default(auto()) @map("_id") @db.ObjectId
+  clerkUserId      String                       @unique
+  legacyAccountId  String?                      @db.ObjectId
+  primaryEmail     String
+  displayName      String
+  platformRole     PlatformRole?
+  status           UserProfileStatus            @default(active)
+  clerkSyncVersion Int                          @default(0)
+  clerkSyncedAt    DateTime?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+  memberships      TenantMembershipProjection[]
+  createdTenants   Tenant[]                     @relation("TenantCreator")
+
+  @@index([primaryEmail])
+  @@map("user_profiles")
+}
+
+model Tenant {
+  id                   String                       @id @default(auto()) @map("_id") @db.ObjectId
+  clerkOrganizationId  String?
+  legacyOrganizationId String?                      @db.ObjectId
+  slug                 String                       @unique
+  name                 String
+  type                 TenantType                   @default(university)
+  status               TenantStatus                 @default(provisioning)
+  planKey              String
+  dataResidencyRegion  String
+  provisioningKey      String                       @unique
+  createdByProfileId   String                       @db.ObjectId
+  activatedAt          DateTime?
+  suspendedAt          DateTime?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  createdBy            UserProfile                  @relation("TenantCreator", fields: [createdByProfileId], references: [id])
+  memberships          TenantMembershipProjection[]
+  invitations          TenantInvitationProjection[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+model TenantMembershipProjection {
+  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  clerkMembershipId String?
+  tenantId          String           @db.ObjectId
+  userProfileId     String           @db.ObjectId
+  tenantRole        TenantRole
+  status            MembershipStatus @default(invited)
+  clerkSyncVersion  Int              @default(0)
+  clerkSyncedAt     DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  tenant            Tenant           @relation(fields: [tenantId], references: [id])
+  userProfile       UserProfile      @relation(fields: [userProfileId], references: [id])
+
+  @@unique([tenantId, userProfileId])
+  @@index([userProfileId, status])
+  @@map("tenant_membership_projections")
+}
+
+model TenantInvitationProjection {
+  id                 String           @id @default(auto()) @map("_id") @db.ObjectId
+  clerkInvitationId  String           @unique
+  tenantId           String           @db.ObjectId
+  emailNormalized    String
+  tenantRole         TenantRole
+  status             MembershipStatus @default(invited)
+  invitedByProfileId String           @db.ObjectId
+  expiresAt          DateTime?
+  clerkSyncedAt      DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, emailNormalized, status])
+  @@map("tenant_invitation_projections")
+}
+
+model SupportAccessGrant {
+  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId            String    @db.ObjectId
+  platformProfileId   String    @db.ObjectId
+  reason              String
+  permissions         String[]
+  requestedAt         DateTime  @default(now())
+  approvedByProfileId String?   @db.ObjectId
+  approvedAt          DateTime?
+  expiresAt           DateTime?
+  revokedAt           DateTime?
+  correlationId       String    @unique
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([tenantId, expiresAt])
+  @@index([platformProfileId, expiresAt])
+  @@map("support_access_grants")
+}
+
+// ============================================
+// TENANT AI CONTROL PLANE (G3.1)
+// Every AI run pins immutable policy, deployment, prompt, and schema
+// versions. Usage and approvals are append-only ledgers reconciled by
+// idempotency keys. Monetary amounts are integer micro-USD BigInt because
+// the MongoDB connector does not support Prisma Decimal.
+// ============================================
+
+enum AIProfileStatus {
+  active
+  disabled
+}
+
+enum AgentDeploymentStatus {
+  draft
+  active
+  retired
+}
+
+enum PromptStatus {
+  draft
+  approved
+  active
+  retired
+}
+
+enum KnowledgeScope {
+  platform
+  tenant
+}
+
+enum KnowledgeVisibility {
+  managers
+  all_members
+}
+
+enum KnowledgeSourceStatus {
+  pending
+  quarantined
+  indexing
+  ready
+  failed
+  deleted
+}
+
+enum AIRunStatus {
+  queued
+  running
+  waiting_clarification
+  waiting_approval
+  completed
+  partial
+  failed
+  cancelled
+}
+
+enum AIUsageEntryType {
+  reservation
+  actual
+  release
+  adjustment
+}
+
+enum AIApprovalStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+enum AIArtifactStatus {
+  draft
+  pending_review
+  confirmed
+  rejected
+  superseded
+}
+
+model TenantAIProfile {
+  id                              String          @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId                        String          @unique @db.ObjectId
+  status                          AIProfileStatus @default(active)
+  planKey                         String
+  policyVersion                   Int             @default(1)
+  allowedProviders                String[]
+  allowedModels                   String[]
+  allowedTools                    String[]
+  monthlyRequestLimit             BigInt
+  monthlyTokenLimit               BigInt
+  monthlyCostLimitMicrousd        BigInt
+  perUserMonthlyRequestLimit      BigInt
+  perUserMonthlyTokenLimit        BigInt
+  perUserMonthlyCostLimitMicrousd BigInt
+  perRunTokenLimit                BigInt
+  perRunCostLimitMicrousd         BigInt
+  maxConcurrentRuns               Int
+  maxIterations                   Int
+  defaultLocale                   String
+  retentionDays                   Int
+  allowWebSearch                  Boolean         @default(false)
+  allowTenantKnowledge            Boolean         @default(true)
+  knowledgeStorageLimitBytes      BigInt
+  reviewPolicy                    Json?
+  qualityPolicy                   Json?
+  createdByProfileId              String          @db.ObjectId
+  updatedByProfileId              String?         @db.ObjectId
+  createdAt                       DateTime        @default(now())
+  updatedAt                       DateTime        @updatedAt
+
+  @@index([tenantId, status])
+  @@map("tenant_ai_profiles")
+}
+
+model AgentDeployment {
+  id                     String                @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId               String                @db.ObjectId
+  agentKey               String
+  revision               Int
+  status                 AgentDeploymentStatus @default(draft)
+  agentDefinitionVersion String
+  orchestratorVersion    String
+  promptVersionId        String                @db.ObjectId
+  allowedProviders       String[]
+  allowedModels          String[]
+  temperature            Float?
+  maxOutputTokens        Int?
+  modelRouting           Json?
+  toolAllowlist          String[]
+  approvalRules          Json?
+  featureFlags           Json?
+  inputSchemaVersion     String
+  outputSchemaVersion    String
+  activatedByProfileId   String?               @db.ObjectId
+  activatedAt            DateTime?
+  retiredAt              DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  @@unique([tenantId, agentKey, revision])
+  @@index([tenantId, agentKey, status])
+  @@map("agent_deployments")
+}
+
+// Tenant is the canary unit: this record is loaded once before AIRun creation,
+// then executor/deployment/version are pinned on the run for its full lifetime.
+model AIRolloutAssignment {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId            String   @unique @db.ObjectId
+  executor            String
+  deploymentId        String   @db.ObjectId
+  cohort              String
+  status              String
+  assignedByProfileId String   @db.ObjectId
+  reason              String
+  activatedAt         DateTime
+  rolledBackAt        DateTime?
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status, cohort])
+  @@map("ai_rollout_assignments")
+}
+
+// Immutable audit trail for every compare-and-set assignment transition.
+model AIRolloutEvent {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId         String   @db.ObjectId
+  assignmentId     String   @db.ObjectId
+  eventType        String
+  executor         String
+  deploymentId     String   @db.ObjectId
+  cohort           String
+  actorProfileId   String   @db.ObjectId
+  reason           String
+  fromVersion      Int
+  toVersion        Int
+  occurredAt       DateTime @default(now())
+  idempotencyKey   String   @unique
+
+  @@index([tenantId, occurredAt])
+  @@index([assignmentId, toVersion])
+  @@map("ai_rollout_events")
+}
+
+model PromptVersion {
+  id                    String         @id @default(auto()) @map("_id") @db.ObjectId
+  scope                 KnowledgeScope
+  // scopeKey is the literal "platform" or the tenant ObjectId string; the
+  // repository validates that scopeKey and tenantId agree.
+  scopeKey              String
+  tenantId              String?        @db.ObjectId
+  promptKey             String
+  semanticVersion       String
+  revision              Int
+  status                PromptStatus   @default(draft)
+  contentHash           String
+  content               String
+  variables             String[]
+  parentPromptVersionId String?        @db.ObjectId
+  evaluationResultId    String?        @db.ObjectId
+  createdByProfileId    String         @db.ObjectId
+  approvedByProfileId   String?        @db.ObjectId
+  activatedAt           DateTime?
+  retiredAt             DateTime?
+  createdAt             DateTime       @default(now())
+
+  @@unique([scopeKey, promptKey, revision])
+  @@index([scopeKey, promptKey, status])
+  @@map("prompt_versions")
+}
+
+model KnowledgeSource {
+  id                 String                @id @default(auto()) @map("_id") @db.ObjectId
+  scope              KnowledgeScope
+  // scopeKey mirrors PromptVersion; the repository validates platform scope
+  // has no tenantId and tenant scope carries the matching ObjectId string.
+  scopeKey           String
+  tenantId           String?               @db.ObjectId
+  sourceType         String
+  name               String
+  objectKey          String?
+  visibility         KnowledgeVisibility   @default(managers)
+  allowedRoles       String[]
+  contentHash        String
+  sourceVersion      Int                   @default(1)
+  byteSize           BigInt                @default(0)
+  provenance         Json?
+  consentBasis       String?
+  freshnessDate      DateTime?
+  retainedUntil      DateTime?
+  embeddingModel     String?
+  embeddingVersion   String?
+  status             KnowledgeSourceStatus @default(pending)
+  errorCode          String?
+  createdByProfileId String                @db.ObjectId
+  deletedAt          DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([scope, status])
+  @@index([tenantId, status])
+  @@map("knowledge_sources")
+}
+
+model AIRun {
+  id                     String      @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId               String      @db.ObjectId
+  actorProfileId         String      @db.ObjectId
+  threadId               String?     @db.ObjectId
+  agentKey               String
+  deploymentId           String      @db.ObjectId
+  agentDefinitionVersion String
+  orchestratorVersion    String
+  policyVersion          Int
+  policySnapshot         Json
+  promptVersionId        String      @db.ObjectId
+  inputSchemaVersion     String
+  outputSchemaVersion    String
+  status                 AIRunStatus @default(queued)
+  currentStage           String?
+  correlationId          String      @unique
+  idempotencyKey         String
+  // G4.9: which executor drives the run (agentic loop vs legacy), pinned once by
+  // the RunSelector, and the assembled context-pack hash pinned at creation.
+  executor               String      @default("legacy")
+  rolloutAssignmentId    String?     @db.ObjectId
+  rolloutAssignmentVersion Int?
+  contextPackHash        String?
+  // Strict AgentRunInputV1 and terminal AgentRunOutputV1 snapshots. Input is
+  // identity-free; both are needed for private execution, replay, and approved
+  // read-only shadow evaluation.
+  input                   Json
+  output                  Json?
+  // G4.9g: the validated resume payload (clarification answer or approval
+  // decision) the resume route persists for the worker to consume on resume.
+  pendingResume          Json?
+  requestBudget          Json?
+  usageReservationId     String?     @db.ObjectId
+  usageSummary           Json?
+  safeDecisionSummaries  Json?
+  toolAuditEventIds      String[]
+  provider               String?
+  model                  String?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  retainedUntil          DateTime?
+  errorCode              String?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("ai_runs")
+}
+
+model AIUsageLedger {
+  id               String           @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId         String           @db.ObjectId
+  runId            String           @db.ObjectId
+  actorProfileId   String           @db.ObjectId
+  agentKey         String
+  entryType        AIUsageEntryType
+  operationType    String
+  reservationId    String?          @db.ObjectId
+  requestCount     Int              @default(0)
+  provider         String?
+  model            String?
+  inputTokens      BigInt           @default(0)
+  outputTokens     BigInt           @default(0)
+  toolCalls        Int              @default(0)
+  costMicrousd     BigInt           @default(0)
+  adjustmentReason String?
+  // billingPeriod is the UTC month bucket "YYYY-MM" used for quota rollups.
+  billingPeriod    String
+  occurredAt       DateTime         @default(now())
+  idempotencyKey   String           @unique
+  createdAt        DateTime         @default(now())
+
+  @@index([tenantId, billingPeriod])
+  @@index([tenantId, billingPeriod, actorProfileId])
+  @@map("ai_usage_ledger")
+}
+
+model AIArtifact {
+  id                     String           @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId               String           @db.ObjectId
+  runId                  String           @db.ObjectId
+  ownerProfileId         String           @db.ObjectId
+  artifactType           String
+  schemaVersion          String
+  revision               Int              @default(1)
+  status                 AIArtifactStatus @default(draft)
+  content                Json
+  contentHash            String
+  validationResult       Json?
+  sourceEvidenceIds      String[]
+  parentArtifactId       String?          @db.ObjectId
+  supersededByArtifactId String?          @db.ObjectId
+  // G4.8d-iii: set when a confirmed artifact is committed to a Formula, so a
+  // replayed commit_confirmed returns the same formula instead of duplicating it.
+  confirmedFormulaId     String?          @db.ObjectId
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@index([tenantId, ownerProfileId, status])
+  @@index([tenantId, status])
+  @@map("ai_artifacts")
+}
+
+model AIApproval {
+  id                   String           @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId             String           @db.ObjectId
+  runId                String           @db.ObjectId
+  artifactId           String?          @db.ObjectId
+  checkpointId         String
+  requestedByProfileId String           @db.ObjectId
+  requiredPermission   String
+  status               AIApprovalStatus @default(pending)
+  decidedByProfileId   String?          @db.ObjectId
+  decisionEdits        Json?
+  decisionReason       String?
+  requestedAt          DateTime         @default(now())
+  expiresAt            DateTime?
+  decidedAt            DateTime?
+  idempotencyKey       String           @unique
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([tenantId, status, requestedAt])
+  @@map("ai_approvals")
+}
+
+/** Lease state of a durable run job claimed by the private worker (G4.9). */
+enum AIRunJobStatus {
+  available
+  leased
+  completed
+  failed
+}
+
+/**
+ * Durable work item that drives one governed run forward (G4.9). The gateway
+ * enqueues a job in the same transaction as the AIRun; the private worker claims
+ * it with a compare-and-set lease, heartbeats, and releases it. A crashed worker
+ * lets the lease expire so the job becomes reclaimable — the run never depends on
+ * a serverless request staying alive.
+ */
+model AIRunJob {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId       String         @db.ObjectId
+  runId          String         @db.ObjectId
+  command        String // "start" | "resume"
+  idempotencyKey String
+  resumePayload  Json?
+  status         AIRunJobStatus @default(available)
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  heartbeatAt    DateTime?
+  attempts       Int            @default(0)
+  availableAt    DateTime       @default(now())
+  lastError      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([runId, command, idempotencyKey])
+  @@index([status, availableAt])
+  @@map("ai_run_jobs")
+}
+
+/**
+ * One ordered, versioned server event for a run (G4.9). Appended before being
+ * sent, uniquely keyed by [runId, sequence] so a replay after Last-Event-ID is
+ * exact and a retried append never duplicates. Holds the full AgentRunEventV1
+ * payload for verbatim replay.
+ */
+model AIRunEvent {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId   String   @db.ObjectId
+  runId      String   @db.ObjectId
+  sequence   Int
+  type       String
+  event      Json
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([runId, sequence])
+  @@index([tenantId, runId, sequence])
+  @@map("ai_run_events")
 }

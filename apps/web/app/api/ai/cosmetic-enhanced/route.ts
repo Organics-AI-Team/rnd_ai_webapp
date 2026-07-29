@@ -4,6 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { with_request_principal } from '@/lib/server/with-request-principal';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
 import { CosmeticKnowledgeService } from '@/ai/services/knowledge/cosmetic-knowledge-sources';
 import { CosmeticQualityScorer } from '@/ai/services/quality/cosmetic-quality-scorer';
 import { CosmeticRegulatoryService } from '@/ai/services/regulatory/cosmetic-regulatory-sources';
@@ -13,10 +15,6 @@ import { GeminiService } from '@/ai/services/providers/gemini-service';
 import { ResponseReranker } from '@/ai/services/response/response-reranker';
 import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
 
-// Initialize services — default to Gemini (no OpenAI/Pinecone required)
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const AI_API_KEY = GEMINI_API_KEY || '';
-
 let knowledgeService: CosmeticKnowledgeService | null = null;
 let qualityScorer: CosmeticQualityScorer | null = null;
 let regulatoryService: CosmeticRegulatoryService | null = null;
@@ -24,11 +22,15 @@ let credibilityService: CosmeticCredibilityWeightingService | null = null;
 let thresholdsService: CosmeticQualityThresholdsService | null = null;
 let enhancedAIService: GeminiService | null = null;
 let responseReranker: ResponseReranker | null = null;
+let reactAgentService: ReactAgentService | null = null;
 
 /**
- * Initialize all cosmetic AI services
+ * Get all cosmetic AI services, initializing environment-dependent clients on first use.
+ *
+ * @returns Cached cosmetic AI services.
+ * @throws Error when the Gemini API key is unavailable or a service cannot initialize.
  */
-function initializeServices() {
+function get_services() {
   if (knowledgeService && qualityScorer && regulatoryService &&
       credibilityService && thresholdsService && enhancedAIService && responseReranker) {
     return {
@@ -45,17 +47,15 @@ function initializeServices() {
   console.log('🚀 [CosmeticEnhancedAPI] Initializing cosmetic AI services...');
 
   try {
-    if (!GEMINI_API_KEY) {
-      throw new Error('Missing GEMINI_API_KEY — required for cosmetic AI services');
-    }
+    const credentials = require_server_ai_credentials(process.env);
 
     // Initialize all services using Gemini + Qdrant (no OpenAI/Pinecone needed)
-    knowledgeService = new CosmeticKnowledgeService(AI_API_KEY);
+    knowledgeService = new CosmeticKnowledgeService(credentials.gemini_api_key);
     qualityScorer = new CosmeticQualityScorer();
     regulatoryService = new CosmeticRegulatoryService();
     credibilityService = new CosmeticCredibilityWeightingService();
     thresholdsService = new CosmeticQualityThresholdsService();
-    enhancedAIService = new GeminiService(GEMINI_API_KEY, { model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
+    enhancedAIService = new GeminiService(credentials.gemini_api_key, { model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview', temperature: 0.7, maxTokens: 9000 }, 'cosmetic-enhanced');
     responseReranker = new ResponseReranker();
 
     console.log('✅ [CosmeticEnhancedAPI] All services initialized successfully');
@@ -71,9 +71,24 @@ function initializeServices() {
     };
 
   } catch (error) {
-    console.error('❌ [CosmeticEnhancedAPI] Service initialization failed:', error);
+    console.error('[CosmeticEnhancedAPI] Service initialization failed', {
+      boundary: 'cosmetic-enhanced',
+      phase: 'error',
+    });
     throw error;
   }
+}
+
+/**
+ * Get the cached ReAct agent, initializing its SDK clients on first use.
+ *
+ * @returns Cached ReAct agent service.
+ */
+function get_react_agent_service(): ReactAgentService {
+  if (!reactAgentService) {
+    reactAgentService = new ReactAgentService();
+  }
+  return reactAgentService;
 }
 
 /**
@@ -81,10 +96,16 @@ function initializeServices() {
  * Enhanced AI response with cosmetic-specific optimizations
  */
 export async function POST(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   console.log('📥 [CosmeticEnhancedAPI] Received enhanced request');
 
   try {
-    const body = await request.json();
+    // Identity always derives from the verified principal, never the body.
+    const body: Record<string, any> = {
+      ...((guarded_body ?? {}) as Record<string, any>),
+      userId: principal.internal_user_id,
+      organizationId: principal.active_tenant_id,
+    };
     const {
       prompt,
       userId,
@@ -100,20 +121,20 @@ export async function POST(request: NextRequest) {
       preferences = {}
     } = body;
 
-    if (!prompt || !userId) {
+    if (!prompt) {
       return NextResponse.json(
-        { error: 'Missing required fields: prompt, userId' },
+        { error: 'Missing required field: prompt' },
         { status: 400 }
       );
     }
 
     // Initialize services
-    const services = initializeServices();
+    const services = get_services();
 
     // Try ReAct agent first (primary path — uses Gemini + Qdrant tools)
     try {
       console.log('[cosmetic-enhanced] POST: attempting ReAct agent path');
-      const reactAgent = new ReactAgentService();
+      const reactAgent = get_react_agent_service();
       const reactResult = await reactAgent.execute({
         prompt,
         user_id: userId,
@@ -309,9 +330,7 @@ export async function POST(request: NextRequest) {
               requireSafetyData: queryType === 'ingredient_safety',
               requireRegulatoryCompliance: enableRegulatoryCheck,
               requireFormulationGuidance: queryType === 'formulation_advice',
-              requireEfficacyData: queryType === 'efficacy_claim',
-              requireConcentrationLimits: true,
-              requireDocumentation: enableRegulatoryCheck
+              requireEfficacyData: queryType === 'efficacy_claim'
             }
           }
         );
@@ -442,6 +461,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 /**
@@ -564,11 +584,12 @@ function handleStreamingResponse(
  * Health check and service status
  */
 export async function GET(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async () => {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
 
   try {
-    const services = initializeServices();
+    const services = get_services();
 
     switch (action) {
       case 'health':
@@ -679,6 +700,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -693,16 +715,19 @@ export async function GET(request: NextRequest) {
  * @returns JSON success/error response
  */
 export async function PUT(request: NextRequest) {
+  return with_request_principal(request, 'ai:run', async (principal, guarded_body) => {
   console.log('[CosmeticEnhancedAPI] PUT feedback - start');
 
   try {
-    const body = await request.json();
-    const { userId, feedback, messageId } = body;
+    const body = (guarded_body ?? {}) as Record<string, any>;
+    const { feedback, messageId } = body;
+    // Identity always derives from the verified principal.
+    const userId = principal.internal_user_id;
 
-    if (!userId || !feedback) {
+    if (!feedback) {
       console.warn('[CosmeticEnhancedAPI] PUT feedback - missing required fields');
       return NextResponse.json(
-        { error: 'Missing required fields: userId, feedback' },
+        { error: 'Missing required field: feedback' },
         { status: 400 }
       );
     }
@@ -749,6 +774,7 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 // Helper functions

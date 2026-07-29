@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
+import { get_order_organization_id } from "@/lib/order-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +18,14 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShoppingCart, Package, CheckCircle } from "lucide-react";
 
-export default function ClientOrderPage() {
-  const [organizationId, setOrganizationId] = useState("");
+/**
+ * Render the interactive order form using hydration-safe App Router search params.
+ *
+ * @returns Client order form.
+ */
+function ClientOrderContent() {
+  const search_params = useSearchParams();
+  const organizationId = get_order_organization_id(search_params);
   const [formData, setFormData] = useState({
     productName: "",
     price: "",
@@ -31,13 +39,6 @@ export default function ClientOrderPage() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const submitOrder = trpc.orders.submitClientOrder.useMutation();
-
-  // Get organization ID from URL or use default
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const orgId = params.get('org') || '';
-    setOrganizationId(orgId);
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -273,5 +274,24 @@ export default function ClientOrderPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Render the public order form behind the App Router search-params boundary.
+ *
+ * @returns Suspense-wrapped order form.
+ */
+export default function ClientOrderPage() {
+  return (
+    <Suspense
+      fallback={(
+        <div className="min-h-screen flex items-center justify-center bg-blue-50">
+          <p className="text-sm text-gray-600">Loading order form...</p>
+        </div>
+      )}
+    >
+      <ClientOrderContent />
+    </Suspense>
   );
 }

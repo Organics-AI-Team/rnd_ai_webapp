@@ -22,7 +22,7 @@ import { OrderStatusType } from "@/lib/types";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import {
   Dialog,
   DialogContent,
@@ -44,7 +44,7 @@ export function Dashboard() {
       utils.orders.list.invalidate();
       utils.orders.getStats.invalidate();
       utils.products.list.invalidate();
-      utils.auth.me.invalidate();
+      utils.organizations.list.invalidate();
     },
   });
 

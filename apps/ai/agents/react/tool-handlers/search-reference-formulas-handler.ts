@@ -9,6 +9,8 @@
  */
 
 import client_promise from '@rnd-ai/shared-database';
+import type { ToolHandlerContext } from '../types';
+import { tenant_scoped_query_filter } from '../tenant-tool-scope';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,11 +55,15 @@ const DEFAULT_LIMIT = 10;
  * 2. Search the formulas collection
  * 3. Return matching formulas with ingredient breakdowns
  *
- * @param params - SearchReferenceFormulasParams with query, optional filters
+ * @param params  - SearchReferenceFormulasParams with query, optional filters
+ * @param context - Tool handler context; its verified tenant_id scopes the
+ *                  search. A search that cannot be tenant-scoped fails closed
+ *                  (empty result) rather than spanning every tenant (G2.6).
  * @returns JSON string with matching formulas
  */
 export async function handle_search_reference_formulas(
   params: SearchReferenceFormulasParams,
+  context?: ToolHandlerContext,
 ): Promise<string> {
   const start_ts = Date.now();
   console.log('[search-ref-formulas] handle_search_reference_formulas — start', {
@@ -66,10 +72,30 @@ export async function handle_search_reference_formulas(
     client: params.client,
     benefits: params.benefits,
     limit: params.limit,
+    tenant_id: context?.tenant_id,
   });
 
   if (!params.query) {
     return JSON.stringify({ error: 'query parameter is required (e.g. "anti-aging serum")' });
+  }
+
+  // --- Tenant scope (G2.6): a multi-document search MUST be tenant-scoped. An
+  // unscoped search would return every tenant's formulas, so when no tenant
+  // scope can be resolved the handler fails closed with an empty result rather
+  // than leaking cross-tenant rows.
+  const tenant_scope = tenant_scoped_query_filter(context?.tenant_id);
+  if (!tenant_scope) {
+    console.warn('[search-ref-formulas] no tenant scope — failing closed (empty result)');
+    return JSON.stringify({
+      query: params.query,
+      filters_applied: {
+        status: params.status || null,
+        client: params.client || null,
+        benefits: params.benefits || null,
+      },
+      result_count: 0,
+      formulas: [],
+    }, null, 2);
   }
 
   try {
@@ -90,8 +116,9 @@ export async function handle_search_reference_formulas(
       ],
     };
 
-    // Apply optional filters
-    const conditions: Record<string, any>[] = [text_filter];
+    // Apply the mandatory tenant scope first, then optional filters. The
+    // tenant clause is ANDed into every query so results can never span tenants.
+    const conditions: Record<string, any>[] = [tenant_scope, text_filter];
 
     if (params.status) {
       conditions.push({ status: params.status });

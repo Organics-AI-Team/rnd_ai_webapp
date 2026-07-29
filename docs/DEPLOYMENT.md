@@ -1,388 +1,220 @@
-# Deployment Guide - R&D AI Management Monorepo
+# Deployment Guide
 
-This guide covers deployment strategies for the monorepo structure with separate Web and AI services.
+The supported production target is a DigitalOcean droplet running Docker
+Compose behind Nginx. MongoDB is hosted by DigitalOcean Managed Databases;
+Qdrant runs on the droplet and is bound to localhost.
 
-## Table of Contents
+## Production topology
 
-- [Deployment Options](#deployment-options)
-- [Railway Deployment](#railway-deployment)
-- [Docker Deployment](#docker-deployment)
-- [Environment Variables](#environment-variables)
-- [Troubleshooting](#troubleshooting)
+- Nginx terminates TLS and proxies the public domain to `127.0.0.1:3000`.
+- Docker Compose runs the Next.js `web` container and the `qdrant` container.
+- The web container connects to DigitalOcean Managed MongoDB and Qdrant over
+  the private Compose network.
+- Qdrant ports `6333` and `6334` are published on localhost only.
+- The governed AI worker is a private process. It must not receive a public
+  route; add it to the droplet supervisor/Compose stack before commercial
+  rollout.
 
-## Deployment Options
+## Prerequisites
 
-The monorepo can be deployed in three ways:
+The droplet needs:
 
-1. **Single Service Deployment** - Deploy web app only (recommended for Railway)
-2. **Separate Services** - Deploy web and AI as independent services
-3. **Local Docker** - Run both services in containers locally
+- Docker Engine with the Compose plugin
+- Git
+- Nginx and a valid TLS certificate
+- SSH key access
+- At least 4 GB RAM; the setup script creates a 2 GB swap file when absent
+- Network access to the managed MongoDB cluster and required AI providers
 
-## Railway Deployment
+To provision a new droplet with `doctl`, run:
 
-### Option 1: Deploy Web App (Recommended)
-
-Railway configuration for deploying the web app which includes all AI functionality:
-
-**Using Root Dockerfile:**
 ```bash
-# Railway will use the root Dockerfile by default
-railway up
+./scripts/provision-droplet.sh
 ```
 
-**Using Web-Specific Dockerfile:**
+The existing production droplet should be reused unless a reviewed migration
+explicitly calls for a replacement.
+
+## First-time setup
+
+Clone the repository to the standard host path:
+
 ```bash
-# Update railway.json to use apps/web/Dockerfile
-railway up --service web
+git clone <repository-url> /opt/rnd-ai
+cd /opt/rnd-ai
+./scripts/deploy-droplet.sh --setup
 ```
 
-**Railway Configuration Files:**
-- `railway.json` - Default configuration (uses root Dockerfile)
-- `railway.web.json` - Web-specific configuration (uses apps/web/Dockerfile)
-
-### Option 2: Deploy as Microservices
-
-Deploy web and AI as separate Railway services:
-
-1. **Web Service:**
-   ```bash
-   railway service create web
-   railway up --dockerfile apps/web/Dockerfile
-   ```
-
-2. **AI Service:**
-   ```bash
-   railway service create ai
-   # Configure AI service deployment
-   ```
-
-### Required Environment Variables for Railway
-
-Set these in Railway Dashboard → Variables:
+The setup command copies `.env.example` to `.env` when needed. Replace every
+placeholder before deploying:
 
 ```bash
-# Database
+nano /opt/rnd-ai/.env
+```
+
+At minimum, configure:
+
+```dotenv
 MONGODB_URI=mongodb+srv://...
+DATABASE_URL=mongodb+srv://...
 RAW_MATERIALS_REAL_STOCK_MONGODB_URI=mongodb+srv://...
-
-# AI Keys
-GEMINI_API_KEY=AIza...
-OPENAI_API_KEY=sk-...
-PINECONE_API_KEY=pcsk_... (optional)
-
-# Admin Credentials
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=your_secure_password
-
-# Public Variables
-NEXT_PUBLIC_GEMINI_API_KEY=AIza...
-NEXT_PUBLIC_OPENAI_API_KEY=sk-...
-
-# Vector DB Provider
-VECTOR_DB_PROVIDER=chroma
+GEMINI_API_KEY=...
+NEXT_PUBLIC_API_URL=https://<public-domain>/api
+NEXT_PUBLIC_TRPC_URL=https://<public-domain>/api/trpc
+GOOGLE_SEARCH_API_KEY=...
+GOOGLE_SEARCH_CSE_ID=...
 ```
 
-## Docker Deployment
+`DATABASE_URL` and `MONGODB_URI` normally point to the same managed MongoDB
+database. Keep provider credentials server-side; never add them to a
+`NEXT_PUBLIC_` variable.
 
-### Build and Run Web App
+## Deploy
+
+Update the reviewed branch, build, and start the stack:
 
 ```bash
-# Build from root
-docker build -t rnd-ai-web -f Dockerfile .
-
-# Or build from web app directory
-docker build -t rnd-ai-web -f apps/web/Dockerfile .
-
-# Run the container
-docker run -p 3000:3000 \
-  --env-file .env \
-  rnd-ai-web
+cd /opt/rnd-ai
+git fetch origin
+git checkout <reviewed-branch-or-tag>
+git pull --ff-only
+./scripts/deploy-droplet.sh --up
 ```
 
-### Build and Run AI Service
+Equivalent Make targets are available when already logged into the droplet:
 
 ```bash
-# Build AI service
-docker build -t rnd-ai-service -f apps/ai/Dockerfile .
-
-# Run the container
-docker run -p 3001:3001 \
-  --env-file apps/ai/.env \
-  rnd-ai-service
+make deploy-droplet
+make droplet-health
+make droplet-logs
 ```
 
-### Docker Compose (Coming Soon)
-
-For running both services together with Docker Compose, create a `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-    ports:
-      - "3000:3000"
-    env_file:
-      - apps/web/.env
-    depends_on:
-      - ai
-
-  ai:
-    build:
-      context: .
-      dockerfile: apps/ai/Dockerfile
-    ports:
-      - "3001:3001"
-    env_file:
-      - apps/ai/.env
-    volumes:
-      - chromadb-data:/app/.chromadb
-
-volumes:
-  chromadb-data:
-```
-
-Run with:
-```bash
-docker-compose up -d
-```
-
-## Environment Variables
-
-### Web App (.env in apps/web/)
+The deployment script builds locally on the droplet and runs:
 
 ```bash
-# API Endpoints
-NEXT_PUBLIC_API_URL=http://localhost:3000/api
-NEXT_PUBLIC_TRPC_URL=http://localhost:3000/api/trpc
-
-# Database
-MONGODB_URI=mongodb+srv://...
-
-# AI Service URL (if running separately)
-AI_SERVICE_URL=http://localhost:3001
-
-# Public Variables
-NEXT_PUBLIC_GEMINI_API_KEY=AIza...
+docker compose --env-file .env up -d
 ```
 
-### AI Service (.env in apps/ai/)
+## Verify
+
+Check container state and the public health route:
 
 ```bash
-# Database
-MONGODB_URI=mongodb+srv://...
-RAW_MATERIALS_REAL_STOCK_MONGODB_URI=mongodb+srv://...
-
-# AI APIs
-GEMINI_API_KEY=AIza...
-OPENAI_API_KEY=sk-...
-PINECONE_API_KEY=pcsk_...
-
-# Vector Database
-VECTOR_DB_PROVIDER=chroma
-CHROMA_URL=http://localhost:8000
-
-# Service Configuration
-AI_SERVICE_PORT=3001
-WEB_APP_URL=http://localhost:3000
+docker compose ps
+./scripts/deploy-droplet.sh --health
+curl --fail http://127.0.0.1:3000/api/health
+curl --fail https://<public-domain>/api/health
 ```
 
-## Deployment Checklist
+Expected web response:
 
-### Pre-Deployment
+```json
+{"status":"ok"}
+```
 
-- [ ] Run `npm run build:web` to test production build
-- [ ] Verify all environment variables are set
-- [ ] Test Docker build locally
-- [ ] Run `npm run lint` to check for issues
-- [ ] Verify database connections
+Then run the credentialed staged browser story and verify the private worker,
+provider calls, approval resume, SSE reconnect, usage reconciliation, and
+emergency-disable behavior before promoting any tenant cohort.
 
-### Railway Deployment
+## Nginx
 
-- [ ] Set all environment variables in Railway Dashboard
-- [ ] Configure Dockerfile path in railway.json
-- [ ] Enable healthcheck endpoint
-- [ ] Set restart policy to ON_FAILURE
-- [ ] Configure custom domain (optional)
+The host Nginx site should proxy the public domain to the web container:
 
-### Post-Deployment
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
 
-- [ ] Verify app is accessible
-- [ ] Test AI chat functionality
-- [ ] Check database connections
-- [ ] Monitor logs for errors
-- [ ] Test API endpoints
+After changing Nginx:
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+## Operations
+
+```bash
+# Follow all logs
+./scripts/deploy-droplet.sh --logs
+
+# Follow one service
+./scripts/deploy-droplet.sh --logs web
+./scripts/deploy-droplet.sh --logs qdrant
+
+# Restart the stack
+./scripts/deploy-droplet.sh --restart
+
+# Stop containers without deleting Qdrant data
+./scripts/deploy-droplet.sh --down
+
+# Re-index Qdrant
+./scripts/deploy-droplet.sh --index
+```
+
+Do not use `docker compose down -v` in production unless Qdrant data deletion
+is explicitly approved and a restore path has been verified.
+
+## Rollback
+
+Keep the previous reviewed tag or commit available. To roll back:
+
+```bash
+cd /opt/rnd-ai
+git checkout <previous-reviewed-tag-or-commit>
+./scripts/deploy-droplet.sh --up
+./scripts/deploy-droplet.sh --health
+```
+
+Application rollback does not automatically roll back MongoDB documents,
+indexes, Qdrant collections, or environment variables. Review compatibility
+before changing code versions.
 
 ## Troubleshooting
 
-### Build Fails with Module Not Found
-
-**Issue:** Cannot resolve `@/ai/*` or `@/server/*` imports
-
-**Solution:**
-1. Ensure both `apps/web` and `apps/ai` are copied in Dockerfile
-2. Verify tsconfig.json path aliases are correct
-3. Check webpack aliases in next.config.js
-
-### Railway Build Timeout
-
-**Issue:** Build takes too long and times out
-
-**Solution:**
-1. Use `.dockerignore` to exclude unnecessary files
-2. Leverage Docker layer caching
-3. Consider using Railway's build cache
-
-### Environment Variables Not Loading
-
-**Issue:** App can't connect to MongoDB or AI services
-
-**Solution:**
-1. Verify variables are set in Railway Dashboard
-2. Check variable names match exactly
-3. Ensure ARG/ENV are properly set in Dockerfile
-4. For local development, use `.env` files in respective app directories
-
-### ChromaDB Connection Issues
-
-**Issue:** AI service can't connect to ChromaDB
-
-**Solution:**
-1. Ensure `.chromadb` directory exists in apps/ai
-2. Set `VECTOR_DB_PROVIDER=chroma` in environment
-3. For production, consider external ChromaDB service
-4. Check ChromaDB service logs
-
-### CORS Errors Between Services
-
-**Issue:** Web app can't communicate with AI service
-
-**Solution:**
-1. Configure CORS in AI service
-2. Set `WEB_APP_URL` environment variable
-3. Update `AI_SERVICE_URL` in web app
-4. Verify network connectivity between services
-
-## Performance Optimization
-
-### Production Build Optimization
-
-1. **Enable Next.js Standalone Output:**
-   - Already configured in `next.config.js`
-   - Reduces Docker image size by 80%
-
-2. **Optimize Dependencies:**
-   ```bash
-   # Remove dev dependencies in production
-   npm prune --production
-   ```
-
-3. **Use CDN for Static Assets:**
-   - Configure Next.js Image Optimization
-   - Use Vercel Edge Network (if using Vercel)
-
-4. **Database Optimization:**
-   - Use connection pooling
-   - Add database indexes
-   - Enable MongoDB Atlas auto-scaling
-
-### Monitoring
-
-1. **Railway Metrics:**
-   - Monitor CPU and memory usage
-   - Check request/response times
-   - Set up alerts for errors
-
-2. **Application Logs:**
-   ```bash
-   # View Railway logs
-   railway logs --service web
-   railway logs --service ai
-   ```
-
-3. **Database Monitoring:**
-   - MongoDB Atlas monitoring
-   - Track query performance
-   - Monitor connection pool
-
-## Scaling
-
-### Horizontal Scaling
-
-**Web App:**
-- Increase Railway replicas in dashboard
-- Configure load balancer
-- Ensure session state is stateless
-
-**AI Service:**
-- Deploy multiple instances
-- Use message queue for job processing
-- Implement caching layer
-
-### Vertical Scaling
-
-- Upgrade Railway plan for more resources
-- Optimize database queries
-- Implement Redis caching
-
-## Rollback Strategy
-
-### Railway Rollback
+### Web container is unhealthy
 
 ```bash
-# List deployments
-railway deployments
-
-# Rollback to previous deployment
-railway rollback <deployment-id>
+docker compose ps
+docker compose logs --tail=200 web
+curl -v http://127.0.0.1:3000/api/health
 ```
 
-### Manual Rollback
+Confirm `MONGODB_URI`, `DATABASE_URL`, `GEMINI_API_KEY`, and
+`NEXT_PUBLIC_API_URL` are set in `.env`.
+
+### Qdrant is unhealthy
 
 ```bash
-# Checkout previous commit
-git checkout <previous-commit-hash>
-
-# Deploy
-railway up
+docker compose logs --tail=200 qdrant
+curl -v http://127.0.0.1:6333/healthz
+docker volume inspect rnd-ai-qdrant-data
 ```
 
-## Security Best Practices
+### Public domain fails but localhost works
 
-1. **Environment Variables:**
-   - Never commit `.env` files
-   - Use Railway's secret management
-   - Rotate API keys regularly
+```bash
+nginx -t
+systemctl status nginx
+systemctl reload nginx
+```
 
-2. **Database Security:**
-   - Use strong passwords
-   - Enable IP whitelisting
-   - Use SSL/TLS connections
+Check DNS, the TLS certificate, the Nginx upstream, and the DigitalOcean
+firewall rules for ports 80 and 443.
 
-3. **API Security:**
-   - Implement rate limiting
-   - Use authentication middleware
-   - Validate all inputs
+### Build fails
 
-4. **Docker Security:**
-   - Run as non-root user (already configured)
-   - Keep base images updated
-   - Scan for vulnerabilities
+Run the same image build locally, then inspect the first failing layer:
 
-## Support
+```bash
+docker compose build --no-cache web
+```
 
-For deployment issues:
-1. Check Railway logs: `railway logs`
-2. Review CHANGELOG.md for recent changes
-3. Consult MONOREPO_README.md for structure details
-4. Open an issue on GitHub
-
-## References
-
-- [Railway Documentation](https://docs.railway.app)
-- [Next.js Deployment](https://nextjs.org/docs/deployment)
-- [Docker Best Practices](https://docs.docker.com/develop/dev-best-practices/)
-- [MongoDB Atlas](https://docs.atlas.mongodb.com/)
+The production image uses Node 24 and generates the Prisma client during the
+build.

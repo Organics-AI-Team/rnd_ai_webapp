@@ -3,38 +3,41 @@
  * Implements state-based workflow with conditional routing and tool orchestration
  */
 
-import { StateGraph, END, START } from '@langchain/langgraph';
+import { Annotation, StateGraph, END } from '@langchain/langgraph';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
-import { z } from 'zod';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { separatedSearchTools } from './tools/separated-search-tools';
 import { myskinSearchTools } from './tools/myskin-search-tools';
 
-// Define the state schema for our agent workflow
-export const RawMaterialsStateSchema = z.object({
-  messages: z.array(z.any()),
-  query: z.string().optional(),
-  queryType: z.enum(['search', 'stock_check', 'profile', 'usecase_search', 'myskin_search', 'general']).optional(),
-  searchResults: z.array(z.any()).optional(),
-  stockResults: z.array(z.any()).optional(),
-  profileResults: z.array(z.any()).optional(),
-  usecaseResults: z.array(z.any()).optional(),
-  myskinResults: z.array(z.any()).optional(),
-  needsTools: z.boolean().optional(),
-  toolCalls: z.array(z.any()).optional(),
-  response: z.string().optional(),
-  confidence: z.number().optional(),
-  error: z.string().optional()
+// Define the state channels with the Annotation contract expected by StateGraph.
+export const RawMaterialsStateAnnotation = Annotation.Root({
+  messages: Annotation<any[]>(),
+  query: Annotation<string | undefined>(),
+  queryType: Annotation<'search' | 'stock_check' | 'profile' | 'usecase_search' | 'myskin_search' | 'general' | undefined>(),
+  searchResults: Annotation<any[] | undefined>(),
+  stockResults: Annotation<any[] | undefined>(),
+  profileResults: Annotation<any[] | undefined>(),
+  usecaseResults: Annotation<any[] | undefined>(),
+  myskinResults: Annotation<any[] | undefined>(),
+  needsTools: Annotation<boolean | undefined>(),
+  toolCalls: Annotation<string[] | undefined>(),
+  response: Annotation<string | undefined>(),
+  confidence: Annotation<number | undefined>(),
+  error: Annotation<string | undefined>()
 });
 
-export type RawMaterialsState = z.infer<typeof RawMaterialsStateSchema>;
+export type RawMaterialsState = typeof RawMaterialsStateAnnotation.State;
+
+interface CompiledRawMaterialsGraph {
+  invoke(input: typeof RawMaterialsStateAnnotation.Update): Promise<RawMaterialsState>;
+}
 
 /**
  * Initialize LangGraph-powered Raw Materials Agent
  */
 export class LangGraphRawMaterialsAgent {
   private llm: ChatGoogleGenerativeAI;
-  private graph: StateGraph<RawMaterialsState>;
+  private graph: CompiledRawMaterialsGraph;
   private tools: Record<string, any>;
 
   constructor(geminiApiKey: string) {
@@ -66,20 +69,16 @@ export class LangGraphRawMaterialsAgent {
   /**
    * Build the LangGraph state machine
    */
-  private buildGraph(): StateGraph<RawMaterialsState> {
-    const workflow = new StateGraph({
-      channels: RawMaterialsStateSchema
-    });
-
-    // Add nodes
-    workflow.addNode('classify_query', this.classifyQuery.bind(this));
-    workflow.addNode('search_database', this.searchDatabase.bind(this));
-    workflow.addNode('check_stock', this.checkStock.bind(this));
-    workflow.addNode('get_profile', this.getProfile.bind(this));
-    workflow.addNode('search_usecase', this.searchUsecase.bind(this));
-    workflow.addNode('synthesize_results', this.synthesizeResults.bind(this));
-    workflow.addNode('generate_response', this.generateResponse.bind(this));
-    workflow.addNode('handle_error', this.handleError.bind(this));
+  private buildGraph(): CompiledRawMaterialsGraph {
+    const workflow = new StateGraph(RawMaterialsStateAnnotation)
+      .addNode('classify_query', this.classifyQuery.bind(this))
+      .addNode('search_database', this.searchDatabase.bind(this))
+      .addNode('check_stock', this.checkStock.bind(this))
+      .addNode('get_profile', this.getProfile.bind(this))
+      .addNode('search_usecase', this.searchUsecase.bind(this))
+      .addNode('synthesize_results', this.synthesizeResults.bind(this))
+      .addNode('generate_response', this.generateResponse.bind(this))
+      .addNode('handle_error', this.handleError.bind(this));
 
     // Set entry point - connect START to classify_query
     workflow.setEntryPoint('classify_query');
@@ -118,7 +117,7 @@ export class LangGraphRawMaterialsAgent {
     workflow.addEdge('generate_response', END);
     workflow.addEdge('handle_error', END);
 
-    return workflow.compile() as any;
+    return workflow.compile();
   }
 
   /**
@@ -517,12 +516,12 @@ ${this.formatResultsForLLM(results)}
     results?: any[];
   }> {
     try {
-      const initialState: RawMaterialsState = {
+      const initialState: typeof RawMaterialsStateAnnotation.Update = {
         messages: [new HumanMessage(message)],
         query: message
       };
 
-      const result = await (this.graph as any).invoke(initialState);
+      const result = await this.graph.invoke(initialState);
 
       return {
         response: result.response || 'ขออภัยค่ะ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่ค่ะ',

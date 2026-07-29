@@ -1,8 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
 import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { Providers } from "./providers";
 import { ConditionalLayout } from "@/components/conditional-layout";
+import { is_clerk_enabled } from "@/lib/server/clerk-config";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,7 +26,7 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
@@ -32,14 +35,20 @@ export const viewport = {
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
+  const app_tree = (
+    <Providers>
+      <ConditionalLayout>{children}</ConditionalLayout>
+    </Providers>
+  );
   return (
     <html lang="th">
       <body className={inter.className}>
-        <Providers>
-          <ConditionalLayout>{children}</ConditionalLayout>
-        </Providers>
+        {/* ClerkProvider sits inside body (G1.1) and activates only when the
+            deployment configures Clerk; the legacy flow renders otherwise
+            until the G1.7 cutover. */}
+        {is_clerk_enabled() ? <ClerkProvider>{app_tree}</ClerkProvider> : app_tree}
       </body>
     </html>
   );

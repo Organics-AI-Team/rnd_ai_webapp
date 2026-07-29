@@ -130,14 +130,14 @@ export const FormulaSchema = z.object({
   ingredients: z.array(FormulaIngredientSchema).min(1, "At least one ingredient is required"),
   totalAmount: z.number().positive("Total amount must be positive").optional(), // Total batch size
   remarks: z.string().optional(),
-  status: z.enum(["draft", "testing", "approved", "rejected"]).default("draft"),
+  status: z.enum(["draft", "confirmed", "testing", "approved", "rejected"]).default("draft"),
   createdBy: z.string(),
   createdAt: z.date().default(() => new Date()),
   updatedAt: z.date().default(() => new Date()),
 });
 
 export type Formula = z.infer<typeof FormulaSchema>;
-export type FormulaStatusType = "draft" | "testing" | "approved" | "rejected";
+export type FormulaStatusType = "draft" | "confirmed" | "testing" | "approved" | "rejected";
 
 // ============================================
 // ORDER SCHEMAS

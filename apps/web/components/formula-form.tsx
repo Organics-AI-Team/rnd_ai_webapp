@@ -1,15 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@/server";
 import { trpc } from "@/lib/trpc-client";
+import { useAgentRun } from "@/hooks/use_agent_run";
+import { AiRunView } from "@/components/ai";
+import { formula_artifact_to_form_state } from "@/lib/formula_artifact_to_form";
+import { is_formula_status } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Search, Beaker } from "lucide-react";
+import { Plus, Trash2, Search, Beaker, Sparkles } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -39,6 +45,10 @@ interface FormulaIngredient {
   notes?: string;
 }
 
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type Formula = RouterOutputs["formulas"]["getById"];
+type FormulaStatus = Formula["status"];
+
 /**
  * FormulaForm — Create or edit a formula.
  * Reads `?edit=<id>` from the URL to determine edit mode.
@@ -60,8 +70,14 @@ export function FormulaForm() {
   const [ingredients, setIngredients] = useState<FormulaIngredient[]>([]);
   const [totalAmount, setTotalAmount] = useState(100);
   const [remarks, setRemarks] = useState("");
-  const [status, setStatus] = useState<"draft" | "confirmed" | "testing" | "approved" | "rejected">("draft");
+  const [status, setStatus] = useState<FormulaStatus>("draft");
   const [formLoaded, setFormLoaded] = useState(false);
+
+  // --- Formulate (governed agentic generation, spec §11.2) ---
+  const agent_run = useAgentRun();
+  const [formulateBrief, setFormulateBrief] = useState("");
+  const [formulateStarted, setFormulateStarted] = useState(false);
+  const applied_artifact_ref = useRef<string | null>(null);
 
   const [showIngredientPicker, setShowIngredientPicker] = useState(false);
   const [ingredientSearch, setIngredientSearch] = useState("");
@@ -77,26 +93,36 @@ export function FormulaForm() {
   // Pre-populate form fields when formula data arrives
   useEffect(() => {
     if (existingFormula && !formLoaded) {
-      console.log("[formula-form] populating edit form", { id: editId });
-      setFormulaName(existingFormula.formulaName || "");
-      setVersion(existingFormula.version || 1);
-      setClient(existingFormula.client || "");
-      setTargetBenefits(existingFormula.targetBenefits || []);
-      setTotalAmount(existingFormula.totalAmount || 100);
-      setRemarks(existingFormula.remarks || "");
-      setStatus((existingFormula.status as any) || "draft");
-      setIngredients(
-        (existingFormula.ingredients || []).map((ing: any) => ({
-          materialId: ing.materialId || "",
-          rm_code: ing.rm_code || "",
-          productName: ing.productName || "",
-          inci_name: ing.inci_name || "",
-          amount: ing.amount || 0,
-          percentage: ing.percentage || 0,
-          notes: ing.notes || "",
-        }))
-      );
-      setFormLoaded(true);
+      const formula: Formula = existingFormula;
+      let is_active = true;
+
+      queueMicrotask(() => {
+        if (!is_active) return;
+        console.log("[formula-form] populating edit form", { id: editId });
+        setFormulaName(formula.formulaName || "");
+        setVersion(formula.version || 1);
+        setClient(formula.client || "");
+        setTargetBenefits(formula.targetBenefits || []);
+        setTotalAmount(formula.totalAmount || 100);
+        setRemarks(formula.remarks || "");
+        setStatus(formula.status || "draft");
+        setIngredients(
+          (formula.ingredients || []).map((ing) => ({
+            materialId: ing.materialId || "",
+            rm_code: ing.rm_code || "",
+            productName: ing.productName || "",
+            inci_name: ing.inci_name || "",
+            amount: ing.amount || 0,
+            percentage: ing.percentage || 0,
+            notes: ing.notes || "",
+          }))
+        );
+        setFormLoaded(true);
+      });
+
+      return () => {
+        is_active = false;
+      };
     }
   }, [existingFormula, formLoaded, editId]);
 
@@ -105,6 +131,68 @@ export function FormulaForm() {
     offset: 0,
   });
   const products = productsData?.products || [];
+
+  /**
+   * Start a governed agentic run that formulates from the brief.
+   * The run streams typed SSE events into AiRunView (evidence, clarification
+   * questions, approval checkpoints); the produced artifact populates this
+   * form for human review — it is never saved without the reviewer.
+   */
+  const handleFormulate = async () => {
+    if (!formulateBrief.trim() || agent_run.is_starting || agent_run.is_streaming) return;
+    console.log("[formula-form] handleFormulate — starting governed run", {
+      brief: formulateBrief,
+    });
+    setFormulateStarted(true);
+    applied_artifact_ref.current = null;
+    await agent_run.start_run({
+      thread_id: `formulate_${crypto.randomUUID()}`,
+      agent_key: "formulation",
+      message: `Generate a complete, cited formula draft for: ${formulateBrief}`,
+      attachment_source_ids: [],
+      response_preferences: {
+        language: /[฀-๿]/.test(formulateBrief) ? "th" : "en",
+        detail: "detailed",
+      },
+    });
+  };
+
+  // When the run announces an artifact, fetch its validated payload and
+  // populate the form exactly once per artifact id (review-first: the user
+  // still edits and saves through the normal create flow).
+  useEffect(() => {
+    const artifact = agent_run.state.artifacts[agent_run.state.artifacts.length - 1];
+    if (!artifact || applied_artifact_ref.current === artifact.artifact_id) return;
+    let cancelled = false;
+    const populate = async () => {
+      console.log("[formula-form] fetching generated artifact", {
+        artifact_id: artifact.artifact_id,
+      });
+      const response = await fetch(
+        `/api/ai/artifacts/${encodeURIComponent(artifact.artifact_id)}`,
+        { credentials: "include" },
+      );
+      if (!response.ok || cancelled) return;
+      const body = await response.json();
+      const form_state = formula_artifact_to_form_state(body.content);
+      if (cancelled || !form_state) return;
+      applied_artifact_ref.current = artifact.artifact_id;
+      setFormulaName(form_state.formulaName);
+      setTargetBenefits([...form_state.targetBenefits]);
+      setTotalAmount(form_state.totalAmount);
+      setRemarks(form_state.remarks);
+      setIngredients(form_state.ingredients.map((ingredient) => ({ ...ingredient })));
+      console.log("[formula-form] populated form from artifact", {
+        artifact_id: artifact.artifact_id,
+        ingredients: form_state.ingredients.length,
+      });
+    };
+    void populate();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent_run.state.artifacts]);
 
   const createFormula = trpc.formulas.create.useMutation({
     onSuccess: () => {
@@ -266,6 +354,54 @@ export function FormulaForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Formulate — governed agentic generation (spec §11.2) */}
+      {!isEditMode && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Formulate ด้วย AI
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-[12px] text-gray-500">
+              อธิบายสูตรที่ต้องการ แล้ว AI จะร่างสูตรพร้อมอ้างอิงลงในฟอร์มนี้เพื่อรีวิวก่อนบันทึก
+            </p>
+            <Textarea
+              placeholder="เช่น Anti-aging serum with retinol and vitamin C, budget ≤500 THB/kg, ไม่เอา paraben"
+              value={formulateBrief}
+              onChange={(e) => setFormulateBrief(e.target.value)}
+              className="min-h-[80px] text-[12px]"
+            />
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleFormulate}
+                disabled={!formulateBrief.trim() || agent_run.is_starting || agent_run.is_streaming}
+                className="h-8 text-[12px] gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {agent_run.is_streaming ? "Formulating..." : "Formulate"}
+              </Button>
+            </div>
+            {formulateStarted && (
+              <div className="max-h-[50vh] overflow-y-auto rounded-md border border-gray-200/80 p-3">
+                <AiRunView
+                  state={agent_run.state}
+                  client_error={agent_run.client_error}
+                  is_streaming={agent_run.is_streaming}
+                  is_resuming={agent_run.is_resuming}
+                  is_manager={true}
+                  on_clarification={agent_run.submit_clarification}
+                  on_approval={agent_run.submit_approval}
+                  on_cancel_stream={agent_run.cancel_stream}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
       {/* Formula Details */}
       <Card>
         <CardHeader>
@@ -329,7 +465,9 @@ export function FormulaForm() {
             <select
               id="status"
               value={status}
-              onChange={(e) => setStatus(e.target.value as any)}
+              onChange={(e) => {
+                if (is_formula_status(e.target.value)) setStatus(e.target.value);
+              }}
               className="w-full px-3 py-2 border rounded-md"
             >
               <option value="draft">Draft</option>
