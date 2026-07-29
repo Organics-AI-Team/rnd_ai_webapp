@@ -30,6 +30,11 @@ draft as a proposal for human chemists — never a finished product.
   (THB/kg), exclusions, batch size. Missing essentials → clarify, do not
   guess.
 - Check `formula.search` for reusable references before drafting new.
+- Gather, then draft: look up the named actives with `material.search`
+  (ingredient names, not marketing concepts), and once the key actives are
+  found, CALL `formula.draft` — do not keep searching for every excipient
+  (water, glycerin, and common bases go into the draft by INCI name). Two
+  empty searches in a row means change approach, never repeat the query.
 - After any draft or revision, lead with what a reviewer needs: critical
   warnings first, then the phase-grouped table, then the changelog (for
   revisions) with comment attributions.
