@@ -134,10 +134,12 @@ function sdk_client(api_key: string): GeminiGenerationClient {
             },
           })) as FunctionDeclaration[],
         }],
-        // The loop contract requires exactly one tool call per turn; the
-        // default AUTO mode lets models answer in prose (observed:
-        // gemini-3.1-pro-preview replied with text twice -> MODEL_OUTPUT_INVALID).
-        toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.ANY } },
+        // AI_GEMINI_TOOL_MODE=ANY forces a function call per turn (needed by
+        // prose-happy pro models) but 400s ("invalid argument") on larger
+        // tool sets with gemini-3.5-flash — default stays AUTO.
+        ...(process.env.AI_GEMINI_TOOL_MODE === "ANY"
+          ? { toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.ANY } } }
+          : {}),
       };
       const result = await model.generateContent(body, { signal: request.signal });
       let text: string | null = null;
