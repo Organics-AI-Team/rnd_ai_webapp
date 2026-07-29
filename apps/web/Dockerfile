@@ -90,6 +90,10 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
+# Capability cards are runtime-read markdown (not traced by standalone output
+# tracing); without them the run API fails closed with CARDS_ROOT_NOT_FOUND.
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai/server/services/ai-control/cards ./apps/ai/server/services/ai-control/cards
+
 # Copy Prisma client (engine binaries + generated types)
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma

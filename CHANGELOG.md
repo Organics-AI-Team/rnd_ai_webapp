@@ -1,5 +1,30 @@
 # Changelog
 
+## [2026-07-29] fix: AI runs failed with RUN_CREATE_FAILED — capability cards missing from Docker images
+
+### Root cause
+
+`POST /api/ai/runs` threw `ToolGovernanceError: CARDS_ROOT_NOT_FOUND`
+(web container log), surfaced client-side as the generic `RUN_CREATE_FAILED`.
+The capability cards are runtime-read markdown
+(`apps/ai/server/services/ai-control/cards/**/*.md`); Next.js standalone
+output tracing follows JS imports only, so the web runner image never
+contained them — and the worker image (webpack bundle + prisma only) had the
+same gap. Never surfaced before because tonight's provisioning was the first
+time the agentic executor (which assembles cards at ingress) ran on this
+stack; `ai_runs` shows zero documents — every creation failed pre-commit.
+
+### Fix
+
+One COPY line in each runner stage (`apps/web/Dockerfile`,
+`apps/ai/Dockerfile.worker`) placing the cards at
+`/app/apps/ai/server/services/ai-control/cards` — the card-loader's first
+probe candidate from cwd `/app`. No env change needed
+(`AI_CAPABILITY_CARDS_ROOT` stays an override). Images rebuilt and
+redeployed; verified the directory exists in the running containers.
+
+---
+
 ## [2026-07-29] feat: Member management, invitations, and multi-org membership live (Plan 3 complete)
 
 ### Summary

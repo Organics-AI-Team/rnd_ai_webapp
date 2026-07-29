@@ -71,6 +71,10 @@ RUN adduser --system --uid 1001 aiworker
 # Copy the bundled worker
 COPY --from=builder --chown=aiworker:nodejs /app/apps/ai/dist ./apps/ai/dist
 
+# Capability cards are runtime-read markdown (not part of the webpack bundle);
+# the governed loop fails closed with CARDS_ROOT_NOT_FOUND without them.
+COPY --from=builder --chown=aiworker:nodejs /app/apps/ai/server/services/ai-control/cards ./apps/ai/server/services/ai-control/cards
+
 # Copy Prisma client (engine binaries + generated types) — the bundle's only
 # external module, resolved from node_modules at runtime
 COPY --from=builder --chown=aiworker:nodejs /app/node_modules/.prisma ./node_modules/.prisma
