@@ -25,6 +25,11 @@ export const tool_card_entry_v1_schema = z
     version: z.string().min(1).max(64),
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
     markdown: z.string().min(1).max(200_000),
+    // Provider-facing JSON parameter schema derived from the tool's input
+    // schema at assembly. Without it, tools were declared to the model with
+    // empty parameters — models never attempted complex-argument tools like
+    // formula.draft (observed: formulation runs searched until LOOP_DETECTED).
+    parameters: z.record(z.unknown()).optional(),
   })
   .strict();
 export type ToolCardEntryV1 = z.infer<typeof tool_card_entry_v1_schema>;

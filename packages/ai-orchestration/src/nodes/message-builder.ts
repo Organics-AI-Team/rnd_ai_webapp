@@ -75,7 +75,10 @@ export function declared_tools(pack: ContextPackV1): ToolDeclarationV1[] {
     .map((tool_name) => ({
       name: tool_name,
       description: extract_card_summary(pack.tool_cards[tool_name]?.markdown ?? ""),
-      parameters: { type: "object" },
+      // Real argument schemas are pinned in the pack at assembly; an empty
+      // object made models avoid complex-argument tools entirely.
+      parameters:
+        pack.tool_cards[tool_name]?.parameters ?? { type: "object" },
     }));
   return [
     ...catalogue,

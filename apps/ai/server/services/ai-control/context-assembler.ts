@@ -22,6 +22,7 @@ import { log_error, log_info } from "./logger";
 import type { EffectiveAIPolicy } from "./policy-types";
 import type { ToolCatalogue } from "./tool-catalogue";
 import type { AnyToolDefinition } from "./tool-definition";
+import { tool_parameters_json_schema } from "./tool-parameter-schema";
 
 const MODULE = "context-assembler";
 
@@ -41,6 +42,8 @@ export interface ContextPackToolCard {
   readonly version: string;
   readonly sha256: string;
   readonly markdown: string;
+  /** Provider-facing JSON parameter schema (Gemini-safe subset). */
+  readonly parameters: Readonly<Record<string, unknown>>;
 }
 
 /** Rendered policy digest pinned by its own content hash. */
@@ -278,6 +281,7 @@ export class ContextAssembler {
         version: card.version,
         sha256: card.sha256,
         markdown: card.markdown,
+        parameters: tool_parameters_json_schema(definition.input_schema),
       };
     } catch (error) {
       throw this.as_fail_closed(error, definition.capability_card_path);
