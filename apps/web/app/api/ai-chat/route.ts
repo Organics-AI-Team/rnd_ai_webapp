@@ -1,6 +1,6 @@
 /**
  * AI Chat API Route with RAG Integration
- * Uses Vercel AI SDK v5 for streaming responses
+ * Legacy direct-response route retained for compatibility.
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';

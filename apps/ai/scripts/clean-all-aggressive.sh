@@ -39,7 +39,6 @@ rm -rf __pycache__
 rm -rf .jest
 
 echo "🔥 Removing deployment directories..."
-rm -rf .vercel
 rm -rf .netlify
 rm -rf .wrangler
 rm -rf .sst
@@ -118,7 +117,7 @@ echo "📊 Summary of removed items:"
 echo "  • Build artifacts (.next, dist, build, out)"
 echo "  • Cache directories (.cache, .turbo, .vite, .swc, .parcel-cache)"
 echo "  • Testing coverage (coverage, .nyc_output, .pytest_cache)"
-echo "  • Deployment folders (.vercel, .netlify, .wrangler, .sst)"
+echo "  • Deployment folders (.netlify, .wrangler, .sst)"
 echo "  • Node modules and dependencies"
 echo "  • Log files and debug logs"
 echo "  • System files (.DS_Store, Thumbs.db)"

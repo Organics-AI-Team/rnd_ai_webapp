@@ -24,7 +24,7 @@ npm run clean-all
 - Build artifacts: `.next/`, `dist/`, `build/`, `out/`
 - Cache directories: `.cache/`, `.turbo/`, `.vite/`, `.swc/`, `.parcel-cache/`
 - Testing coverage: `coverage/`, `.nyc_output/`, `.pytest_cache/`, `__pycache__/`
-- Deployment folders: `.vercel/`, `.netlify/`, `.wrangler/`, `.sst/`, `.output/`
+- Deployment folders: `.netlify/`, `.wrangler/`, `.sst/`, `.output/`
 - Node modules: `node_modules/`
 - Log files: `*.log`, `npm-debug.log*`, `yarn-debug.log*`, etc.
 - **❌ Environment files are PRESERVED**: `.env`, `.env.local`, `.env.*` files are never deleted

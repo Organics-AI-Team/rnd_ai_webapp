@@ -268,7 +268,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
 ## 📚 Documentation
 
 - **[MONOREPO_README.md](docs/MONOREPO_README.md)** - Architecture & workspace guide
-- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment strategies
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - DigitalOcean Droplet deployment
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history & changes
 - **[AI_RESPONSE_OPTIMIZATION_TH.md](docs/AI_RESPONSE_OPTIMIZATION_TH.md)** - AI optimization guide
 

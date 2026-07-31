@@ -16,7 +16,7 @@ out/
 build
 dist
 
-# Environment files (these should be set in Railway dashboard)
+# Environment files (these are set on the production Droplet)
 .env
 .env.local
 .env*.local
