@@ -7,9 +7,9 @@
  *   - Message loading/sending with automatic thread creation
  *   - New chat / archive thread actions
  *
- * Used by both Raw Materials AI and Sales R&D AI pages.
+ * Used by the unified R&D AI workspace.
  *
- * @param agent_type - The AI agent type ("raw_materials_ai" | "sales_rnd_ai")
+ * @param agent_type - The durable AI history type (normally "rnd_ai")
  */
 
 'use client';
@@ -22,7 +22,7 @@ import { select_default_thread_once } from '@/lib/chat-thread-selection';
 // Types
 // ---------------------------------------------------------------------------
 
-export type AgentType = 'raw_materials_ai' | 'sales_rnd_ai';
+export type AgentType = 'rnd_ai' | 'raw_materials_ai' | 'sales_rnd_ai' | 'formulation';
 
 export interface ChatThread {
   id: string;
@@ -65,11 +65,15 @@ export interface UseChatThreadsReturn {
   /** Start a new chat (clears active thread; thread created on first message) */
   start_new_chat: () => void;
   /** Add a message to the active thread (creates thread if needed) */
-  add_message: (role: 'user' | 'assistant', content: string, metadata?: any) => Promise<AddedChatMessage | null>;
+  add_message: (role: 'user' | 'assistant', content: string, metadata?: any) => Promise<AddedChatMessage>;
   /** Archive (soft delete) a thread */
   archive_thread: (thread_id: string) => Promise<void>;
   /** Refresh thread list */
   refresh_threads: () => void;
+  /** Refresh messages and thread summary after a worker-owned assistant write. */
+  refresh_messages: () => Promise<void>;
+  /** A non-blocking warning when durable chat state cannot be refreshed. */
+  sync_error: string | null;
   /** Whether we're in "new chat" mode (no active thread yet) */
   is_new_chat: boolean;
 }
@@ -92,6 +96,7 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
   );
   const [is_new_chat, set_is_new_chat] = useState(false);
   const [optimistic_messages, set_optimistic_messages] = useState<ChatMessage[]>([]);
+  const [sync_error, set_sync_error] = useState<string | null>(null);
   const pending_thread_ref = useRef<string | null>(null);
   const active_thread_id_ref = useRef<string | null>(initial_thread_id ?? null);
 
@@ -186,17 +191,20 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
    * @param role     - "user" or "assistant"
    * @param content  - Message content
    * @param metadata - Optional metadata (confidence, tools, etc.)
-   * @returns The created message and thread IDs, or null on error.
+   * @returns The created message and thread IDs.
+   * @throws When the message could not be persisted.
    */
   const add_message = useCallback(async (
     role: 'user' | 'assistant',
     content: string,
     metadata?: any,
-  ): Promise<AddedChatMessage | null> => {
+  ): Promise<AddedChatMessage> => {
     // Read from ref — NOT the stale closure — so assistant messages
     // in the same turn see the thread created by the user message.
     let thread_id = active_thread_id_ref.current || pending_thread_ref.current;
     console.log('[use_chat_threads] add_message — start', { role, has_thread: !!thread_id });
+
+    let optimistic_id: string | null = null;
 
     try {
       // Create thread on first message
@@ -219,7 +227,7 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
       }
 
       // Add optimistic message immediately for snappy UI
-      const optimistic_id = `optimistic-${Date.now()}`;
+      optimistic_id = `optimistic-${Date.now()}`;
       set_optimistic_messages((prev) => [
         ...prev,
         {
@@ -246,17 +254,33 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
         message.id === optimistic_id ? { ...message, id: result.id } : message
       ));
 
-      // Refresh thread list to update lastMessageAt + messageCount
-      threads_query.refetch();
-
-      // Refetch messages to replace optimistic with real
-      messages_query.refetch();
+      // The message is already durable. Refresh failures are recoverable and
+      // must not turn a successful send into a duplicate retry.
+      try {
+        const refreshes = await Promise.all([
+          threads_query.refetch(),
+          messages_query.refetch(),
+        ]);
+        if (refreshes.some((refresh) => refresh.isError)) {
+          set_sync_error("Your message was saved, but the chat could not refresh. Reload to see the latest state.");
+        } else {
+          set_sync_error(null);
+        }
+      } catch {
+        set_sync_error("Your message was saved, but the chat could not refresh. Reload to see the latest state.");
+        console.error('[use_chat_threads] add_message — refresh failed');
+      }
 
       console.log('[use_chat_threads] add_message — done', { messageId: result.id });
       return { message_id: result.id, thread_id: thread_id! };
     } catch (error) {
-      console.error('[use_chat_threads] add_message — error', error);
-      return null;
+      if (optimistic_id) {
+        set_optimistic_messages((previous_messages) => previous_messages.filter(
+          (message) => message.id !== optimistic_id,
+        ));
+      }
+      console.error('[use_chat_threads] add_message — persistence failed');
+      throw error;
     }
   }, [agent_type, create_mutation, add_message_mutation, threads_query, messages_query]);
 
@@ -270,16 +294,27 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
     console.log('[use_chat_threads] archive_thread', { thread_id });
     try {
       await archive_mutation.mutateAsync({ threadId: thread_id });
-
-      if (active_thread_id === thread_id) {
-        set_default_thread_id(null);
-        set_active_thread_id(null);
-        set_is_new_chat(true);
-      }
-
-      threads_query.refetch();
     } catch (error) {
-      console.error('[use_chat_threads] archive_thread — error', error);
+      console.error('[use_chat_threads] archive_thread — persistence failed');
+      throw error;
+    }
+
+    if (active_thread_id === thread_id) {
+      set_default_thread_id(null);
+      set_active_thread_id(null);
+      set_is_new_chat(true);
+    }
+
+    try {
+      const refresh = await threads_query.refetch();
+      if (refresh.isError) {
+        set_sync_error("The chat was archived, but the thread list could not refresh. Reload to see the latest state.");
+      } else {
+        set_sync_error(null);
+      }
+    } catch {
+      set_sync_error("The chat was archived, but the thread list could not refresh. Reload to see the latest state.");
+      console.error('[use_chat_threads] archive_thread — refresh failed');
     }
   }, [active_thread_id, archive_mutation, threads_query]);
 
@@ -288,8 +323,31 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
    */
   const refresh_threads = useCallback(() => {
     console.log('[use_chat_threads] refresh_threads');
-    threads_query.refetch();
+    void threads_query.refetch().then((refresh) => {
+      if (refresh.isError) {
+        set_sync_error("The chat list could not refresh. Reload to see the latest state.");
+      } else {
+        set_sync_error(null);
+      }
+    }).catch(() => {
+      set_sync_error("The chat list could not refresh. Reload to see the latest state.");
+      console.error('[use_chat_threads] refresh_threads — refresh failed');
+    });
   }, [threads_query]);
+
+  const refresh_messages = useCallback(async (): Promise<void> => {
+    try {
+      const refreshes = await Promise.all([threads_query.refetch(), messages_query.refetch()]);
+      if (refreshes.some((refresh) => refresh.isError)) {
+        set_sync_error("The chat could not refresh. Reload to see the latest state.");
+      } else {
+        set_sync_error(null);
+      }
+    } catch {
+      set_sync_error("The chat could not refresh. Reload to see the latest state.");
+      console.error('[use_chat_threads] refresh_messages — refresh failed');
+    }
+  }, [threads_query, messages_query]);
 
   // --- Find active thread object ---
   const active_thread = active_thread_id
@@ -307,6 +365,8 @@ export function useChatThreads(agent_type: AgentType, initial_thread_id?: string
     add_message,
     archive_thread,
     refresh_threads,
+    refresh_messages,
+    sync_error,
     is_new_chat,
   };
 }

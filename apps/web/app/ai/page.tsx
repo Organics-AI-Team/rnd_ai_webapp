@@ -1,11 +1,11 @@
 'use client';
 
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { BarChart3, Bot, FlaskConical, Package, Search, TrendingUp } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Bot, Search, Sparkles } from 'lucide-react';
 
 import { useAuth } from '@/lib/app-auth';
-import { useChatThreads, type AgentType } from '@/hooks/use_chat_threads';
+import { useChatThreads } from '@/hooks/use_chat_threads';
 import { useAgentRun } from '@/hooks/use_agent_run';
 import { trpc } from '@/lib/trpc-client';
 import {
@@ -24,79 +24,32 @@ import {
 
 const THAI_CHAR_REGEX = /[\u0E00-\u0E7F]/;
 
-/** One task focus within the single R&D AI workspace. */
-const AGENT_MODES = [
-  {
-    id: 'materials',
-    label: 'Materials',
-    agent_type: 'raw_materials_ai' as AgentType,
-    agent_key: 'raw_material_research' as const,
-    icon: Package,
-    theme_color: 'blue',
-    badge: 'Materials',
-    placeholder: 'Ask about ingredients, suppliers, regulations, or alternatives...',
-    greeting: 'Research cosmetic ingredients, supplier options, compatibility, and regulations.',
-    suggestions: [
-      'Find ingredients that improve hydration',
-      'Compare Niacinamide suppliers',
-      'Check the restrictions for Retinol',
-      'Suggest a suitable preservative system',
-    ],
-  },
-  {
-    id: 'formulation',
-    label: 'Formulation',
-    // Formula and material research share the same durable R&D history.
-    agent_type: 'raw_materials_ai' as AgentType,
-    agent_key: 'formulation' as const,
-    icon: FlaskConical,
-    theme_color: 'blue',
-    badge: 'Formulation',
-    placeholder: 'Describe the product you want to formulate...',
-    greeting: 'Develop formulas, improve stability, estimate costs, and prepare R&D next steps.',
-    suggestions: [
-      'Draft a lightweight SPF 50 serum',
-      'Improve the stability of this vitamin C serum',
-      'Create a gentle anti-aging night cream',
-      'Reduce this formula cost without changing the feel',
-    ],
-  },
-  {
-    id: 'sales',
-    label: 'Sales & Market',
-    agent_type: 'sales_rnd_ai' as AgentType,
-    agent_key: 'sales_rnd' as const,
-    icon: TrendingUp,
-    theme_color: 'purple',
-    badge: 'Sales & Market',
-    placeholder: 'Ask about market trends, sales strategy, or commercial opportunities...',
-    greeting: 'Analyze market opportunities, build sales plans, and connect commercial needs to R&D.',
-    suggestions: [
-      'Analyze current sunscreen market trends',
-      'Find B2B opportunities for skincare ingredients',
-      'Create a Q2 sales growth plan',
-      'Compare anti-aging competitor positioning',
-    ],
-  },
-] as const;
+type AgentKey = 'raw_material_research' | 'formulation' | 'sales_rnd';
 
-type AgentMode = (typeof AGENT_MODES)[number];
-
-/** Select a safe default when a legacy or malformed mode appears in the URL. */
-function resolve_agent_mode(value: string | null): AgentMode {
-  return AGENT_MODES.find((mode) => mode.id === value) ?? AGENT_MODES[0];
+/**
+ * Select a specialist card without making people choose a separate chat.
+ * The selected card only tunes the governed run; every conversation remains
+ * in the one durable R&D AI history.
+ */
+function select_agent_key(message: string): AgentKey {
+  const normalized_message = message.toLowerCase();
+  if (/(\bsales?\b|market|competitor|positioning|client|b2b|commercial|revenue|ขาย|ตลาด|คู่แข่ง|ลูกค้า|ยอดขาย|วางตำแหน่ง)/i.test(normalized_message)) {
+    return 'sales_rnd';
+  }
+  if (/(ingredient|\binci\b|supplier|raw material|retinol|niacinamide|preservative|regulat|วัตถุดิบ|ส่วนผสม|สารสกัด|ซัพพลายเออร์|ผู้ขาย|กฎระเบียบ|ข้อกำหนด|ความเข้ากัน)/i.test(normalized_message)) {
+    return 'raw_material_research';
+  }
+  return 'formulation';
 }
 
 interface UnifiedChatProps {
-  readonly mode: AgentMode;
   readonly thread_id: string | null;
 }
 
-/** Render one persistent chat history and run panel for the selected R&D focus. */
-function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
+/** Render the one persistent workspace for all R&D and commercial questions. */
+function UnifiedChat({ thread_id }: UnifiedChatProps) {
   const { user } = useAuth();
-  const router = useRouter();
-  const chat = useChatThreads(mode.agent_type, thread_id);
+  const chat = useChatThreads('rnd_ai', thread_id);
   const agent_run = useAgentRun();
   const submit_feedback = trpc.feedback.submit.useMutation();
 
@@ -110,7 +63,6 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
     typeof window === 'undefined' || window.innerWidth >= 1024
   ));
   const is_loading = is_sending || agent_run.is_starting || agent_run.is_streaming;
-  const ModeIcon = mode.icon;
 
   useEffect(() => {
     if (agent_run.state.status === 'completed') void chat.refresh_messages();
@@ -124,7 +76,7 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
     metadata: message.metadata || undefined,
   }));
 
-  /** Persist a turn, then start the selected skill through the one run API. */
+  /** Persist a turn, then route the run to the right internal R&D skill. */
   const handle_send_message = useCallback(async () => {
     if (!input.trim() || is_loading) return;
 
@@ -136,7 +88,7 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
       set_input('');
       await agent_run.start_run({
         thread_id: added_message.thread_id,
-        agent_key: mode.agent_key,
+        agent_key: select_agent_key(user_input),
         message: user_input,
         attachment_source_ids: [],
         response_preferences: {
@@ -149,9 +101,9 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
     } finally {
       set_is_sending(false);
     }
-  }, [agent_run, chat, input, is_loading, mode.agent_key]);
+  }, [agent_run, chat, input, is_loading]);
 
-  /** Save message feedback against the agent that produced the answer. */
+  /** Save message feedback against the specialist that produced the answer. */
   const handle_feedback = useCallback(async (message_id: string, is_positive: boolean) => {
     if (feedback_submitted.has(message_id)) return;
 
@@ -166,7 +118,7 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
 
       await submit_feedback.mutateAsync({
         responseId: message_id,
-        service_name: mode.agent_key,
+        service_name: 'rnd_ai',
         type: is_positive ? 'helpful' : 'not_helpful',
         score: is_positive ? 5 : 2,
         prompt: prompt?.content ?? '',
@@ -177,20 +129,14 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
     } catch {
       set_feedback_error('Your feedback could not be saved. Please retry.');
     }
-  }, [display_messages, feedback_submitted, mode.agent_key, submit_feedback]);
-
-  /** Navigate to a new focus; each focus keeps its existing conversation history. */
-  const select_mode = useCallback((next_mode: AgentMode) => {
-    if (next_mode.id === mode.id) return;
-    router.replace(`/ai?mode=${next_mode.id}`);
-  }, [mode.id, router]);
+  }, [display_messages, feedback_submitted, submit_feedback]);
 
   if (!user) {
     return (
       <AIAuthGuard
         icon={<Bot className="h-16 w-16" />}
         title="Sign in to use R&D AI"
-        description="One AI workspace for material research, formulation, sales, and market work."
+        description="One workspace for ingredients, formulation, market, and sales work."
       />
     );
   }
@@ -215,7 +161,7 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
             }}
             on_archive={chat.archive_thread}
             is_new_chat={chat.is_new_chat}
-            theme_color={mode.theme_color}
+            theme_color="blue"
           />
         }
       >
@@ -223,8 +169,8 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
           <AIChatMessagesContainer
             header={
               <AIChatHeader
-                title={chat.active_thread?.title || 'R&D AI Agent'}
-                badgeText={`Unified · ${mode.badge}`}
+                title={chat.active_thread?.title || 'R&D AI'}
+                badgeText="Unified workspace"
                 leading={
                   <SidebarToggleButton
                     is_open={is_sidebar_open}
@@ -234,66 +180,40 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
               />
             }
             messagesArea={
-              <>
-                <div className="border-b border-border bg-surface px-3 py-2 sm:px-4">
-                  <div
-                    className="flex max-w-full gap-1 overflow-x-auto"
-                    role="tablist"
-                    aria-label="R&D AI focus"
-                  >
-                    {AGENT_MODES.map((agent_mode) => {
-                      const TabIcon = agent_mode.icon;
-                      const is_active = agent_mode.id === mode.id;
-                      return (
-                        <button
-                          key={agent_mode.id}
-                          type="button"
-                          role="tab"
-                          aria-selected={is_active}
-                          onClick={() => select_mode(agent_mode)}
-                          className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                            is_active
-                              ? 'bg-brand text-white'
-                              : 'text-muted hover:bg-subtle hover:text-ink'
-                          }`}
-                        >
-                          <TabIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                          {agent_mode.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <AIChatMessagesArea
-                  messages={display_messages}
-                  isLoading={is_loading}
-                  themeColor={mode.theme_color}
-                  emptyStateIcon={<ModeIcon className="h-10 w-10" />}
-                  emptyStateGreeting={mode.greeting}
-                  emptyStateSuggestions={[...mode.suggestions]}
-                  onSuggestionClick={set_input}
-                  onQuickAction={set_input}
-                  loadingMessage="Planning and gathering evidence..."
-                  metadataIcon={mode.id === 'sales' ? <BarChart3 className="h-3 w-3" /> : <Search className="h-3 w-3" />}
-                  metadataLabel={mode.id === 'sales' ? 'Market' : 'R&D'}
-                  inputAreaHeight={input_area_height}
-                  bottomPadding={8}
-                  onFeedback={handle_feedback}
-                  feedbackSubmitted={feedback_submitted}
-                  runContent={
-                    <AiRunView
-                      state={agent_run.state}
-                      client_error={agent_run.client_error}
-                      is_streaming={agent_run.is_streaming}
-                      is_resuming={agent_run.is_resuming}
-                      is_manager={user.role === 'admin'}
-                      on_clarification={agent_run.submit_clarification}
-                      on_approval={agent_run.submit_approval}
-                      on_cancel_stream={agent_run.cancel_stream}
-                    />
-                  }
-                />
-              </>
+              <AIChatMessagesArea
+                messages={display_messages}
+                isLoading={is_loading}
+                themeColor="blue"
+                emptyStateIcon={<Sparkles className="h-10 w-10" />}
+                emptyStateGreeting="Ask naturally — R&D AI will handle ingredients, formulas, market, and sales work in one conversation."
+                emptyStateSuggestions={[
+                  'Find ingredients that improve hydration',
+                  'Draft a lightweight SPF 50 serum',
+                  'Improve this vitamin C serum stability',
+                  'Analyze the sunscreen market opportunity',
+                ]}
+                onSuggestionClick={set_input}
+                onQuickAction={set_input}
+                loadingMessage="Planning and gathering evidence..."
+                metadataIcon={<Search className="h-3 w-3" />}
+                metadataLabel="R&D AI"
+                inputAreaHeight={input_area_height}
+                bottomPadding={8}
+                onFeedback={handle_feedback}
+                feedbackSubmitted={feedback_submitted}
+                runContent={
+                  <AiRunView
+                    state={agent_run.state}
+                    client_error={agent_run.client_error}
+                    is_streaming={agent_run.is_streaming}
+                    is_resuming={agent_run.is_resuming}
+                    is_manager={user.role === 'admin'}
+                    on_clarification={agent_run.submit_clarification}
+                    on_approval={agent_run.submit_approval}
+                    on_cancel_stream={agent_run.cancel_stream}
+                  />
+                }
+              />
             }
           />
 
@@ -307,7 +227,7 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
                 input={input}
                 onInputChange={set_input}
                 onSend={handle_send_message}
-                placeholder={mode.placeholder}
+                placeholder="Ask about ingredients, formulas, costs, market, or sales..."
                 disabled={is_loading}
                 onHeightChange={set_input_area_height}
               />
@@ -319,13 +239,12 @@ function UnifiedChat({ mode, thread_id }: UnifiedChatProps) {
   );
 }
 
-/** Resolve URL mode/thread before mounting a fresh focused chat workspace. */
+/** Ignore legacy mode URL parameters: all modes now share one workspace. */
 function UnifiedAIAgentPageContent() {
   const search_params = useSearchParams();
-  const mode = resolve_agent_mode(search_params.get('mode'));
   const thread_id = search_params.get('thread');
 
-  return <UnifiedChat key={`${mode.id}:${thread_id || 'default'}`} mode={mode} thread_id={thread_id} />;
+  return <UnifiedChat key={thread_id || 'default'} thread_id={thread_id} />;
 }
 
 /** The only user-facing AI entry point. */

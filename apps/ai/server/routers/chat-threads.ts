@@ -26,10 +26,21 @@ import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 // Input Schemas
 // ---------------------------------------------------------------------------
 
-const agent_type_enum = z.enum(['raw_materials_ai', 'sales_rnd_ai']);
+const agent_type_enum = z.enum(['rnd_ai', 'raw_materials_ai', 'sales_rnd_ai', 'formulation']);
+
+/**
+ * The previous separate workspaces are one R&D AI history now. Keep their
+ * threads visible so users do not lose access to their existing work.
+ */
+const unified_rnd_ai_agent_types = [
+  'rnd_ai',
+  'raw_materials_ai',
+  'sales_rnd_ai',
+  'formulation',
+] as const;
 
 const list_input = z.object({
-  agentType: agent_type_enum,
+  agentType: agent_type_enum.optional(),
   limit: z.number().min(1).max(100).default(30),
   includeArchived: z.boolean().default(false),
 });
@@ -67,10 +78,11 @@ const update_title_input = z.object({
 
 export const chatThreadsRouter = router({
   /**
-   * List chat threads owned by the acting profile for one agent type.
+   * List chat threads owned by the acting profile. The canonical `rnd_ai`
+   * workspace includes both its new threads and all legacy specialist threads.
    * Sorted by lastMessageAt descending (most recent first).
    *
-   * @param agentType       - Filter by AI agent type
+   * @param agentType       - Optional scope; `rnd_ai` and omission are unified
    * @param limit           - Max threads to return (default 30)
    * @param includeArchived - Whether to include archived threads
    * @returns Array of thread summaries
@@ -78,16 +90,19 @@ export const chatThreadsRouter = router({
   list: tenantProcedure("ai:run")
     .input(list_input)
     .query(async ({ ctx, input }) => {
+      const agent_types = input.agentType && input.agentType !== 'rnd_ai'
+        ? [input.agentType]
+        : unified_rnd_ai_agent_types;
       console.log('[chatThreads] list — start', {
         tenantId: ctx.tenant_context.tenant_id,
         actorProfileId: ctx.tenant_context.actor_profile_id,
-        agentType: input.agentType,
+        agentTypes: agent_types,
       });
 
       const threads = await ctx.repositories.conversations.list_own_threads(
         ctx.tenant_context,
         {
-          agent_type: input.agentType,
+          agent_types,
           include_archived: input.includeArchived,
           limit: input.limit,
         },

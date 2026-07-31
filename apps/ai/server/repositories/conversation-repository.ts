@@ -57,8 +57,8 @@ export interface MessageLogStats {
 
 /** Options for listing the actor's chat threads. */
 export interface ListOwnThreadsOptions {
-  /** Business agent type discriminator (e.g. "sales_rnd_ai"). */
-  readonly agent_type: string;
+  /** Business agent type discriminators included in the history. */
+  readonly agent_types: readonly string[];
   /** Whether soft-deleted (archived) threads are included. */
   readonly include_archived: boolean;
   /** Maximum threads to return. */
@@ -402,7 +402,7 @@ export function create_conversation_repository(db: Db): ConversationRepository {
       const filter: Document = {
         ...tenant_scope(context),
         ownerProfileId: context.actor_profile_id,
-        agentType: options.agent_type,
+        agentType: { $in: [...options.agent_types] },
       };
       if (!options.include_archived) {
         filter.isArchived = { $ne: true };
