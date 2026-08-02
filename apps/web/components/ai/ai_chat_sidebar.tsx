@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus, MessageSquare, Trash2, Loader2 } from 'lucide-react';
+import { Archive, Loader2, MessageSquare, Plus, Sparkles } from 'lucide-react';
 import { cn } from '@rnd-ai/shared-utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { ChatThread } from '@/hooks/use_chat_threads';
@@ -16,8 +16,6 @@ import type { ChatThread } from '@/hooks/use_chat_threads';
  * @param on_select        - Thread selection callback
  * @param on_new_chat      - New chat callback
  * @param on_archive       - Archive callback
- * @param is_new_chat      - New-chat mode flag
- * @param theme_color      - Accent color key (unused in minimal design)
  */
 
 interface AIChatSidebarProps {
@@ -27,8 +25,6 @@ interface AIChatSidebarProps {
   on_select: (thread_id: string) => void;
   on_new_chat: () => void;
   on_archive: (thread_id: string) => void;
-  is_new_chat: boolean;
-  theme_color?: string;
 }
 
 /**
@@ -87,15 +83,17 @@ export function AIChatSidebar({
   const group_order = ['Today', 'Yesterday', 'Previous 7 days', 'Older'];
 
   return (
-    <div className="flex flex-col h-full bg-[#fafafa]">
+    <div className="flex flex-col h-full bg-gradient-to-b from-emerald-50/80 via-white to-green-50/60">
       {/* New Chat */}
-      <div className="h-11 flex items-center px-3 border-b border-gray-100/80">
+      <div className="h-12 flex items-center px-3 border-b border-emerald-100/80">
         <button
+          type="button"
           onClick={on_new_chat}
-          className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-gray-800 transition-colors"
+          className="flex w-full items-center gap-2 rounded-xl bg-white/75 px-2 py-1.5 text-[12px] font-medium text-emerald-800 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-emerald-950"
         >
-          <Plus size={14} strokeWidth={1.5} />
+          <span className="rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 p-1 text-white"><Plus size={12} strokeWidth={2} /></span>
           <span>New chat</span>
+          <Sparkles size={12} className="ml-auto text-emerald-500" />
         </button>
       </div>
 
@@ -103,12 +101,12 @@ export function AIChatSidebar({
       <ScrollArea className="flex-1">
         <div className="py-2 px-1.5">
           {loading ? (
-            <div className="flex items-center justify-center py-12 text-gray-300">
+            <div className="flex items-center justify-center py-12 text-emerald-400">
               <Loader2 size={14} className="animate-spin" />
             </div>
           ) : threads.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-[11px] text-gray-300">No conversations yet</p>
+              <p className="text-[11px] text-emerald-800/45">No conversations yet</p>
             </div>
           ) : (
             group_order.map((group_name) => {
@@ -117,7 +115,7 @@ export function AIChatSidebar({
 
               return (
                 <div key={group_name} className="mb-3">
-                  <p className="text-[10px] font-medium text-gray-400/80 uppercase tracking-wider px-2 py-1">
+                  <p className="text-[10px] font-medium text-emerald-800/45 uppercase tracking-wider px-2 py-1">
                     {group_name}
                   </p>
                   {items.map((thread) => {
@@ -126,31 +124,38 @@ export function AIChatSidebar({
                       <div
                         key={thread.id}
                         className={cn(
-                          'group flex items-center gap-1 px-2 py-[6px] rounded-lg cursor-pointer transition-all',
+                          'group flex items-center gap-1 rounded-xl transition-all',
                           is_active
-                            ? 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] text-gray-900'
-                            : 'text-gray-500 hover:bg-white/70 hover:text-gray-700',
+                            ? 'bg-white shadow-[0_5px_14px_rgba(16,185,129,0.12)] text-emerald-950'
+                            : 'text-emerald-800/65 hover:bg-white/80 hover:text-emerald-900',
                         )}
-                        onClick={() => on_select(thread.id)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && on_select(thread.id)}
                       >
-                        <p className={cn(
-                          'flex-1 min-w-0 text-[11.5px] truncate leading-tight',
-                          is_active && 'font-medium',
-                        )}>
-                          {thread.title}
-                        </p>
-                        <span className="text-[10px] text-gray-300 flex-shrink-0 tabular-nums mr-0.5">
-                          {format_time(thread.lastMessageAt)}
-                        </span>
                         <button
-                          onClick={(e) => { e.stopPropagation(); on_archive(thread.id); }}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-50 hover:text-red-400 text-gray-200 transition-all flex-shrink-0"
-                          aria-label="Delete conversation"
+                          type="button"
+                          onClick={() => on_select(thread.id)}
+                          className="flex min-w-0 flex-1 items-center gap-1 px-2 py-[7px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
+                          aria-current={is_active ? 'page' : undefined}
                         >
-                          <Trash2 size={11} />
+                          <p className={cn(
+                            'flex-1 min-w-0 text-[11.5px] truncate leading-tight',
+                            is_active && 'font-medium',
+                          )}>
+                            {thread.title}
+                          </p>
+                          <span className="mr-0.5 flex-shrink-0 text-[10px] text-emerald-800/35 tabular-nums">
+                            {format_time(thread.lastMessageAt)}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm('Archive this conversation?')) on_archive(thread.id);
+                          }}
+                          className="mr-1 flex-shrink-0 rounded-lg p-1 text-emerald-800/35 transition-all hover:bg-emerald-50 hover:text-emerald-700 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                          aria-label="Archive conversation"
+                          title="Archive conversation"
+                        >
+                          <Archive size={12} />
                         </button>
                       </div>
                     );

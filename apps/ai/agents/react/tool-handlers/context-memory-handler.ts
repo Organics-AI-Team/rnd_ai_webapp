@@ -4,9 +4,10 @@
  * from MongoDB for a given session_id and returning the last N turns in a
  * readable format.
  *
- * Data sources (both queried, results merged chronologically):
- *   1. rnd_ai.conversations          — MONGODB_URI
- *   2. rnd_ai.raw_materials_conversations — MONGODB_URI
+ * Data sources (queried and merged chronologically):
+ *   1. rnd_ai.chat_threads + chat_messages — current unified workspace
+ *   2. rnd_ai.conversations                 — legacy conversations
+ *   3. rnd_ai.raw_materials_conversations   — legacy raw-material chat
  *
  * This allows the ReAct agent to recall earlier user preferences, mentioned
  * ingredients, or formulation context without re-asking the user.
@@ -15,7 +16,8 @@
  * @date 2026-03-27
  */
 
-import { MongoClient, Document } from 'mongodb';
+import { Document, MongoClient, ObjectId } from 'mongodb';
+import type { ToolHandlerContext } from '../types';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -35,6 +37,10 @@ const PRIMARY_COLLECTION = 'conversations';
 
 /** Secondary conversation collection for raw-materials-specific chat history */
 const SECONDARY_COLLECTION = 'raw_materials_conversations';
+
+/** Current thread and message collections used by the unified AI workspace. */
+const CHAT_THREADS_COLLECTION = 'chat_threads';
+const CHAT_MESSAGES_COLLECTION = 'chat_messages';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -242,6 +248,61 @@ async function query_conversation_collection(
   }
 }
 
+/**
+ * Load messages from the current chat thread after proving that the requested
+ * thread belongs to the current user and organisation. The message collection
+ * stores a string threadId, while the thread itself uses an ObjectId.
+ */
+async function query_unified_chat_messages(
+  client: MongoClient,
+  session_id: string,
+  lookback: number,
+  context?: ToolHandlerContext,
+): Promise<ConversationMessage[]> {
+  if (!context?.user_id || !context.organization_id) {
+    console.log('[context-memory-handler] unified chat lookup skipped: missing auth context');
+    return [];
+  }
+
+  if (!ObjectId.isValid(session_id)) {
+    return [];
+  }
+
+  try {
+    const db = client.db(CONVERSATIONS_DATABASE);
+    const thread = await db.collection(CHAT_THREADS_COLLECTION).findOne({
+      _id: new ObjectId(session_id),
+      userId: context.user_id,
+      organizationId: context.organization_id,
+    });
+
+    if (!thread) {
+      console.log('[context-memory-handler] unified chat lookup skipped: thread not owned by caller', {
+        session_id,
+      });
+      return [];
+    }
+
+    const messages = await db.collection(CHAT_MESSAGES_COLLECTION)
+      .find({ threadId: session_id })
+      .sort({ createdAt: -1 })
+      .limit(lookback)
+      .toArray();
+
+    return messages.reverse().flatMap((message) => extract_messages_from_doc(
+      message,
+      CHAT_MESSAGES_COLLECTION,
+    ));
+  } catch (error) {
+    const err_msg = error instanceof Error ? error.message : String(error);
+    console.log('[context-memory-handler] unified chat lookup skipped (error)', {
+      session_id,
+      error: err_msg,
+    });
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Result Formatter
 // ---------------------------------------------------------------------------
@@ -287,15 +348,20 @@ function format_conversation_history(
  * Workflow:
  * 1. Validate session_id and lookback
  * 2. Connect to MongoDB using MONGODB_URI
- * 3. Query both `conversations` and `raw_materials_conversations` collections
- * 4. Merge results, sort chronologically, trim to lookback limit
- * 5. Return formatted conversation history
+ * 3. Verify and query the active unified chat thread when context is available
+ * 4. Query legacy conversation collections for backwards compatibility
+ * 5. Merge results, sort chronologically, trim to lookback limit
+ * 6. Return formatted conversation history
  *
  * @param params - ContextMemoryParams with session_id and optional lookback
+ * @param context - Current caller identity used to scope unified thread access
  * @returns Formatted conversation history string or a descriptive error/empty message
  * @throws Never throws directly — errors are caught and returned as strings
  */
-export async function handle_context_memory(params: ContextMemoryParams): Promise<string> {
+export async function handle_context_memory(
+  params: ContextMemoryParams,
+  context?: ToolHandlerContext,
+): Promise<string> {
   const start_ts = Date.now();
   console.log('[context-memory-handler] handle_context_memory — start', {
     session_id: params.session_id,
@@ -318,14 +384,17 @@ export async function handle_context_memory(params: ContextMemoryParams): Promis
 
     const client = await get_or_create_client(uri);
 
-    // Query both collections in parallel for efficiency
-    const [primary_messages, secondary_messages] = await Promise.all([
+    // Query the current workspace and legacy collections in parallel. The
+    // current workspace query is ownership-scoped before messages are read.
+    const [unified_messages, primary_messages, secondary_messages] = await Promise.all([
+      query_unified_chat_messages(client, params.session_id, lookback, context),
       query_conversation_collection(client, PRIMARY_COLLECTION, params.session_id, lookback),
       query_conversation_collection(client, SECONDARY_COLLECTION, params.session_id, lookback),
     ]);
 
     // Merge and sort by timestamp ascending (oldest first, newest last)
     const all_messages: ConversationMessage[] = [
+      ...unified_messages,
       ...primary_messages,
       ...secondary_messages,
     ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());

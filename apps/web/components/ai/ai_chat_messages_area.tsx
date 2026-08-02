@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AIChatMessage } from './ai_chat_message';
 import { AILoadingIndicator } from './ai_loading_indicator';
 import { AIEmptyState } from './ai_empty_state';
 import type { Message } from './ai_chat_message';
+import type { GeneratedFormula } from '@/lib/ai/formula-conversion';
 
 /**
  * AI Chat Messages Area - Scrollable message list with auto-scroll
@@ -18,6 +19,7 @@ import type { Message } from './ai_chat_message';
  *
  * @param messages            - Chat messages array
  * @param isLoading           - Whether AI is processing
+ * @param isInitialLoading    - Whether the selected conversation is loading
  * @param themeColor          - Theme color for messages
  * @param emptyStateIcon      - Icon for empty state
  * @param emptyStateGreeting  - Empty state greeting
@@ -25,13 +27,13 @@ import type { Message } from './ai_chat_message';
  * @param loadingMessage      - Loading indicator text
  * @param metadataIcon        - Icon for metadata
  * @param metadataLabel       - Label for metadata
- * @param inputAreaHeight     - Deprecated, unused
  * @param bottomPadding       - Bottom spacing pixels
  */
 
 interface AIChatMessagesAreaProps {
   messages: Message[];
   isLoading: boolean;
+  isInitialLoading?: boolean;
   themeColor?: 'blue' | 'green' | 'purple' | 'orange';
   emptyStateIcon: React.ReactNode;
   emptyStateGreeting: string;
@@ -39,10 +41,10 @@ interface AIChatMessagesAreaProps {
   loadingMessage?: string;
   metadataIcon?: React.ReactNode;
   metadataLabel?: string;
-  inputAreaHeight?: number;
   bottomPadding?: number;
   onSuggestionClick?: (suggestion: string) => void;
   onQuickAction?: (prompt: string) => void;
+  onConvertFormula?: (messageId: string, formula: GeneratedFormula) => Promise<{ id: string; formulaCode?: string } | null>;
   /** Callback when user submits feedback on a message */
   onFeedback?: (messageId: string, isPositive: boolean) => void;
   /** Set of message IDs that already have feedback submitted */
@@ -52,6 +54,7 @@ interface AIChatMessagesAreaProps {
 export function AIChatMessagesArea({
   messages,
   isLoading,
+  isInitialLoading = false,
   themeColor = 'blue',
   emptyStateIcon,
   emptyStateGreeting,
@@ -62,6 +65,7 @@ export function AIChatMessagesArea({
   bottomPadding = 16,
   onSuggestionClick,
   onQuickAction,
+  onConvertFormula,
   onFeedback,
   feedbackSubmitted = new Set(),
 }: AIChatMessagesAreaProps) {
@@ -116,11 +120,16 @@ export function AIChatMessagesArea({
     <div className="relative flex-1 min-h-0">
       <ScrollArea className="h-full px-4 pt-2" onScrollCapture={handle_scroll}>
         <div
-          className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "max-w-2xl mx-auto space-y-1"}
+          className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "max-w-2xl mx-auto space-y-1 py-2"}
           style={{ paddingBottom: `${bottomPadding}px` }}
           ref={scroll_container_ref}
         >
-          {messages.length === 0 ? (
+          {isInitialLoading ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-emerald-800/55" role="status" aria-live="polite">
+              <Loader2 className="h-5 w-5 animate-spin text-emerald-600" />
+              <span className="text-xs">กำลังเปิดประวัติการสนทนา...</span>
+            </div>
+          ) : messages.length === 0 ? (
             <AIEmptyState
               icon={emptyStateIcon}
               greeting={emptyStateGreeting}
@@ -136,6 +145,7 @@ export function AIChatMessagesArea({
                 metadataIcon={metadataIcon}
                 metadataLabel={metadataLabel}
                 onQuickAction={onQuickAction}
+                onConvertFormula={onConvertFormula}
                 onFeedback={onFeedback}
                 feedbackSubmitted={feedbackSubmitted.has(message.id)}
               />
@@ -156,7 +166,7 @@ export function AIChatMessagesArea({
       {!is_near_bottom && messages.length > 0 && (
         <button
           onClick={scroll_to_bottom}
-          className="absolute bottom-4 right-4 z-10 bg-white border border-gray-200 shadow-md rounded-full p-2 hover:bg-gray-50 transition-all text-gray-500 hover:text-gray-700"
+          className="absolute bottom-4 right-4 z-10 bg-white/90 border border-emerald-100 shadow-[0_8px_20px_rgba(16,185,129,0.14)] rounded-full p-2 hover:bg-emerald-50 transition-all text-emerald-700 hover:text-emerald-950"
           aria-label="Scroll to latest message"
           title="Scroll to bottom"
         >

@@ -1,7 +1,7 @@
 /**
  * Qdrant Vector Database Service
  * Low-level CRUD operations for the Qdrant vector store.
- * Drop-in replacement for chroma-service.ts with typed payloads,
+ * Provides typed payloads,
  * batched upserts, pre-filtered search, and collection lifecycle management.
  *
  * Features:
@@ -18,7 +18,7 @@
 
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { Logger } from '@rnd-ai/shared-utils';
-import { ErrorHandler, ErrorType } from '@/ai/utils/error-handler';
+import { ErrorHandler, ErrorType } from '../../utils/error-handler';
 
 import {
   get_qdrant_connection_config,

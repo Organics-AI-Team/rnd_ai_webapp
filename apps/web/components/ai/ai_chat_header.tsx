@@ -26,11 +26,11 @@ export function AIChatHeader({
   leading,
 }: AIChatHeaderProps) {
   return (
-    <div className="flex items-center gap-2 h-11 px-3 border-b border-gray-100/80">
+    <div className="flex h-12 items-center gap-2 border-b border-emerald-100/80 bg-gradient-to-r from-emerald-50/80 via-white to-green-50/70 px-3">
       {leading}
-      <span className="text-[13px] font-medium text-gray-800 truncate">{title}</span>
+      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-emerald-950">{title}</span>
       {badgeText && (
-        <span className="text-[10px] text-gray-400 font-normal">
+        <span className="max-w-28 shrink-0 truncate rounded-full border border-emerald-200 bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 sm:max-w-none">
           {badgeText}
         </span>
       )}

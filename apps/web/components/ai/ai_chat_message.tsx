@@ -6,6 +6,7 @@ import { Bot, User } from 'lucide-react';
 import { MarkdownRenderer } from '@/ai/components/chat/markdown-renderer';
 import { AIFeedbackButtons } from './ai_feedback_buttons';
 import { AIFormulaResult } from './ai_formula_result';
+import type { GeneratedFormula } from '@/lib/ai/formula-conversion';
 
 /**
  * AI Chat Message - ChatGPT-style full-width message rows
@@ -46,13 +47,15 @@ interface AIChatMessageProps {
   feedbackSubmitted?: boolean;
   /** Callback when user clicks a quick action prompt */
   onQuickAction?: (prompt: string) => void;
+  /** Save a generated formula card as an editable draft. */
+  onConvertFormula?: (messageId: string, formula: GeneratedFormula) => Promise<{ id: string; formulaCode?: string } | null>;
 }
 
 const themeColorMap = {
-  blue: { icon: 'text-blue-500', bg: 'bg-blue-50/80', badge: 'bg-blue-50/80 text-blue-600 border-blue-200/60' },
-  green: { icon: 'text-emerald-500', bg: 'bg-emerald-50/80', badge: 'bg-emerald-50/80 text-emerald-600 border-emerald-200/60' },
-  purple: { icon: 'text-violet-500', bg: 'bg-violet-50/80', badge: 'bg-violet-50/80 text-violet-600 border-violet-200/60' },
-  orange: { icon: 'text-orange-500', bg: 'bg-orange-50/80', badge: 'bg-orange-50/80 text-orange-600 border-orange-200/60' },
+  blue: { icon: 'text-emerald-600', bg: 'bg-emerald-100/80', badge: 'bg-emerald-50/80 text-emerald-700 border-emerald-200/70' },
+  green: { icon: 'text-emerald-600', bg: 'bg-emerald-100/80', badge: 'bg-emerald-50/80 text-emerald-700 border-emerald-200/70' },
+  purple: { icon: 'text-emerald-600', bg: 'bg-emerald-100/80', badge: 'bg-emerald-50/80 text-emerald-700 border-emerald-200/70' },
+  orange: { icon: 'text-emerald-600', bg: 'bg-emerald-100/80', badge: 'bg-emerald-50/80 text-emerald-700 border-emerald-200/70' },
 };
 
 function getDisplayContent(content: string): string {
@@ -86,6 +89,7 @@ function getProcessSteps(metadata: Message['metadata']): Array<{ key: string; la
     formula_calculate: 'คำนวณสูตรหรือต้นทุน',
     web_search: 'ค้นข้อมูลภายนอก',
     context_memory: 'อ่านบริบทจากแชทก่อนหน้า',
+    stock_lookup: 'ตรวจสอบสต็อกปัจจุบัน',
     generate_formula: 'สร้างสูตร draft',
     search_reference_formulas: 'ค้นสูตรอ้างอิง',
     revise_formula: 'ปรับสูตรตาม feedback',
@@ -116,6 +120,7 @@ export const AIChatMessage = React.memo(function AIChatMessage({
   onFeedback,
   feedbackSubmitted = false,
   onQuickAction,
+  onConvertFormula,
 }: AIChatMessageProps) {
   const colors = themeColorMap[themeColor];
   const displayContent = getDisplayContent(message.content);
@@ -130,8 +135,8 @@ export const AIChatMessage = React.memo(function AIChatMessage({
             <Bot className={`w-3.5 h-3.5 ${colors.icon}`} />
           </div>
         ) : (
-          <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center">
-            <User className="w-3.5 h-3.5 text-gray-500" />
+          <div className="w-6 h-6 rounded-lg bg-white border border-emerald-100 flex items-center justify-center shadow-sm">
+            <User className="w-3.5 h-3.5 text-emerald-700" />
           </div>
         )}
       </div>
@@ -139,20 +144,20 @@ export const AIChatMessage = React.memo(function AIChatMessage({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-xs font-medium text-gray-700">
+          <span className="text-xs font-medium text-emerald-950">
             {message.role === 'assistant' ? 'AI' : 'คุณ'}
           </span>
-          <span className="text-[10px] text-gray-300 tabular-nums">
+          <span className="text-[10px] text-emerald-800/40 tabular-nums">
             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
 
         {message.role === 'assistant' ? (
-          <div className="text-sm text-gray-900 leading-relaxed break-words overflow-hidden">
+          <div className="text-sm text-emerald-950 leading-relaxed break-words overflow-hidden">
             <MarkdownRenderer content={displayContent} />
           </div>
         ) : (
-          <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">{displayContent}</p>
+          <p className="text-sm text-emerald-950 whitespace-pre-wrap break-words">{displayContent}</p>
         )}
 
         {message.role === 'assistant' && message.metadata?.formula && (
@@ -162,6 +167,9 @@ export const AIChatMessage = React.memo(function AIChatMessage({
             quickActions={message.metadata.quickActions}
             language={message.metadata.language}
             onQuickAction={onQuickAction}
+            onConvertToFormula={onConvertFormula
+              ? () => onConvertFormula(message.id, message.metadata!.formula as GeneratedFormula)
+              : undefined}
           />
         )}
 
@@ -175,7 +183,7 @@ export const AIChatMessage = React.memo(function AIChatMessage({
               </Badge>
             )}
             {message.metadata.confidence != null && message.metadata.confidence > 0 && (
-              <span className="text-[10px] text-gray-300 tabular-nums">
+              <span className="text-[10px] text-emerald-800/45 tabular-nums">
                 {(message.metadata.confidence * 100).toFixed(0)}%
               </span>
             )}
@@ -183,20 +191,20 @@ export const AIChatMessage = React.memo(function AIChatMessage({
         )}
 
         {message.role === 'assistant' && processSteps.length > 0 && (
-          <details className="group mt-2 text-[11px] text-gray-400">
-            <summary className="inline-flex cursor-pointer select-none items-center gap-1 rounded-md px-1.5 py-1 hover:bg-gray-50 hover:text-gray-600">
+          <details className="group mt-2 text-[11px] text-emerald-800/55">
+            <summary className="inline-flex cursor-pointer select-none items-center gap-1 rounded-lg px-1.5 py-1 hover:bg-emerald-50 hover:text-emerald-800">
               <span className="transition-transform group-open:rotate-90">›</span>
               <span>ขั้นตอน</span>
-              <span className="text-gray-300">({processSteps.length})</span>
+              <span className="text-emerald-800/35">({processSteps.length})</span>
             </summary>
-            <div className="mt-1 ml-4 border-l border-gray-100 pl-3 text-gray-500">
+            <div className="mt-1 ml-4 border-l border-emerald-100 pl-3 text-emerald-800/70">
               {processSteps.map((step, index) => (
                 <div key={`${step.key}-${index}`} className="py-0.5">
                   {index + 1}. {step.label}
                 </div>
               ))}
               {message.metadata.responseTime != null && message.metadata.responseTime > 0 && (
-                <div className="py-0.5 text-gray-400">
+                <div className="py-0.5 text-emerald-800/50">
                   เวลา: {(message.metadata.responseTime / 1000).toFixed(1)}s
                 </div>
               )}

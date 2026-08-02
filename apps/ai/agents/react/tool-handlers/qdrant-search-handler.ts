@@ -34,6 +34,8 @@ const PROJECTED_PAYLOAD_FIELDS = [
   'cost',
   'benefits', 'Function', 'function',
   'stock_status', 'stockStatus',
+  'title', 'summary', 'content', 'text',
+  'category', 'market', 'company', 'segment', 'positioning',
 ];
 
 // ---------------------------------------------------------------------------
@@ -100,8 +102,8 @@ function build_qdrant_filter(
 
 /**
  * Format a single Qdrant search result payload into a human-readable line.
- * Extracts key fields: score, rm_code, trade_name, inci_name, supplier, cost,
- * benefits/function, and stock_status.
+ * Extracts material fields when present, otherwise formats general commercial
+ * fields from the sales knowledge collection.
  *
  * @param index   - 1-based result index for display numbering
  * @param score   - Cosine similarity score (0-1)
@@ -114,6 +116,10 @@ function format_result(
   payload: Record<string, unknown>,
 ): string {
   const score_pct = (score * 100).toFixed(1);
+  const title = String(payload.title ?? payload.name ?? 'N/A');
+  const summary = String(payload.summary ?? payload.content ?? payload.text ?? 'N/A');
+  const category = String(payload.category ?? payload.market ?? payload.segment ?? 'N/A');
+  const company = String(payload.company ?? payload.supplier ?? 'N/A');
   const code = String(payload.rm_code ?? payload.code ?? 'N/A');
   const trade_name = String(payload.trade_name ?? payload.tradeName ?? 'N/A');
   const inci = String(payload.inci_name ?? payload.INCI_name ?? payload.inci ?? 'N/A');
@@ -121,6 +127,27 @@ function format_result(
   const cost = payload.cost !== undefined ? `${payload.cost} THB/kg` : 'N/A';
   const benefits = String(payload.benefits ?? payload.Function ?? payload.function ?? 'N/A');
   const stock_status = String(payload.stock_status ?? payload.stockStatus ?? 'N/A');
+
+  const has_material_fields = [
+    payload.rm_code,
+    payload.code,
+    payload.trade_name,
+    payload.tradeName,
+    payload.inci_name,
+    payload.INCI_name,
+    payload.inci,
+  ].some((value) => value !== undefined && value !== null);
+
+  if (!has_material_fields) {
+    return [
+      `[${index}] Score: ${score_pct}%`,
+      `    Title: ${title}`,
+      `    Category/Market: ${category}`,
+      `    Company: ${company}`,
+      `    Summary: ${summary.slice(0, 700)}`,
+      `    Positioning: ${String(payload.positioning ?? 'N/A')}`,
+    ].join('\n');
+  }
 
   return [
     `[${index}] Score: ${score_pct}%`,

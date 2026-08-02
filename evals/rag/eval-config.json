@@ -1,0 +1,12 @@
+{
+  "judge_model": "gemini-2.0-flash",
+  "embedding_model": "gemini-embedding-001",
+  "thresholds": {
+    "faithfulness": 0.85,
+    "context_precision": 0.7,
+    "context_recall": 0.8,
+    "factual_correctness": 0.8,
+    "answer_relevancy": 0.7,
+    "p95_latency_ms": 30000
+  }
+}

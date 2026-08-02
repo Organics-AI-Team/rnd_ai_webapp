@@ -1,233 +1,317 @@
 'use client';
 
-import React from 'react';
-import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Suspense, useCallback, useState } from 'react';
+import { Bot, Loader2, Search } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
+import { trpc } from '@/lib/trpc-client';
+import { use_chat_threads } from '@/hooks/use_chat_threads';
+import { to_formula_create_input, type GeneratedFormula } from '@/lib/ai/formula-conversion';
 import {
-  Bot,
-  MessageSquare,
-  Package,
-  BarChart,
-  Users,
-  ArrowRight,
-  Database,
-  Settings,
-  Star,
-  TrendingUp
-} from 'lucide-react';
+  AIAgentSkills,
+  AGENT_SKILLS,
+  type AgentSkill,
+  type AgentSkillId,
+  AIAuthGuard,
+  AIChatHeader,
+  AIChatInputArea,
+  AIChatInputContainer,
+  AIChatLayout,
+  AIChatMessagesArea,
+  AIChatMessagesContainer,
+  AIChatSidebar,
+  SidebarToggleButton,
+  type Message,
+} from '@/components/ai';
 
-export default function AIHubPage() {
-  const aiFeatures = [
-    {
-      title: 'Raw Materials AI',
-      description: 'Specialized AI for ingredient research with access to comprehensive database',
-      icon: <Package className="w-6 h-6" />,
-      href: '/ai/raw-materials-ai',
-      badge: 'RAG Enhanced',
-      color: 'bg-green-500'
-    },
-    {
-      title: 'Sales R&D AI',
-      description: 'AI assistant for sales strategies, market intelligence, and business development',
-      icon: <TrendingUp className="w-6 h-6" />,
-      href: '/ai/sales-rnd-ai',
-      badge: 'Market Intel',
-      color: 'bg-purple-500'
-    },
-    {
-      title: 'AI Agents Hub',
-      description: 'Access specialized AI agents for different domains and expertise areas',
-      icon: <Users className="w-6 h-6" />,
-      href: '/ai/agents',
-      badge: 'New',
-      color: 'bg-blue-500'
-    },
-    {
-      title: 'Analytics Dashboard',
-      description: 'Monitor AI usage, performance metrics, and user satisfaction',
-      icon: <BarChart className="w-6 h-6" />,
-      href: '/ai/analytics',
-      badge: 'Analytics',
-      color: 'bg-orange-500'
+const THAI_CHAR_REGEX = /[\u0E00-\u0E7F]/;
+
+/** Return a localized fallback message when the agent request cannot complete. */
+function get_error_message(user_input: string): string {
+  return THAI_CHAR_REGEX.test(user_input)
+    ? 'ขออภัย ระบบประมวลผลคำขอไม่สำเร็จในรอบนี้ กรุณาลองใหม่อีกครั้ง หรือระบุรายละเอียดให้แคบลง'
+    : 'Sorry, I could not process your request at the moment. Please try again with more detail.';
+}
+
+/**
+ * Unified R&D agent workspace for material, formulation, and commercial work.
+ * The ReAct backend selects the appropriate skill and tool for each request.
+ */
+function UnifiedAIAgentPageContent() {
+  const { user, isLoading: is_auth_loading } = useAuth();
+  const router = useRouter();
+  const search_params = useSearchParams();
+  const thread_param = search_params.get('thread');
+  const new_chat_param = search_params.get('new');
+  const chat = use_chat_threads('rnd_ai', thread_param, new_chat_param);
+
+  const [input, set_input] = useState('');
+  const [active_skill_id, set_active_skill_id] = useState<AgentSkillId>('materials');
+  const [is_loading, set_is_loading] = useState(false);
+  const [feedback_submitted, set_feedback_submitted] = useState<Set<string>>(new Set());
+  const [is_sidebar_open, set_is_sidebar_open] = useState(() => (
+    typeof window === 'undefined' || window.innerWidth >= 1024
+  ));
+  const create_formula = trpc.formulas.create.useMutation();
+  const active_skill = AGENT_SKILLS.find((skill) => skill.id === active_skill_id) || AGENT_SKILLS[0];
+
+  const display_messages: Message[] = chat.messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    timestamp: new Date(message.createdAt),
+    metadata: message.metadata || undefined,
+  }));
+
+  /** Change the visible task focus without changing the chat thread or agent. */
+  const handle_select_skill = useCallback((skill: AgentSkill) => {
+    set_active_skill_id(skill.id);
+    set_input((current) => current.trim() ? current : skill.prompt);
+  }, []);
+
+  /** Close the overlay after a mobile history action, while retaining desktop history. */
+  const close_mobile_sidebar = useCallback(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      set_is_sidebar_open(false);
     }
-  ];
+  }, []);
 
-  const stats = [
-    { label: 'Active AI Agents', value: '7', icon: <Bot className="w-5 h-5" /> },
-    { label: 'Knowledge Bases', value: '8', icon: <Database className="w-5 h-5" /> },
-    { label: 'Avg Response Time', value: '1.3s', icon: <TrendingUp className="w-5 h-5" /> },
-    { label: 'User Satisfaction', value: '4.2/5', icon: <Star className="w-5 h-5" /> }
-  ];
+  /** Send a user turn through the unified ReAct agent and persist its reply. */
+  const handle_send_message = useCallback(async () => {
+    if (!input.trim() || is_loading) return;
+
+    const user_input = input.trim();
+    set_input('');
+    set_is_loading(true);
+    console.log('[UnifiedAIAgent] handle_send_message — start');
+
+    let timeout_id: ReturnType<typeof setTimeout> | undefined;
+    let persisted_user_message: Awaited<ReturnType<typeof chat.add_message>> = null;
+
+    try {
+      persisted_user_message = await chat.add_message('user', user_input);
+      if (!persisted_user_message) {
+        set_input(user_input);
+        return;
+      }
+
+      const abort_controller = new AbortController();
+      timeout_id = setTimeout(() => abort_controller.abort(), 60000);
+      const response = await fetch('/api/ai/rnd-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: abort_controller.signal,
+        body: JSON.stringify({
+          prompt: user_input,
+          userId: user?.id || 'anonymous',
+          organizationId: user?.organizationId,
+          sessionId: persisted_user_message.threadId,
+          persistFormula: false,
+          // The API appends `prompt` as the current user turn. Supplying the
+          // newly persisted message here as well produces two consecutive
+          // user turns, which can break Gemini's multi-turn context.
+          conversationHistory: chat.messages.map((message) => ({
+            role: message.role,
+            content: message.content,
+          })).slice(-30),
+          enableEnhancements: true,
+          enableStreaming: false,
+          enableMLOptimizations: true,
+          enableSearch: true,
+        }),
+      });
+      if (!response.ok) {
+        const error_body = await response.json().catch(() => null);
+        throw new Error(error_body?.error || 'Failed to get AI response');
+      }
+
+      const data = await response.json();
+      const artifacts = data.metadata?.artifacts;
+      const ai_content = data.response || (
+        THAI_CHAR_REGEX.test(user_input)
+          ? 'ขออภัย ระบบยังประมวลผลคำขอนี้ไม่สำเร็จ'
+          : 'Sorry, I could not process your request at the moment.'
+      );
+      const ai_metadata = {
+        sources: data.searchResults || artifacts?.citations || [],
+        confidence: data.metadata?.confidence || 0.5,
+        ragUsed: data.features?.searchEnabled || false,
+        responseTime: data.metadata?.processingTime || data.metadata?.latency || 0,
+        toolCalls: data.features?.optimizationsApplied || [],
+        processSteps: artifacts?.processSteps || [],
+        formula: artifacts?.formula,
+        citations: artifacts?.citations || [],
+        quickActions: artifacts?.quickActions || [],
+        language: artifacts?.language,
+      };
+
+      await chat.add_message('assistant', ai_content, ai_metadata);
+      console.log('[UnifiedAIAgent] handle_send_message — done');
+    } catch (error) {
+      console.error('[UnifiedAIAgent] handle_send_message — error', error);
+      if (persisted_user_message) {
+        await chat.add_message('assistant', get_error_message(user_input));
+      } else {
+        set_input(user_input);
+      }
+    } finally {
+      if (timeout_id) clearTimeout(timeout_id);
+      set_is_loading(false);
+    }
+  }, [chat, input, is_loading, user]);
+
+  /** Save a structured formula preview as an editable draft in the formula library. */
+  const handle_convert_formula = useCallback(async (message_id: string, formula: GeneratedFormula) => {
+    const result = await create_formula.mutateAsync(to_formula_create_input(formula));
+    const source_message = chat.messages.find((message) => message.id === message_id);
+    await chat.update_message_metadata(message_id, {
+      ...(source_message?.metadata || {}),
+      formula: {
+        ...formula,
+        formula_id: result._id,
+        formula_code: result.formulaCode,
+        saved_to_db: true,
+        status: 'draft',
+      },
+    });
+    return { id: result._id, formulaCode: result.formulaCode };
+  }, [chat, create_formula]);
+
+  /** Submit message-level feedback for the unified agent's learning flow. */
+  const handle_feedback = useCallback(async (message_id: string, is_positive: boolean) => {
+    if (feedback_submitted.has(message_id)) return;
+
+    try {
+      const response = await fetch('/api/ai/rnd-agent', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id,
+          messageId: message_id,
+          feedback: {
+            messageId: message_id,
+            type: is_positive ? 'positive' : 'negative',
+            score: is_positive ? 5 : 2,
+            timestamp: new Date(),
+          },
+        }),
+      });
+      if (response.ok) {
+        set_feedback_submitted((current) => new Set([...current, message_id]));
+      }
+    } catch (error) {
+      console.error('[UnifiedAIAgent] handle_feedback — error', error);
+    }
+  }, [feedback_submitted, user]);
+
+  if (is_auth_loading) {
+    return (
+      <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
+        <div className="flex items-center gap-2 text-sm text-emerald-800/60">
+          <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+          กำลังเปิด R&D AI...
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <AIAuthGuard
+        icon={<Bot className="h-16 w-16" />}
+        title="กรุณาเข้าสู่ระบบเพื่อใช้ R&D AI Agent"
+        description="ผู้ช่วยคนเดียวสำหรับวัตถุดิบ สูตร ต้นทุน ตลาด และแผนการขาย"
+      />
+    );
+  }
 
   return (
-    <div className="w-full max-w-6xl mx-auto">
-      <div className="mb-8">
-        <div className="flex items-center space-x-2 mb-4">
-          <Bot className="w-8 h-8 text-blue-500" />
-          <h1 className="text-3xl font-bold">AI Hub</h1>
+    <div className="h-full">
+      <AIChatLayout
+        is_sidebar_open={is_sidebar_open}
+        on_toggle_sidebar={() => set_is_sidebar_open((current) => !current)}
+        sidebar={
+          <AIChatSidebar
+            threads={chat.threads}
+            active_thread_id={chat.active_thread_id}
+            loading={chat.threads_loading}
+            on_select={(thread_id) => {
+              chat.select_thread(thread_id);
+              close_mobile_sidebar();
+            }}
+            on_new_chat={() => {
+              chat.start_new_chat();
+              close_mobile_sidebar();
+              router.replace('/ai');
+            }}
+            on_archive={chat.archive_thread}
+          />
+        }
+      >
+        <div className="flex min-h-0 flex-1 flex-col">
+          <AIChatMessagesContainer
+            header={
+              <AIChatHeader
+                title={chat.active_thread?.title || 'R&D AI Agent'}
+                badgeText={`Unified · ${active_skill.label}`}
+                leading={
+                  <SidebarToggleButton
+                    is_open={is_sidebar_open}
+                    on_toggle={() => set_is_sidebar_open((current) => !current)}
+                  />
+                }
+              />
+            }
+            messagesArea={
+              <>
+                <AIAgentSkills
+                  active_skill_id={active_skill_id}
+                  on_select={handle_select_skill}
+                />
+                <AIChatMessagesArea
+                  messages={display_messages}
+                  isLoading={is_loading}
+                  isInitialLoading={chat.messages_loading}
+                  themeColor="green"
+                  emptyStateIcon={<Bot className="h-10 w-10" />}
+                  emptyStateGreeting={`ผู้ช่วย R&D คนเดียวสำหรับทุกงาน · ${active_skill.description}`}
+                  emptyStateSuggestions={active_skill.suggestions}
+                  onSuggestionClick={set_input}
+                  onQuickAction={set_input}
+                  onConvertFormula={handle_convert_formula}
+                  loadingMessage="กำลังวางแผนและค้นหาข้อมูล..."
+                  metadataIcon={<Search className="h-3 w-3" />}
+                  metadataLabel="Agent"
+                  bottomPadding={8}
+                  onFeedback={handle_feedback}
+                  feedbackSubmitted={feedback_submitted}
+                />
+              </>
+            }
+          />
+
+          <AIChatInputContainer
+            inputArea={
+              <AIChatInputArea
+                input={input}
+                onInputChange={set_input}
+                onSend={handle_send_message}
+                placeholder={active_skill.placeholder}
+                disabled={is_loading}
+              />
+            }
+          />
         </div>
-        <p className="text-lg text-gray-600 mb-6">
-          ศูนย์รวมระบบ AI อัจฉริยะที่มีความเชี่ยวชาญเฉพาะด้าน พร้อมฐานข้อมูลความรู้ที่ครอบคลุม
-        </p>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">{stat.label}</p>
-                    <p className="text-2xl font-bold">{stat.value}</p>
-                  </div>
-                  <div className="text-blue-500">
-                    {stat.icon}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Features Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {aiFeatures.map((feature, index) => (
-          <Card key={index} className="group hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className={`p-2 rounded-lg text-white ${feature.color}`}>
-                    {feature.icon}
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg">{feature.title}</CardTitle>
-                  </div>
-                </div>
-                <Badge variant="secondary">{feature.badge}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">{feature.description}</p>
-              <Link href={feature.href}>
-                <Button className="w-full group-hover:bg-blue-600 transition-colors">
-                  Try Now
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Information Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5" />
-              AI System Features
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                <span className="text-sm">Multiple specialized AI agents</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-green-500 rounded-full" />
-                <span className="text-sm">RAG-enhanced knowledge retrieval</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-purple-500 rounded-full" />
-                <span className="text-sm">Real-time performance monitoring</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-orange-500 rounded-full" />
-                <span className="text-sm">User feedback and learning system</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-red-500 rounded-full" />
-                <span className="text-sm">Multi-language support (Thai/English)</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="w-5 h-5" />
-              Knowledge Bases
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Raw Materials Database</span>
-                <Badge variant="outline">Active</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Formulations Library</span>
-                <Badge variant="outline">Active</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Regulatory Documents</span>
-                <Badge variant="outline">Active</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Market Research Data</span>
-                <Badge variant="outline">Active</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Scientific Papers</span>
-                <Badge variant="outline">Active</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Start Guide */}
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Quick Start Guide</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-blue-600 font-bold">1</span>
-              </div>
-              <h3 className="font-medium mb-2">Choose Your AI</h3>
-              <p className="text-sm text-gray-600">
-                Select from general AI chat or specialized agents for specific domains
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-green-600 font-bold">2</span>
-              </div>
-              <h3 className="font-medium mb-2">Start Conversation</h3>
-              <p className="text-sm text-gray-600">
-                Begin chatting with AI that has access to relevant knowledge bases
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-purple-600 font-bold">3</span>
-              </div>
-              <h3 className="font-medium mb-2">Get Results</h3>
-              <p className="text-sm text-gray-600">
-                Receive accurate, context-aware responses with source information
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      </AIChatLayout>
     </div>
+  );
+}
+
+/** Render search-parameter-aware unified workspace after the route is ready. */
+export default function UnifiedAIAgentPage() {
+  return (
+    <Suspense fallback={null}>
+      <UnifiedAIAgentPageContent />
+    </Suspense>
   );
 }

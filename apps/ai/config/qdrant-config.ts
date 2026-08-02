@@ -152,7 +152,8 @@ const DEFAULT_HNSW_CONFIG: HnswConfig = {
 
 /**
  * All Qdrant collection schemas keyed by logical name.
- * Vector size 768 matches the Gemini text-embedding-004 output.
+ * The core collections use 768-dimensional Gemini text-embedding-004 vectors;
+ * MySkin retains its independently indexed 3072-dimensional schema.
  */
 export const QDRANT_COLLECTIONS: Record<string, QdrantCollectionSchema> = {
   raw_materials_console: {
@@ -222,8 +223,7 @@ export const QDRANT_COLLECTIONS: Record<string, QdrantCollectionSchema> = {
 // ---------------------------------------------------------------------------
 
 /**
- * Per-collection search defaults. Mirrors topK / similarityThreshold
- * from rag-config.ts but adds Qdrant-specific `ef` and `with_payload`.
+ * Per-collection search defaults for direct Qdrant clients.
  */
 export const QDRANT_SEARCH_DEFAULTS: Record<string, QdrantSearchDefaults> = {
   raw_materials_console: {

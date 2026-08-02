@@ -36,6 +36,8 @@ export function AIChatInput({
    * @param e - Keyboard event
    */
   const handle_key_down = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (value.trim() && !disabled) {
@@ -51,18 +53,20 @@ export function AIChatInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="min-h-[44px] max-h-[140px] resize-none rounded-xl border-gray-200/80 bg-gray-50/50 text-sm text-gray-900 py-3 px-4 pr-12 focus:bg-white focus:border-gray-300 transition-colors shadow-sm"
+          className="min-h-[48px] max-h-[140px] resize-none rounded-2xl border-emerald-200/80 bg-white/85 text-sm text-emerald-950 py-3 px-4 pr-12 focus:bg-white focus:border-emerald-400 transition-colors shadow-inner shadow-emerald-950/[0.03]"
           onKeyDown={handle_key_down}
           disabled={disabled}
           rows={1}
           aria-label="Chat message input"
         />
         <Button
+          type="button"
           onClick={onSend}
           disabled={!value.trim() || disabled}
           size="icon"
-          className="absolute right-2 bottom-2 h-8 w-8 rounded-lg bg-gray-900 hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-colors shadow-sm"
+          className="absolute right-2 bottom-2 h-8 w-8 rounded-xl bg-gradient-to-br from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 disabled:bg-emerald-100 disabled:text-emerald-500 transition-all shadow-[0_6px_14px_rgba(5,150,105,0.22)]"
           aria-label="Send message"
+          aria-keyshortcuts="Enter"
         >
           <ArrowUp className="w-4 h-4" />
         </Button>

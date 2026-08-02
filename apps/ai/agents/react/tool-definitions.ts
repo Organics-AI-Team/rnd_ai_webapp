@@ -2,7 +2,7 @@
  * ReAct Agent Tool Definitions
  * Gemini function calling declarations for the ReAct (Reason + Act) agent.
  *
- * Defines 9 tools:
+ * Defines 11 tools:
  *   1. qdrant_search             - Semantic similarity search across Qdrant collections
  *   2. mongo_query               - Direct MongoDB read-only queries
  *   3. formula_calculate         - Batch cost, scaling, unit conversion
@@ -12,6 +12,7 @@
  *   7. search_reference_formulas - Look up existing formulas as references
  *   8. revise_formula            - AI reads comments and improves a formula
  *   9. get_formula_with_comments - Load formula + comment discussion thread
+ *  10. stock_lookup              - Verify current stock before making availability claims
  *
  * All declarations use the plain-object format expected by
  * `@google/generative-ai` FunctionDeclaration[].
@@ -38,7 +39,8 @@ export type ReactToolName =
   | 'search_reference_formulas'
   | 'revise_formula'
   | 'get_formula_with_comments'
-  | 'confirm_formula';
+  | 'confirm_formula'
+  | 'stock_lookup';
 
 /**
  * Gemini-compatible function declaration shape.
@@ -298,7 +300,8 @@ function build_context_memory_declaration(): GeminiFunctionDeclaration {
       properties: {
         session_id: {
           type: 'STRING',
-          description: 'The active chat session identifier.',
+          description:
+            'Use the literal "active". The server resolves it to the active chat session and never permits another thread.',
         },
         lookback: {
           type: 'NUMBER',
@@ -307,6 +310,42 @@ function build_context_memory_declaration(): GeminiFunctionDeclaration {
         },
       },
       required: ['session_id'],
+    },
+  };
+}
+
+/**
+ * Build the stock_lookup declaration for verified availability checks.
+ *
+ * @returns GeminiFunctionDeclaration for real-stock lookups with catalog fallback.
+ */
+function build_stock_lookup_declaration(): GeminiFunctionDeclaration {
+  console.log('[ReActTools] Building stock_lookup declaration');
+
+  return {
+    name: 'stock_lookup',
+    description:
+      'Check whether a material is present in the current stock database. Use whenever ' +
+      'the user asks whether a material is available, can be supplied, or should be used ' +
+      'for a sales proposal. Catalog matches are returned separately and must never be ' +
+      'presented as confirmed stock.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: {
+          type: 'STRING',
+          description: 'Material code, INCI name, trade name, benefit, or product use case.',
+        },
+        supplier: {
+          type: 'STRING',
+          description: 'Optional supplier name to narrow the stock lookup.',
+        },
+        limit: {
+          type: 'NUMBER',
+          description: 'Maximum results to return. Defaults to 5 and is capped at 10.',
+        },
+      },
+      required: ['query'],
     },
   };
 }
@@ -544,7 +583,7 @@ function build_confirm_formula_declaration(): GeminiFunctionDeclaration {
  * });
  * ```
  *
- * @returns GeminiFunctionDeclaration[] - Array of 9 tool declarations.
+ * @returns GeminiFunctionDeclaration[] - Array of 11 tool declarations.
  */
 export function get_react_tool_declarations(): GeminiFunctionDeclaration[] {
   console.log('[ReActTools] get_react_tool_declarations() - start');
@@ -555,6 +594,7 @@ export function get_react_tool_declarations(): GeminiFunctionDeclaration[] {
     build_formula_calculate_declaration(),
     build_web_search_declaration(),
     build_context_memory_declaration(),
+    build_stock_lookup_declaration(),
     build_generate_formula_declaration(),
     build_search_reference_formulas_declaration(),
     build_revise_formula_declaration(),

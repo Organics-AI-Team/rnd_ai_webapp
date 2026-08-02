@@ -10,7 +10,6 @@
 export { AIChatMessage, type Message } from './ai_chat_message';
 export { AIFormulaResult } from './ai_formula_result';
 export { AIChatInput } from './ai_chat_input';
-export { AIFeaturesGrid, type Feature } from './ai_features_grid';
 export { AILoadingIndicator } from './ai_loading_indicator';
 export { AIFeedbackButtons } from './ai_feedback_buttons';
 export { AIEmptyState } from './ai_empty_state';
@@ -20,8 +19,7 @@ export { AIAuthGuard } from './ai_auth_guard';
 export { AIChatMessagesArea } from './ai_chat_messages_area';
 export { AIChatInputArea } from './ai_chat_input_area';
 
-// Layout structural components - SEPARATED
-export { AIPageHeader } from './ai_page_header';
+// Layout structural components
 export { AIChatHeader } from './ai_chat_header';
 export { AIChatMessagesContainer } from './ai_chat_container';
 export { AIChatInputContainer } from './ai_chat_container';
@@ -29,3 +27,9 @@ export { AIChatInputContainer } from './ai_chat_container';
 // Chat history components
 export { AIChatSidebar } from './ai_chat_sidebar';
 export { AIChatLayout, SidebarToggleButton } from './ai_chat_layout';
+export {
+  AIAgentSkills,
+  AGENT_SKILLS,
+  type AgentSkill,
+  type AgentSkillId,
+} from './ai_agent_skills';

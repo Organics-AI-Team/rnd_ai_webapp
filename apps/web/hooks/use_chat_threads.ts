@@ -1,27 +1,18 @@
 /**
  * use_chat_threads Hook
  *
- * Manages persistent chat thread state via tRPC. Provides:
- *   - Thread list (sorted by most recent)
- *   - Active thread selection
- *   - Message loading/sending with automatic thread creation
- *   - New chat / archive thread actions
- *
- * Used by both Raw Materials AI and Sales R&D AI pages.
- *
- * @param agent_type - The AI agent type ("raw_materials_ai" | "sales_rnd_ai")
+ * Manages durable conversation threads without treating the most recent
+ * conversation as the default screen. A blank AI page is always a new draft;
+ * historical conversations are opened only when the user explicitly chooses one.
  */
 
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { trpc } from '@/lib/trpc-client';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type AgentType = 'raw_materials_ai' | 'sales_rnd_ai';
+/** New chat threads always use the one unified R&D agent. */
+export type AgentType = 'rnd_ai';
 
 export interface ChatThread {
   id: string;
@@ -43,60 +34,50 @@ export interface ChatMessage {
 }
 
 export interface UseChatThreadsReturn {
-  /** List of threads for the current agent type */
   threads: ChatThread[];
-  /** Whether the thread list is loading */
   threads_loading: boolean;
-  /** Currently active thread (null if no thread selected) */
+  active_thread_id: string | null;
   active_thread: ChatThread | null;
-  /** Messages for the active thread */
   messages: ChatMessage[];
-  /** Whether messages are loading */
   messages_loading: boolean;
-  /** Select a thread by ID */
   select_thread: (thread_id: string) => void;
-  /** Start a new chat (clears active thread; thread created on first message) */
   start_new_chat: () => void;
-  /** Add a message to the active thread (creates thread if needed) */
-  add_message: (role: 'user' | 'assistant', content: string, metadata?: any) => Promise<string | null>;
-  /** Archive (soft delete) a thread */
+  add_message: (role: 'user' | 'assistant', content: string, metadata?: any) => Promise<ChatMessage | null>;
+  update_message_metadata: (message_id: string, metadata: any) => Promise<boolean>;
   archive_thread: (thread_id: string) => Promise<void>;
-  /** Refresh thread list */
   refresh_threads: () => void;
-  /** Whether we're in "new chat" mode (no active thread yet) */
   is_new_chat: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
+function to_chat_message(message: any): ChatMessage {
+  return {
+    id: message.id,
+    threadId: message.threadId,
+    role: message.role as 'user' | 'assistant',
+    content: message.content,
+    metadata: message.metadata ?? undefined,
+    createdAt: new Date(message.createdAt),
+  };
+}
 
 /**
- * Hook for managing persistent AI chat threads.
- *
- * @param agent_type        - The AI agent type to scope threads to
- * @param initial_thread_id - Optional thread ID to auto-select on mount (e.g. from URL ?thread= param)
- * @returns Chat thread state and actions
+ * @param agent_type        Agent that owns the thread list.
+ * @param initial_thread_id Explicit history item from `?thread=` only.
  */
-export function use_chat_threads(agent_type: AgentType, initial_thread_id?: string | null): UseChatThreadsReturn {
+export function use_chat_threads(
+  agent_type: AgentType,
+  initial_thread_id?: string | null,
+  new_chat_key?: string | null,
+): UseChatThreadsReturn {
   const [active_thread_id, set_active_thread_id] = useState<string | null>(initial_thread_id ?? null);
-  const [is_new_chat, set_is_new_chat] = useState(false);
-  const [optimistic_messages, set_optimistic_messages] = useState<ChatMessage[]>([]);
+  const [is_new_chat, set_is_new_chat] = useState(!initial_thread_id);
+  const [pending_messages, set_pending_messages] = useState<ChatMessage[]>([]);
+  const active_thread_id_ref = useRef<string | null>(initial_thread_id ?? null);
   const pending_thread_ref = useRef<string | null>(null);
-  const initial_thread_applied_ref = useRef(false);
+  const last_requested_thread_id_ref = useRef<string | null>(initial_thread_id ?? null);
+  const last_new_chat_key_ref = useRef<string | null>(new_chat_key ?? null);
+  const utils = trpc.useUtils();
 
-  /**
-   * Ref that mirrors active_thread_id state.
-   * Needed because add_message's useCallback closure captures stale state —
-   * between user message (creates thread) and assistant message (same turn),
-   * React hasn't re-rendered yet so the closure still sees null.
-   */
-  const active_thread_id_ref = useRef<string | null>(null);
-  useEffect(() => {
-    active_thread_id_ref.current = active_thread_id;
-  }, [active_thread_id]);
-
-  // --- tRPC queries ---
   const threads_query = trpc.chatThreads.list.useQuery(
     { agentType: agent_type, limit: 30 },
     { refetchOnWindowFocus: false },
@@ -104,203 +85,186 @@ export function use_chat_threads(agent_type: AgentType, initial_thread_id?: stri
 
   const messages_query = trpc.chatThreads.getMessages.useQuery(
     { threadId: active_thread_id || '', limit: 50 },
-    { enabled: !!active_thread_id, refetchOnWindowFocus: false },
+    { enabled: Boolean(active_thread_id), refetchOnWindowFocus: false },
   );
 
-  // --- tRPC mutations ---
   const create_mutation = trpc.chatThreads.create.useMutation();
   const add_message_mutation = trpc.chatThreads.addMessage.useMutation();
+  const update_metadata_mutation = trpc.chatThreads.updateMessageMetadata.useMutation();
   const archive_mutation = trpc.chatThreads.archive.useMutation();
 
-  // --- Auto-select thread: prioritize initial_thread_id from URL, then most recent ---
   useEffect(() => {
-    if (!threads_query.data || threads_query.data.length === 0) return;
+    active_thread_id_ref.current = active_thread_id;
+  }, [active_thread_id]);
 
-    // If initial_thread_id was provided and hasn't been applied yet, select it
-    if (initial_thread_id && !initial_thread_applied_ref.current) {
-      const target = threads_query.data.find((t: any) => t.id === initial_thread_id);
-      if (target) {
-        console.log('[use_chat_threads] auto-select initial_thread_id', { initial_thread_id });
-        active_thread_id_ref.current = initial_thread_id;
-        set_active_thread_id(initial_thread_id);
-        set_is_new_chat(false);
-        initial_thread_applied_ref.current = true;
-        return;
-      }
-    }
-
-    // Fallback: auto-select most recent thread if nothing is active
-    if (!active_thread_id && !is_new_chat) {
-      set_active_thread_id(threads_query.data[0].id);
-    }
-  }, [threads_query.data, active_thread_id, is_new_chat, initial_thread_id]);
-
-  // --- Clear optimistic messages when real messages load ---
-  useEffect(() => {
-    if (messages_query.data && active_thread_id) {
-      set_optimistic_messages([]);
-    }
-  }, [messages_query.data, active_thread_id]);
-
-  // --- Merge server messages with optimistic messages ---
-  const merged_messages: ChatMessage[] = [
-    ...(messages_query.data || []).map((m: any) => ({
-      id: m.id,
-      threadId: m.threadId,
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-      metadata: m.metadata,
-      createdAt: new Date(m.createdAt),
-    })),
-    ...optimistic_messages,
-  ];
-
-  /**
-   * Select a thread by ID and load its messages.
-   *
-   * @param thread_id - The thread ID to select
-   */
-  const select_thread = useCallback((thread_id: string) => {
-    console.log('[use_chat_threads] select_thread', { thread_id });
-    active_thread_id_ref.current = thread_id;
-    pending_thread_ref.current = null;
-    set_active_thread_id(thread_id);
-    set_is_new_chat(false);
-    set_optimistic_messages([]);
-  }, []);
-
-  /**
-   * Start a new chat. Clears the active thread.
-   * The actual thread will be created on the first message send.
-   */
   const start_new_chat = useCallback(() => {
-    console.log('[use_chat_threads] start_new_chat');
     active_thread_id_ref.current = null;
     pending_thread_ref.current = null;
     set_active_thread_id(null);
     set_is_new_chat(true);
-    set_optimistic_messages([]);
+    set_pending_messages([]);
   }, []);
 
+  /** Keep `?thread=` navigation explicit, including in-page history links. */
+  useEffect(() => {
+    const requested_thread_id = initial_thread_id ?? null;
+    if (requested_thread_id === last_requested_thread_id_ref.current) return;
+
+    last_requested_thread_id_ref.current = requested_thread_id;
+    if (!requested_thread_id) {
+      start_new_chat();
+      return;
+    }
+
+    active_thread_id_ref.current = requested_thread_id;
+    pending_thread_ref.current = null;
+    set_active_thread_id(requested_thread_id);
+    set_is_new_chat(false);
+    set_pending_messages([]);
+  }, [initial_thread_id, start_new_chat]);
+
+  /** A navigation click on an AI item deliberately starts a fresh draft. */
+  useEffect(() => {
+    const requested_new_chat_key = new_chat_key ?? null;
+    if (!requested_new_chat_key || requested_new_chat_key === last_new_chat_key_ref.current) return;
+    last_new_chat_key_ref.current = requested_new_chat_key;
+    start_new_chat();
+  }, [new_chat_key, start_new_chat]);
+
+  const server_messages = useMemo(
+    () => (messages_query.data || []).map(to_chat_message),
+    [messages_query.data],
+  );
+
   /**
-   * Add a message to the active thread.
-   * If no thread exists (new chat mode), creates one first using the
-   * first user message as the title.
-   *
-   * @param role     - "user" or "assistant"
-   * @param content  - Message content
-   * @param metadata - Optional metadata (confidence, tools, etc.)
-   * @returns The created message ID, or null on error
+   * Keep saved local messages visible until the query contains their real ID.
+   * This avoids the previous race where an empty/stale query removed an AI reply.
    */
+  const messages = useMemo(() => {
+    const server_ids = new Set(server_messages.map((message) => message.id));
+    const local_messages = pending_messages.filter(
+      (message) => message.threadId === active_thread_id && !server_ids.has(message.id),
+    );
+
+    return [...server_messages, ...local_messages].sort(
+      (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+    );
+  }, [active_thread_id, pending_messages, server_messages]);
+
+  const select_thread = useCallback((thread_id: string) => {
+    active_thread_id_ref.current = thread_id;
+    pending_thread_ref.current = null;
+    set_active_thread_id(thread_id);
+    set_is_new_chat(false);
+    set_pending_messages([]);
+  }, []);
+
   const add_message = useCallback(async (
     role: 'user' | 'assistant',
     content: string,
-    metadata?: any,
-  ): Promise<string | null> => {
-    // Read from ref — NOT the stale closure — so assistant messages
-    // in the same turn see the thread created by the user message.
+  metadata?: any,
+  ): Promise<ChatMessage | null> => {
     let thread_id = active_thread_id_ref.current || pending_thread_ref.current;
-    console.log('[use_chat_threads] add_message — start', { role, has_thread: !!thread_id });
+    let local_id: string | null = null;
 
     try {
-      // Create thread on first message
       if (!thread_id) {
         const title = role === 'user'
-          ? content.slice(0, 50) + (content.length > 50 ? '...' : '')
-          : 'New Chat';
-
-        const new_thread = await create_mutation.mutateAsync({
-          agentType: agent_type,
-          title,
-        });
-
-        thread_id = new_thread.id;
-        pending_thread_ref.current = thread_id;
-        active_thread_id_ref.current = thread_id;
-        set_active_thread_id(thread_id);
+          ? `${content.slice(0, 50)}${content.length > 50 ? '...' : ''}`
+          : 'New chat';
+        const thread = await create_mutation.mutateAsync({ agentType: agent_type, title });
+        thread_id = thread.id;
+        pending_thread_ref.current = thread.id;
+        active_thread_id_ref.current = thread.id;
+        set_active_thread_id(thread.id);
         set_is_new_chat(false);
       }
 
-      // Add optimistic message immediately for snappy UI
-      const optimistic_id = `optimistic-${Date.now()}`;
-      set_optimistic_messages((prev) => [
-        ...prev,
-        {
-          id: optimistic_id,
-          threadId: thread_id!,
-          role,
-          content,
-          metadata,
-          createdAt: new Date(),
-        },
-      ]);
-
-      // Persist to server
-      const result = await add_message_mutation.mutateAsync({
-        threadId: thread_id!,
+      const pending_message_id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      local_id = pending_message_id;
+      const optimistic_message: ChatMessage = {
+        id: pending_message_id,
+        threadId: thread_id,
         role,
         content,
         metadata,
-      });
+        createdAt: new Date(),
+      };
+      set_pending_messages((current) => [...current, optimistic_message]);
 
-      // Refresh thread list to update lastMessageAt + messageCount
-      threads_query.refetch();
+      const persisted = to_chat_message(await add_message_mutation.mutateAsync({
+        threadId: thread_id,
+        role,
+        content,
+        metadata,
+      }));
 
-      // Refetch messages to replace optimistic with real
-      messages_query.refetch();
+      // Swap the temporary ID for the server ID. It remains visible until the
+      // query receives that exact record, so no reply flickers or disappears.
+      set_pending_messages((current) => current.map((message) => (
+        message.id === pending_message_id ? persisted : message
+      )));
 
-      console.log('[use_chat_threads] add_message — done', { messageId: result.id });
-      return result.id;
+      await Promise.all([
+        utils.chatThreads.list.invalidate({ agentType: agent_type, limit: 30 }),
+        utils.chatThreads.getMessages.invalidate({ threadId: thread_id, limit: 50 }),
+      ]);
+      return persisted;
     } catch (error) {
-      console.error('[use_chat_threads] add_message — error', error);
+      console.error('[use_chat_threads] Unable to save message', error);
+      if (local_id) {
+        set_pending_messages((current) => current.filter((message) => message.id !== local_id));
+      }
       return null;
     }
-  }, [agent_type, create_mutation, add_message_mutation, threads_query, messages_query]);
+  }, [add_message_mutation, agent_type, create_mutation, utils.chatThreads.getMessages, utils.chatThreads.list]);
 
-  /**
-   * Archive (soft delete) a thread.
-   * If the archived thread was active, switches to the next available thread.
-   *
-   * @param thread_id - The thread ID to archive
-   */
+  const update_message_metadata = useCallback(async (message_id: string, metadata: any): Promise<boolean> => {
+    const target_thread_id = messages.find((message) => message.id === message_id)?.threadId || active_thread_id_ref.current;
+    if (!target_thread_id) return false;
+
+    try {
+      await update_metadata_mutation.mutateAsync({ messageId: message_id, metadata });
+      set_pending_messages((current) => current.map((message) => (
+        message.id === message_id ? { ...message, metadata } : message
+      )));
+      await utils.chatThreads.getMessages.invalidate({ threadId: target_thread_id, limit: 50 });
+      return true;
+    } catch (error) {
+      console.error('[use_chat_threads] Unable to update message metadata', error);
+      return false;
+    }
+  }, [messages, update_metadata_mutation, utils.chatThreads.getMessages]);
+
   const archive_thread = useCallback(async (thread_id: string) => {
-    console.log('[use_chat_threads] archive_thread', { thread_id });
     try {
       await archive_mutation.mutateAsync({ threadId: thread_id });
-
-      if (active_thread_id === thread_id) {
-        set_active_thread_id(null);
-        set_is_new_chat(true);
-      }
-
-      threads_query.refetch();
+      if (active_thread_id_ref.current === thread_id) start_new_chat();
+      await utils.chatThreads.list.invalidate({ agentType: agent_type, limit: 30 });
     } catch (error) {
-      console.error('[use_chat_threads] archive_thread — error', error);
+      console.error('[use_chat_threads] Unable to archive thread', error);
     }
-  }, [active_thread_id, archive_mutation, threads_query]);
+  }, [agent_type, archive_mutation, start_new_chat, utils.chatThreads.list]);
 
-  /**
-   * Refresh the thread list.
-   */
   const refresh_threads = useCallback(() => {
-    console.log('[use_chat_threads] refresh_threads');
-    threads_query.refetch();
-  }, [threads_query]);
+    void utils.chatThreads.list.invalidate({ agentType: agent_type, limit: 30 });
+  }, [agent_type, utils.chatThreads.list]);
 
-  // --- Find active thread object ---
   const active_thread = active_thread_id
-    ? (threads_query.data || []).find((t: any) => t.id === active_thread_id) || null
+    ? (threads_query.data || []).find((thread: any) => thread.id === active_thread_id) || null
     : null;
 
   return {
     threads: (threads_query.data || []) as ChatThread[],
     threads_loading: threads_query.isLoading,
+    active_thread_id,
     active_thread: active_thread as ChatThread | null,
-    messages: merged_messages,
-    messages_loading: messages_query.isLoading && !!active_thread_id,
+    messages,
+    messages_loading: messages_query.isLoading && Boolean(active_thread_id),
     select_thread,
     start_new_chat,
     add_message,
+    update_message_metadata,
     archive_thread,
     refresh_threads,
     is_new_chat,

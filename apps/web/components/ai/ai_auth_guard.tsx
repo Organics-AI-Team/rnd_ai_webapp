@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 
 /**
  * AI Auth Guard - Login prompt for unauthenticated users
@@ -22,13 +24,16 @@ export function AIAuthGuard({
   description
 }: AIAuthGuardProps) {
   return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="text-center max-w-sm">
-        <div className="w-10 h-10 mx-auto mb-3 text-gray-300 flex items-center justify-center">
+    <div className="flex min-h-[60vh] items-center justify-center px-4">
+      <div className="max-w-sm text-center">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
           {icon}
         </div>
-        <h2 className="text-sm font-semibold text-gray-900 mb-1">{title}</h2>
-        <p className="text-xs text-gray-500">{description}</p>
+        <h2 className="mb-1 text-sm font-semibold text-emerald-950">{title}</h2>
+        <p className="text-xs text-emerald-800/60">{description}</p>
+        <Button asChild size="sm" className="mt-4">
+          <Link href="/login">เข้าสู่ระบบ</Link>
+        </Button>
       </div>
     </div>
   );

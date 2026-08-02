@@ -30,7 +30,7 @@ const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
  * Input parameters for the web_search tool handler.
  *
  * @param query       - Search query string
- * @param max_results - Maximum results to return (advisory — Gemini decides actual count)
+ * @param max_results - Maximum grounding sources to return (1-10)
  */
 interface WebSearchParams {
   query: string;
@@ -85,10 +85,12 @@ function get_genai_client(): GoogleGenAI {
  * with source citations.
  *
  * @param query - Search query string
+ * @param max_results - Maximum grounding sources to expose to the agent
  * @returns Object with answer text and extracted search results
  */
 async function search_with_gemini_grounding(
   query: string,
+  max_results: number,
 ): Promise<{ answer: string; sources: SearchResult[] }> {
   console.log('[web-search-handler] search_with_gemini_grounding — start', { query });
 
@@ -129,7 +131,7 @@ async function search_with_gemini_grounding(
     search_queries,
   });
 
-  return { answer, sources };
+  return { answer, sources: sources.slice(0, max_results) };
 }
 
 // ---------------------------------------------------------------------------
@@ -197,21 +199,23 @@ export async function handle_web_search(params: WebSearchParams): Promise<string
     return 'Error: query parameter is required and must not be empty.';
   }
 
+  const max_results = Math.min(Math.max(1, params.max_results ?? 5), 10);
+
   // --- Check Gemini API key ---
   const api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
   if (!api_key) {
     const elapsed = Date.now() - start_ts;
-    console.log('[web-search-handler] handle_web_search — no GEMINI_API_KEY, fallback', { elapsed_ms: elapsed });
+    console.log('[web-search-handler] handle_web_search — no GEMINI_API_KEY', { elapsed_ms: elapsed });
 
-    return (
-      `Web search not configured (missing GEMINI_API_KEY). ` +
-      `Please answer the following query using your knowledge: "${params.query}".`
-    );
+    return JSON.stringify({
+      error: 'Web search is not configured, so current external facts cannot be verified.',
+      query: params.query,
+    });
   }
 
   // --- Execute Gemini-grounded web search ---
   try {
-    const { answer, sources } = await search_with_gemini_grounding(params.query);
+    const { answer, sources } = await search_with_gemini_grounding(params.query, max_results);
 
     const elapsed = Date.now() - start_ts;
     const formatted = format_grounded_response(params.query, answer, sources);
@@ -231,10 +235,9 @@ export async function handle_web_search(params: WebSearchParams): Promise<string
       elapsed_ms: elapsed,
     });
 
-    // On error, degrade gracefully to training-data fallback
-    return (
-      `Web search encountered an error: ${err_msg}. ` +
-      `Falling back to training data for query: "${params.query}".`
-    );
+    return JSON.stringify({
+      error: `Web search failed, so current external facts cannot be verified: ${err_msg}`,
+      query: params.query,
+    });
   }
 }

@@ -1,7 +1,7 @@
 /**
  * ReactAgentService — ReAct (Reason + Act) Agent with Gemini Function Calling
  *
- * Implements a Thought -> Action -> Observation -> Answer loop using
+ * Implements a Plan -> Act -> Verify -> Synthesize loop using
  * Google Gemini's native function calling. Routes tool calls to dedicated
  * handlers for Qdrant search, MongoDB queries, formula calculations,
  * web search, context memory retrieval, formula generation, reference
@@ -26,6 +26,7 @@ import { handle_mongo_query } from './tool-handlers/mongo-query-handler';
 import { handle_formula_calculate } from './tool-handlers/formula-calc-handler';
 import { handle_web_search } from './tool-handlers/web-search-handler';
 import { handle_context_memory } from './tool-handlers/context-memory-handler';
+import { handle_stock_lookup } from './tool-handlers/stock-lookup-handler';
 import { handle_generate_formula } from './tool-handlers/generate-formula-handler';
 import { handle_search_reference_formulas } from './tool-handlers/search-reference-formulas-handler';
 import { handle_revise_formula } from './tool-handlers/revise-formula-handler';
@@ -62,6 +63,7 @@ export type { ToolHandlerContext } from './types';
  * @property organization_id      - User's organization ID for DB writes (optional).
  * @property session_id           - Optional chat session ID for context_memory lookups.
  * @property conversation_history - Optional prior turns for multi-turn context.
+ * @property persist_formula      - Save a generated draft immediately (defaults to true).
  */
 export interface ReactAgentRequest {
   prompt: string;
@@ -69,6 +71,7 @@ export interface ReactAgentRequest {
   organization_id?: string;
   session_id?: string;
   conversation_history?: Array<{ role: string; content: string }>;
+  persist_formula?: boolean;
 }
 
 export interface ReactAgentArtifact {
@@ -77,6 +80,7 @@ export interface ReactAgentArtifact {
   formula?: Record<string, any>;
   citations?: Array<{
     source: string;
+    url?: string;
     rm_code?: string;
     inci_name?: string;
     trade_name?: string;
@@ -124,6 +128,13 @@ const TERMINAL_TOOL_NAMES = new Set<ReactToolName>([
   'confirm_formula',
 ]);
 
+/** A concise, user-safe execution plan derived from the request. */
+interface AgentExecutionPlan {
+  skills: string[];
+  step: { key: string; label: string };
+  instruction: string;
+}
+
 // ---------------------------------------------------------------------------
 // Tool Handler Router (maps tool name -> handler function)
 // ---------------------------------------------------------------------------
@@ -141,7 +152,8 @@ const TOOL_HANDLER_MAP: Record<
   mongo_query: (args) => handle_mongo_query(args as any),
   formula_calculate: (args) => handle_formula_calculate(args as any),
   web_search: (args) => handle_web_search(args as any),
-  context_memory: (args, ctx) => handle_context_memory(args as any),
+  context_memory: (args, ctx) => handle_context_memory(args as any, ctx),
+  stock_lookup: (args) => handle_stock_lookup(args as any),
   generate_formula: (args, ctx) => handle_generate_formula(args as any, ctx),
   search_reference_formulas: (args) => handle_search_reference_formulas(args as any),
   revise_formula: (args, ctx) => handle_revise_formula(args as any, ctx),
@@ -228,9 +240,10 @@ export class ReactAgentService {
     let iterations = 0;
     let final_response = '';
     const response_language = this._detect_language(request.prompt);
+    const execution_plan = this._build_execution_plan(request.prompt, response_language);
     let artifacts: ReactAgentArtifact = {
       language: response_language,
-      processSteps: [],
+      processSteps: [execution_plan.step],
     };
 
     // Build handler context from request for DB persistence
@@ -238,12 +251,19 @@ export class ReactAgentService {
       user_id: request.user_id,
       organization_id: request.organization_id,
       session_id: request.session_id,
+      persist_formula: request.persist_formula,
     };
 
     try {
       // ----- 1. Build Gemini model with tools & system prompt -----
       const tool_declarations = get_react_tool_declarations();
-      const system_prompt = get_react_system_prompt();
+      const system_prompt = `${get_react_system_prompt()}
+
+# REQUEST ROUTING CONTEXT
+The deterministic dispatcher selected these work areas: ${execution_plan.skills.join(', ')}.
+${execution_plan.instruction}
+Use this only to prioritise evidence gathering. Do not reveal private reasoning; the UI
+will show a concise high-level plan and the tools actually used.`;
 
       const model = this.gen_ai.getGenerativeModel({
         model: this.config.model,
@@ -322,7 +342,7 @@ export class ReactAgentService {
             args: tool_args,
             result: tool_result,
           });
-          artifacts = this._build_artifacts(tool_calls, response_language);
+          artifacts = this._build_artifacts(tool_calls, response_language, execution_plan);
 
           if (TERMINAL_TOOL_NAMES.has(tool_name) && !this._tool_result_has_error(tool_result)) {
             final_response = this._format_terminal_tool_response(tool_name, tool_result, response_language);
@@ -338,6 +358,48 @@ export class ReactAgentService {
               response: { result: tool_result },
             },
           });
+
+          // Make the knowledge-gap path deterministic. The model receives the
+          // external evidence in the same observation turn, rather than having
+          // to infer that it should call web_search after an empty/failed
+          // internal lookup.
+          if (this._should_fallback_to_external_search(
+            tool_name,
+            tool_result,
+            tool_calls,
+            execution_plan,
+          )) {
+            const external_args = { query: request.prompt, max_results: 5 };
+            const external_result = await this._execute_tool(
+              'web_search',
+              external_args,
+              handler_context,
+            );
+            tool_calls.push({
+              name: 'web_search',
+              args: external_args,
+              result: external_result,
+            });
+            artifacts = this._build_artifacts(tool_calls, response_language, execution_plan);
+            function_response_parts.push({
+              functionResponse: {
+                name: 'web_search',
+                response: { result: external_result },
+              },
+            });
+
+            // web_search already returns a Gemini-grounded answer with its
+            // sources. Returning it directly avoids another model round trip
+            // that can only restate the same evidence and adds avoidable
+            // latency to the fallback path.
+            if (!this._tool_result_has_error(external_result)) {
+              final_response = this._format_external_fallback_response(
+                external_result,
+                response_language,
+              );
+              break;
+            }
+          }
         }
 
         if (final_response) {
@@ -351,18 +413,72 @@ export class ReactAgentService {
         });
       }
 
-      // ----- 4. If max iterations hit without a text answer -----
-      if (!final_response && tool_calls.length > 0) {
+      // ----- 4. Refuse to invent an answer if no usable grounding is available -----
+      // A model may still emit fluent text after receiving tool error payloads. The
+      // application therefore requires either internal evidence, a supplied chat
+      // transcript, or a successful allowed external-search fallback.
+      const transcript_is_sufficient_context = this._has_sufficient_transcript_context(
+        request.conversation_history,
+        tool_calls,
+      );
+      const all_requested_sources_failed = this._all_tool_calls_failed(tool_calls);
+      const internal_material_sources_failed = this._internal_material_sources_failed(
+        tool_calls,
+        execution_plan,
+      );
+      const external_grounding_is_available = this._has_successful_external_search(tool_calls);
+      const external_fallback_is_allowed = this._allows_external_grounding(execution_plan);
+      if (
+        (all_requested_sources_failed && !transcript_is_sufficient_context) ||
+        (internal_material_sources_failed && !(
+          external_fallback_is_allowed && external_grounding_is_available
+        ))
+      ) {
+        console.warn(
+          '[ReactAgentService] execute() - required grounding unavailable; returning safe response',
+          {
+            tool_call_count: tool_calls.length,
+            all_requested_sources_failed,
+            internal_material_sources_failed,
+            external_grounding_is_available,
+            external_fallback_is_allowed,
+          }
+        );
+        artifacts = {
+          ...this._build_artifacts(tool_calls, response_language, execution_plan),
+          partial: true,
+          warnings: [
+            ...(artifacts.warnings ?? []),
+            {
+              severity: 'critical',
+              message: response_language === 'th'
+                ? 'ไม่สามารถยืนยันคำตอบจากแหล่งข้อมูลที่เชื่อมต่อได้'
+                : 'The answer could not be verified because all connected data sources failed.',
+            },
+          ],
+        };
+        final_response = this._format_grounding_unavailable_response(response_language);
+      // ----- 5. If max iterations hit without a text answer -----
+      } else if (!final_response && tool_calls.length > 0) {
         console.warn(
           `[ReactAgentService] execute() - max iterations (${this.config.max_iterations}) reached, synthesising partial answer`
         );
-        artifacts = { ...this._build_artifacts(tool_calls, response_language), partial: true };
+        artifacts = { ...this._build_artifacts(tool_calls, response_language, execution_plan), partial: true };
         final_response = this._synthesise_partial_answer(tool_calls, response_language);
       } else if (!final_response) {
         final_response = response_language === 'th'
           ? 'ยังสร้างคำตอบไม่ได้ กรุณาลองปรับคำถามให้เฉพาะเจาะจงขึ้น'
           : 'I was unable to generate a response. Please try rephrasing your question.';
       }
+
+      // Keep a stock confirmation unambiguous even when the model phrases the
+      // result as merely "available". The label is derived only from the
+      // verified stock_lookup payload, never a catalog or vector match.
+      final_response = this._make_stock_confirmation_explicit(
+        final_response,
+        tool_calls,
+        response_language,
+      );
 
       const processing_time = Date.now() - start_time;
 
@@ -432,8 +548,20 @@ export class ReactAgentService {
       return JSON.stringify({ error: error_msg });
     }
 
+    if (tool_name === 'context_memory' && !context?.session_id) {
+      return JSON.stringify({
+        error: 'Conversation memory is unavailable because this request has no active chat session.',
+      });
+    }
+
     try {
-      const result = await handler(args, context);
+      // Conversation memory must always use the active chat session. The
+      // model may omit or hallucinate an ID, but it must never look outside
+      // the thread that initiated this request.
+      const safe_args = tool_name === 'context_memory' && context?.session_id
+        ? { ...args, session_id: context.session_id }
+        : args;
+      const result = await handler(safe_args, context);
       console.log(
         `[ReactAgentService] _execute_tool() - complete: ${tool_name}, result_length=${result.length}`
       );
@@ -451,8 +579,10 @@ export class ReactAgentService {
 
   /**
    * Build the initial Gemini Content[] array from the request.
-   * Converts conversation_history to Gemini's { role, parts } format
-   * and appends the current user prompt as the final entry.
+   * Converts prior conversation_history to Gemini's { role, parts } format
+   * and appends the current user prompt exactly once. It also normalises
+   * malformed/repeated roles so persisted chat context stays valid even when
+   * a caller accidentally includes the current prompt in its history.
    *
    * @param request - The incoming ReactAgentRequest.
    * @returns Content[] ready for model.generateContent({ contents }).
@@ -463,25 +593,42 @@ export class ReactAgentService {
     console.log('[ReactAgentService] _build_contents() - start');
 
     const contents: Array<{ role: string; parts: any[] }> = [];
+    const prompt = request.prompt.trim();
+    const history = (request.conversation_history || [])
+      .filter((turn) => typeof turn?.content === 'string' && turn.content.trim().length > 0)
+      .filter((turn, index, turns) => !(
+        index === turns.length - 1 &&
+        turn.role === 'user' &&
+        turn.content.trim() === prompt
+      ));
 
-    // Append prior conversation history (if any)
-    if (request.conversation_history && request.conversation_history.length > 0) {
-      for (const turn of request.conversation_history) {
-        contents.push({
-          role: turn.role === 'user' ? 'user' : 'model',
-          parts: [{ text: turn.content }],
-        });
+    // Gemini expects alternating user/model content. Coalescing accidental
+    // adjacent roles preserves their text instead of silently dropping chat
+    // memory, while the current prompt remains the final user turn.
+    for (const turn of history) {
+      const role = turn.role === 'user' ? 'user' : 'model';
+      const text = turn.content.trim();
+      const previous = contents[contents.length - 1];
+
+      if (previous?.role === role) {
+        previous.parts.push({ text: `\n\n${text}` });
+      } else {
+        contents.push({ role, parts: [{ text }] });
       }
-      console.log(
-        `[ReactAgentService] _build_contents() - added ${request.conversation_history.length} history turns`
-      );
     }
 
-    // Append current user prompt
-    contents.push({
-      role: 'user',
-      parts: [{ text: request.prompt }],
-    });
+    const previous = contents[contents.length - 1];
+    if (previous?.role === 'user') {
+      previous.parts.push({ text: `\n\n${prompt}` });
+    } else {
+      contents.push({ role: 'user', parts: [{ text: prompt }] });
+    }
+
+    if (history.length > 0) {
+      console.log(
+        `[ReactAgentService] _build_contents() - added ${history.length} history turns`
+      );
+    }
 
     console.log(
       `[ReactAgentService] _build_contents() - complete, total entries: ${contents.length}`
@@ -516,9 +663,20 @@ export class ReactAgentService {
       );
     }
 
+    const latest_successful_call = [...tool_calls]
+      .reverse()
+      .find((call) => !this._tool_result_has_error(call.result));
+    if (latest_successful_call?.name === 'stock_lookup') {
+      return this._format_tool_fallback(latest_successful_call, language);
+    }
+
     const search_calls = tool_calls.filter((call) => call.name === 'qdrant_search');
     if (search_calls.length > 0) {
       return this._format_search_fallback(search_calls[search_calls.length - 1].result, language);
+    }
+
+    if (latest_successful_call) {
+      return this._format_tool_fallback(latest_successful_call, language);
     }
 
     const summary_lines: string[] = language === 'th'
@@ -549,6 +707,146 @@ export class ReactAgentService {
     } catch {
       return /^error:/i.test(result.trim()) || result.toLowerCase().includes(' failed ');
     }
+  }
+
+  /** Make confirmed live-stock wording explicit without upgrading catalog data. */
+  private _make_stock_confirmation_explicit(
+    response: string,
+    tool_calls: ReactAgentResponse['tool_calls'],
+    language: 'th' | 'en',
+  ): string {
+    const stock_call = [...tool_calls]
+      .reverse()
+      .find((call) => call.name === 'stock_lookup' && !this._tool_result_has_error(call.result));
+    const stock = stock_call ? this._parse_json(stock_call.result) : undefined;
+    const has_confirmed_stock = stock?.availability === 'confirmed_in_stock' &&
+      Array.isArray(stock.stock_matches) && stock.stock_matches.length > 0;
+
+    if (!has_confirmed_stock) return response;
+    if (language === 'th') {
+      return /สต็อกปัจจุบัน/i.test(response)
+        ? response
+        : `สต็อกปัจจุบัน: ยืนยันแล้วจากข้อมูลสต็อก\n\n${response}`;
+    }
+    return /\bcurrent stock\b/i.test(response)
+      ? response
+      : `Current stock: confirmed from the live stock record.\n\n${response}`;
+  }
+
+  /** True only when the agent attempted tools and none produced usable evidence. */
+  private _all_tool_calls_failed(tool_calls: ReactAgentResponse['tool_calls']): boolean {
+    return tool_calls.length > 0 && tool_calls.every((call) => this._tool_result_has_error(call.result));
+  }
+
+  /**
+   * The supplied transcript is already verified session-scoped evidence. A failed
+   * optional context_memory lookup must not erase the answer to a follow-up when
+   * every attempted tool was only context_memory.
+   */
+  private _has_sufficient_transcript_context(
+    history: ReactAgentRequest['conversation_history'],
+    tool_calls: ReactAgentResponse['tool_calls'],
+  ): boolean {
+    return Boolean(history?.some((turn) => turn.content?.trim())) &&
+      tool_calls.length > 0 &&
+      tool_calls.every((call) => call.name === 'context_memory');
+  }
+
+  /**
+   * Ingredient/material answers are expected to come from the internal R&D
+   * sources. A successful external web search cannot turn failed internal
+   * retrieval into a verified inventory answer.
+   */
+  private _internal_material_sources_failed(
+    tool_calls: ReactAgentResponse['tool_calls'],
+    execution_plan: AgentExecutionPlan,
+  ): boolean {
+    if (!execution_plan.skills.includes('Materials')) return false;
+
+    const internal_data_calls = tool_calls.filter((call) => (
+      call.name === 'qdrant_search' ||
+      call.name === 'mongo_query' ||
+      call.name === 'stock_lookup'
+    ));
+
+    return internal_data_calls.length > 0 &&
+      internal_data_calls.every((call) => this._tool_result_has_error(call.result));
+  }
+
+  /** A successful grounded web search is usable evidence for general R&D facts. */
+  private _has_successful_external_search(tool_calls: ReactAgentResponse['tool_calls']): boolean {
+    return tool_calls.some((call) => (
+      call.name === 'web_search' && !this._tool_result_has_error(call.result)
+    ));
+  }
+
+  /**
+   * External sources can fill a general knowledge gap, but cannot verify live
+   * inventory, internal pricing, or the internally sourced ingredients needed
+   * for an executable formula draft.
+   */
+  private _allows_external_grounding(execution_plan: AgentExecutionPlan): boolean {
+    return !execution_plan.skills.some((skill) => (
+      skill === 'Stock' || skill === 'Formula Design' || skill === 'Cost & Scale'
+    ));
+  }
+
+  /**
+   * Trigger one external lookup when a general knowledge request is not covered
+   * by an internal material query. This deliberately excludes live stock, cost,
+   * and formula work: public web data cannot verify those internal facts.
+   */
+  private _should_fallback_to_external_search(
+    tool_name: ReactToolName,
+    tool_result: string,
+    tool_calls: ReactAgentResponse['tool_calls'],
+    execution_plan: AgentExecutionPlan,
+  ): boolean {
+    if (!this._allows_external_grounding(execution_plan)) return false;
+    if (tool_name !== 'qdrant_search' && tool_name !== 'mongo_query') return false;
+    if (tool_calls.some((call) => call.name === 'web_search')) return false;
+
+    return this._tool_result_has_error(tool_result) ||
+      this._tool_result_has_no_usable_matches(tool_result);
+  }
+
+  /** Detect successful internal searches that completed but found no match. */
+  private _tool_result_has_no_usable_matches(result: string): boolean {
+    const normalized = result.trim().toLowerCase();
+    if (normalized.includes('no results found in collection')) return true;
+    if (/\]\s*$/.test(normalized) || /\bnull\s*$/.test(normalized)) {
+      return normalized.includes('mongodb query result');
+    }
+    return /"count"\s*:\s*0\s*}\s*$/.test(normalized);
+  }
+
+  /** Present the grounded web result without another generative synthesis step. */
+  private _format_external_fallback_response(
+    result: string,
+    language: 'th' | 'en',
+  ): string {
+    const notice = language === 'th'
+      ? 'ไม่พบข้อมูลที่ใช้ได้จากแหล่งภายใน จึงใช้ข้อมูลจากแหล่งภายนอกที่อ้างอิงด้านล่าง:'
+      : 'The internal sources did not provide usable coverage, so this answer uses the cited external sources below:';
+    return `${notice}\n\n${result}`;
+  }
+
+  /**
+   * Keep user-facing copy generic: tool error payloads can expose implementation
+   * details and should not be repeated into the answer.
+   */
+  private _format_grounding_unavailable_response(language: 'th' | 'en'): string {
+    return language === 'th'
+      ? [
+          'ขออภัย ขณะนี้ไม่สามารถเชื่อมต่อแหล่งข้อมูลที่ใช้ตรวจสอบได้',
+          '',
+          'เพื่อป้องกันข้อมูลที่ไม่ยืนยัน ระบบจะไม่สรุปคำตอบจากความรู้ทั่วไป กรุณาลองใหม่ภายหลัง หรือติดต่อผู้ดูแลระบบเพื่อตรวจสอบการเชื่อมต่อข้อมูล',
+        ].join('\n')
+      : [
+          'I could not reach the data sources needed to verify this answer.',
+          '',
+          'To avoid providing unverified information, I will not answer from general knowledge. Please try again later or ask an administrator to check the data connections.',
+        ].join('\n');
   }
 
   private _format_terminal_tool_response(
@@ -676,13 +974,97 @@ export class ReactAgentService {
     ].join('\n');
   }
 
+  /** Return the most useful verified tool output if the model exhausts its loop. */
+  private _format_tool_fallback(
+    tool_call: ReactAgentResponse['tool_calls'][number],
+    language: 'th' | 'en',
+  ): string {
+    if (tool_call.name === 'stock_lookup') {
+      const stock = this._parse_json(tool_call.result);
+      if (stock) {
+        const matches = Array.isArray(stock.stock_matches) ? stock.stock_matches : [];
+        const catalog = Array.isArray(stock.catalog_matches) ? stock.catalog_matches : [];
+        const title = language === 'th'
+          ? 'ตรวจสอบข้อมูลสต็อกได้แล้ว แต่ยังสรุปผลไม่ทัน'
+          : 'Stock data was retrieved, but the final synthesis timed out.';
+        const rows = (matches.length > 0 ? matches : catalog).slice(0, 5).map((item: any) => (
+          `- ${item.trade_name || item.inci_name || item.material_code || 'Material'}${item.material_code ? ` (${item.material_code})` : ''}`
+        ));
+        const note = matches.length > 0
+          ? (language === 'th' ? 'รายการข้างต้นพบในข้อมูลสต็อกปัจจุบัน' : 'The items above were found in current stock data.')
+          : (language === 'th' ? 'พบเพียงข้อมูลอ้างอิง จึงยังยืนยันสต็อกไม่ได้' : 'Only catalog records were found, so availability is not confirmed.');
+        return [title, '', ...rows, '', note].filter(Boolean).join('\n');
+      }
+    }
+
+    const title = language === 'th'
+      ? 'ดึงข้อมูลได้แล้ว แต่ยังสรุปไม่ทันภายในรอบการประมวลผล'
+      : 'Data was retrieved, but the final synthesis timed out.';
+    return [title, '', tool_call.result.slice(0, 3000)].join('\n');
+  }
+
   private _detect_language(prompt: string): 'th' | 'en' {
     return /[\u0E00-\u0E7F]/.test(prompt) ? 'th' : 'en';
+  }
+
+  /**
+   * Select a small, deterministic work plan. This improves tool routing while
+   * the visible process list remains a concise audit trail, never private reasoning.
+   */
+  private _build_execution_plan(
+    prompt: string,
+    language: 'th' | 'en',
+  ): AgentExecutionPlan {
+    const text = prompt.toLowerCase();
+    const has_stock = /(stock|available|availability|supply|inventory|มีไหม|สต็อก|พร้อมส่ง|สั่งได้)/i.test(text);
+    // Mentioning a formula is not the same as asking the agent to create or
+    // revise one. For example, "what does glycerin do in a skincare formula?"
+    // is a general ingredient question and may safely use external evidence.
+    const has_formula = /(create|generate|design|draft|revise|revision|new formula|formulate|สร้างสูตร|ออกแบบสูตร|คิดสูตร|ร่างสูตร|ปรับสูตร|แก้สูตร|สูตรใหม่)/i.test(text);
+    const has_calculation = /(cost|price|batch|scale|convert|ต้นทุน|ราคา|คำนวณ|ขยายสูตร|แปลงหน่วย)/i.test(text);
+    const has_market = /(market|trend|competitor|consumer|regulation|ตลาด|เทรนด์|คู่แข่ง|กฎหมาย)/i.test(text);
+    const has_sales = /(sales|sell|pitch|b2b|customer|go.to.market|แผนขาย|ขาย|ลูกค้า|นำเสนอ)/i.test(text);
+    const has_materials = /(ingredient|inci|material|raw material|supplier|วัตถุดิบ|สาร|ซัพพลายเออร์|rm\d+)/i.test(text);
+
+    const skills: string[] = [];
+    if (has_materials || has_stock || (!has_formula && !has_calculation && !has_market && !has_sales)) skills.push('Materials');
+    if (has_stock) skills.push('Stock');
+    if (has_formula) skills.push('Formula Design');
+    if (has_calculation) skills.push('Cost & Scale');
+    if (has_market) skills.push('Market Research');
+    if (has_sales) skills.push('Sales Planning');
+
+    const unique_skills = [...new Set(skills)];
+    const thai_skills: Record<string, string> = {
+      Materials: 'วัตถุดิบ',
+      Stock: 'สต็อก',
+      'Formula Design': 'ออกแบบสูตร',
+      'Cost & Scale': 'ต้นทุนและการขยายสูตร',
+      'Market Research': 'วิจัยตลาด',
+      'Sales Planning': 'วางแผนขาย',
+    };
+    const display_skills = language === 'th'
+      ? unique_skills.map((skill) => thai_skills[skill] || skill).join(' + ')
+      : unique_skills.join(' + ');
+
+    return {
+      skills: unique_skills,
+      step: {
+        key: 'plan',
+        label: language === 'th' ? `วางแผนงาน: ${display_skills}` : `Planned: ${display_skills}`,
+      },
+      instruction: has_stock
+        ? 'For availability claims, call stock_lookup first and distinguish confirmed stock from catalog-only matches.'
+        : has_market || has_sales
+          ? 'For current market or sales facts, use web_search and label recommendations as inferences from cited evidence.'
+          : 'Choose the smallest set of verified tools needed, then synthesize only tool-supported claims.',
+    };
   }
 
   private _build_artifacts(
     tool_calls: ReactAgentResponse['tool_calls'],
     language: 'th' | 'en',
+    execution_plan: AgentExecutionPlan,
   ): ReactAgentArtifact {
     const latest_formula_call = [...tool_calls]
       .reverse()
@@ -701,7 +1083,10 @@ export class ReactAgentService {
 
     return {
       language,
-      processSteps: this._build_process_steps(tool_calls, language),
+      processSteps: [
+        execution_plan.step,
+        ...this._build_process_steps(tool_calls, language),
+      ],
       formula: formula && !formula.error ? formula : undefined,
       citations,
       warnings,
@@ -764,6 +1149,7 @@ export class ReactAgentService {
       formula_calculate: { th: 'คำนวณสูตรหรือต้นทุน', en: 'Calculated formula or cost' },
       web_search: { th: 'ค้นข้อมูลภายนอก', en: 'Searched external sources' },
       context_memory: { th: 'อ่านบริบทจากแชทก่อนหน้า', en: 'Loaded prior chat context' },
+      stock_lookup: { th: 'ตรวจสอบสต็อกปัจจุบัน', en: 'Checked current stock' },
       generate_formula: { th: 'สร้างสูตร draft', en: 'Generated draft formula' },
       search_reference_formulas: { th: 'ค้นสูตรอ้างอิง', en: 'Searched reference formulas' },
       revise_formula: { th: 'ปรับสูตรตาม feedback', en: 'Revised formula from feedback' },
@@ -797,15 +1183,29 @@ export class ReactAgentService {
       }
     }
 
-    for (const call of tool_calls.filter((item) => item.name === 'qdrant_search')) {
+    for (const call of tool_calls.filter((item) => (
+      item.name === 'qdrant_search' &&
+      !this._tool_result_has_error(item.result) &&
+      !this._tool_result_has_no_usable_matches(item.result)
+    ))) {
       citations.push({
         source: String(call.args.collection || 'raw_materials_myskin'),
       });
     }
 
+    for (const call of tool_calls.filter((item) => (
+      item.name === 'web_search' && !this._tool_result_has_error(item.result)
+    ))) {
+      for (const line of call.result.split(/\r?\n/)) {
+        const match = line.match(/^\s*\[\d+\]\s+(.+?)\s+—\s+(https?:\/\/\S+)\s*$/);
+        if (!match) continue;
+        citations.push({ source: match[1].trim(), url: match[2].trim() });
+      }
+    }
+
     const seen = new Set<string>();
     return citations.filter((item) => {
-      const key = `${item.source}:${item.rm_code || item.inci_name || item.trade_name || ''}`;
+      const key = `${item.source}:${item.url || item.rm_code || item.inci_name || item.trade_name || ''}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

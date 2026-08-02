@@ -13,9 +13,12 @@
  * @property user_id         - Authenticated user identifier.
  * @property organization_id - User's organization for scoping DB writes.
  * @property session_id      - Optional chat session ID for context_memory lookups.
+ * @property persist_formula - Whether generated formula drafts should be saved immediately.
+ *                             Chat uses false so the user explicitly chooses to save the draft.
  */
 export interface ToolHandlerContext {
   user_id: string;
   organization_id?: string;
   session_id?: string;
+  persist_formula?: boolean;
 }

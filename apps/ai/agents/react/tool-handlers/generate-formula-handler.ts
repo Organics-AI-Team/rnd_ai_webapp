@@ -884,7 +884,7 @@ export async function handle_generate_formula(params: GenerateFormulaParams, con
     let saved_formula_id: string | null = null;
     let saved_formula_code: string | null = null;
 
-    if (context?.organization_id) {
+    if (context?.organization_id && context.persist_formula !== false) {
       try {
         const persist_result = await persist_formula_to_db(formula, ingredients, context);
         saved_formula_id = persist_result.formula_id;
@@ -899,7 +899,9 @@ export async function handle_generate_formula(params: GenerateFormulaParams, con
         });
       }
     } else {
-      console.log('[generate-formula] skipping DB persistence — no organization_id in context');
+      console.log('[generate-formula] skipping DB persistence', {
+        reason: context?.persist_formula === false ? 'explicit user save required' : 'no organization_id in context',
+      });
     }
 
     // Attach persistence info to output
