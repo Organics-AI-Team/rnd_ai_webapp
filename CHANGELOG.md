@@ -1,5 +1,34 @@
 # Changelog
 
+## [2026-09-21] fix(ui): rework the /ai workspace layout — two sidebars, stray scrollbar, unscannable thread
+
+### Summary
+
+Reported as "hard to see, hard to view, tons of space, many bugs" on `/ai`.
+
+- **Two sidebars stacked.** The app nav rail (~200px) plus the chat history panel (240px) opened by default on any viewport ≥1024px, so ~440px of chrome sat in front of a 672px reading column. The history panel now starts closed and remembers the user's choice; "New chat" moved into the chat toolbar so it stays reachable when the panel is hidden.
+- **Stray grey bar under the FOCUS tabs.** `overflow-x-auto` on the task-focus row leaves a permanent scrollbar track on macOS when "always show scrollbars" is set. The track is hidden; horizontal scrolling still works.
+- **User and assistant turns rendered identically** — same avatar row, same plain text — so a conversation could not be scanned. A user turn is now a tinted, right-aligned bubble; the assistant keeps the full reading width.
+- **Bare `50%` under each answer.** An unlabelled confidence number. Now reads "ความมั่นใจ 50%" with a title attribute.
+- **Body text raised** from 14px/`leading-relaxed` to 15px/`leading-[1.75]`, and the reading column widened from `max-w-2xl` to `max-w-3xl` with the composer aligned to the same measure — Thai text at the old size in a 672px column inside a 1010px pane was the "hard to read" complaint.
+- **Three competing green gradients** (header, composer, history panel) flattened to white / a single tint, so an empty history panel no longer reads as a loud empty slab.
+- `navigation.tsx` main content wrapper gained `min-h-0 min-w-0` — a flex child without it cannot shrink, which is the standard cause of an inner scroll container mis-sizing.
+
+### Changes
+
+- `apps/web/app/ai/page.tsx` — history panel defaults closed and persists to `localStorage` under `rnd_ai.history_panel` (restored after mount to avoid hydration desync; both read and write log on failure rather than swallowing); shared `handle_new_chat` used by the panel and the new toolbar button.
+- `apps/web/components/ai/ai_chat_message.tsx` — separate user-turn branch; labelled confidence.
+- `apps/web/components/ai/ai_agent_skills.tsx` — scrollbar track hidden, aligned to `max-w-3xl`.
+- `apps/web/components/ai/ai_chat_header.tsx` — `trailing` slot; flat background; badge hidden below `sm`.
+- `apps/web/components/ai/ai_chat_messages_area.tsx`, `ai_chat_input.tsx` — `max-w-3xl`.
+- `apps/web/components/ai/ai_chat_container.tsx`, `ai_chat_sidebar.tsx` — flat backgrounds, `shrink-0` on the composer band.
+- `apps/web/components/navigation.tsx` — `min-h-0 min-w-0` on the main content wrapper.
+
+### Verification
+
+- `tsc --noEmit` clean for `apps/web` (0 errors).
+- Not visually verified by me — the Chrome extension is not connected in this session, so the rendered result needs a look on the deployed site.
+
 ## [2026-09-21] fix: Restore R&D AI chat — half-deployed agent unification, retired Gemini model, and a 5s re-render storm
 
 ### Summary

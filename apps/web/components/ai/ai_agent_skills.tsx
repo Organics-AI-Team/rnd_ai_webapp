@@ -95,8 +95,14 @@ interface AIAgentSkillsProps {
  */
 export function AIAgentSkills({ active_skill_id, on_select }: AIAgentSkillsProps) {
   return (
-    <div className="flex-shrink-0 border-b border-emerald-100/80 bg-white/70 px-3 py-2.5">
-      <div className="mx-auto flex max-w-2xl items-center gap-2 overflow-x-auto pb-0.5" aria-label="R&D AI task focus">
+    <div className="flex-shrink-0 border-b border-emerald-100/80 bg-white/70 px-4 py-2">
+      {/* `overflow-x-auto` leaves a permanent scrollbar track on macOS when
+          "always show scrollbars" is set, which read as a stray grey bar under
+          the tabs. Scroll stays available; only the track is hidden. */}
+      <div
+        className="mx-auto flex max-w-3xl items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        aria-label="R&D AI task focus"
+      >
         <span className="hidden whitespace-nowrap text-[10px] font-medium uppercase tracking-wider text-emerald-800/45 sm:inline">
           Focus
         </span>

@@ -48,7 +48,7 @@ export function AIChatInput({
 
   return (
     <div className="px-3 sm:px-4 py-3">
-      <div className="relative max-w-2xl mx-auto">
+      <div className="relative max-w-3xl mx-auto">
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}

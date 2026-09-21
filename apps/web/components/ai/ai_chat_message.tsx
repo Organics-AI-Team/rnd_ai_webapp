@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Bot, User } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import { MarkdownRenderer } from '@/ai/components/chat/markdown-renderer';
 import { AIFeedbackButtons } from './ai_feedback_buttons';
 import { AIFormulaResult } from './ai_formula_result';
@@ -126,39 +126,48 @@ export const AIChatMessage = React.memo(function AIChatMessage({
   const displayContent = getDisplayContent(message.content);
   const processSteps = getProcessSteps(message.metadata);
 
+  const is_user = message.role === 'user';
+
+  // A user turn is a short question; an assistant turn is a long document.
+  // Rendering both as an identical avatar + plain-text row made the thread
+  // impossible to scan, so the user's turn gets its own tinted, right-aligned
+  // lane and the assistant keeps the full reading width.
+  if (is_user) {
+    return (
+      <div className="flex justify-end py-2 pl-10">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md border border-emerald-200/70 bg-emerald-50 px-3.5 py-2.5">
+          <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-emerald-950">
+            {displayContent}
+          </p>
+          <span className="mt-1 block text-right text-[10px] tabular-nums text-emerald-800/40">
+            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-3 py-3">
       {/* Avatar */}
       <div className="flex-shrink-0 mt-0.5">
-        {message.role === 'assistant' ? (
-          <div className={`w-6 h-6 rounded-md ${colors.bg} flex items-center justify-center`}>
-            <Bot className={`w-3.5 h-3.5 ${colors.icon}`} />
-          </div>
-        ) : (
-          <div className="w-6 h-6 rounded-lg bg-white border border-emerald-100 flex items-center justify-center shadow-sm">
-            <User className="w-3.5 h-3.5 text-emerald-700" />
-          </div>
-        )}
+        <div className={`w-6 h-6 rounded-md ${colors.bg} flex items-center justify-center`}>
+          <Bot className={`w-3.5 h-3.5 ${colors.icon}`} />
+        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-xs font-medium text-emerald-950">
-            {message.role === 'assistant' ? 'AI' : 'คุณ'}
-          </span>
+          <span className="text-xs font-medium text-emerald-950">AI</span>
           <span className="text-[10px] text-emerald-800/40 tabular-nums">
             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
 
-        {message.role === 'assistant' ? (
-          <div className="text-sm text-emerald-950 leading-relaxed break-words overflow-hidden">
-            <MarkdownRenderer content={displayContent} />
-          </div>
-        ) : (
-          <p className="text-sm text-emerald-950 whitespace-pre-wrap break-words">{displayContent}</p>
-        )}
+        <div className="text-[15px] text-emerald-950 leading-[1.75] break-words overflow-hidden">
+          <MarkdownRenderer content={displayContent} />
+        </div>
 
         {message.role === 'assistant' && message.metadata?.formula && (
           <AIFormulaResult
@@ -183,8 +192,11 @@ export const AIChatMessage = React.memo(function AIChatMessage({
               </Badge>
             )}
             {message.metadata.confidence != null && message.metadata.confidence > 0 && (
-              <span className="text-[10px] text-emerald-800/45 tabular-nums">
-                {(message.metadata.confidence * 100).toFixed(0)}%
+              <span
+                className="text-[10px] text-emerald-800/45 tabular-nums"
+                title="ระดับความมั่นใจของคำตอบนี้"
+              >
+                ความมั่นใจ {(message.metadata.confidence * 100).toFixed(0)}%
               </span>
             )}
           </div>

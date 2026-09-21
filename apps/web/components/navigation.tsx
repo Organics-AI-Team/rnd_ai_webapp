@@ -325,7 +325,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto bg-[#f8f9fa] pt-12 lg:pt-0">
+      <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-[#f8f9fa] pt-12 lg:pt-0">
         {children}
       </div>
     </div>

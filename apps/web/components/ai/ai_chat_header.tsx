@@ -18,22 +18,26 @@ interface AIChatHeaderProps {
   badgeText?: string;
   badgeColor?: string;
   leading?: React.ReactNode;
+  /** Actions pinned to the right of the toolbar (e.g. New chat). */
+  trailing?: React.ReactNode;
 }
 
 export function AIChatHeader({
   title,
   badgeText,
   leading,
+  trailing,
 }: AIChatHeaderProps) {
   return (
-    <div className="flex h-12 items-center gap-2 border-b border-emerald-100/80 bg-gradient-to-r from-emerald-50/80 via-white to-green-50/70 px-3">
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-emerald-100/80 bg-white px-4">
       {leading}
       <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-emerald-950">{title}</span>
       {badgeText && (
-        <span className="max-w-28 shrink-0 truncate rounded-full border border-emerald-200 bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 sm:max-w-none">
+        <span className="hidden max-w-28 shrink-0 truncate rounded-full border border-emerald-200 bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 sm:inline sm:max-w-none">
           {badgeText}
         </span>
       )}
+      {trailing}
     </div>
   );
 }

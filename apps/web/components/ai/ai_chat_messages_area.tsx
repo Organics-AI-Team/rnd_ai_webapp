@@ -120,7 +120,7 @@ export function AIChatMessagesArea({
     <div className="relative flex-1 min-h-0">
       <ScrollArea className="h-full px-4 pt-2" onScrollCapture={handle_scroll}>
         <div
-          className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "max-w-2xl mx-auto space-y-1 py-2"}
+          className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "max-w-3xl mx-auto space-y-1 py-3"}
           style={{ paddingBottom: `${bottomPadding}px` }}
           ref={scroll_container_ref}
         >

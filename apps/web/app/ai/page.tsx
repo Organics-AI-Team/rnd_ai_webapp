@@ -1,7 +1,7 @@
 'use client';
 
-import { Suspense, useCallback, useState } from 'react';
-import { Bot, Loader2, Search } from 'lucide-react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Bot, Loader2, Search, SquarePen } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { trpc } from '@/lib/trpc-client';
@@ -26,6 +26,9 @@ import {
 
 const THAI_CHAR_REGEX = /[\u0E00-\u0E7F]/;
 
+/** Remembers whether the user keeps the history panel open. */
+const HISTORY_PANEL_STORAGE_KEY = 'rnd_ai.history_panel';
+
 /** Return a localized fallback message when the agent request cannot complete. */
 function get_error_message(user_input: string): string {
   return THAI_CHAR_REGEX.test(user_input)
@@ -49,9 +52,10 @@ function UnifiedAIAgentPageContent() {
   const [active_skill_id, set_active_skill_id] = useState<AgentSkillId>('materials');
   const [is_loading, set_is_loading] = useState(false);
   const [feedback_submitted, set_feedback_submitted] = useState<Set<string>>(new Set());
-  const [is_sidebar_open, set_is_sidebar_open] = useState(() => (
-    typeof window === 'undefined' || window.innerWidth >= 1024
-  ));
+  // The app already has a nav rail; opening a second 240px history panel by
+  // default left the reading column squeezed between two sidebars. Start
+  // closed and remember whatever the user picks.
+  const [is_sidebar_open, set_is_sidebar_open] = useState(false);
   const create_formula = trpc.formulas.create.useMutation();
   const active_skill = AGENT_SKILLS.find((skill) => skill.id === active_skill_id) || AGENT_SKILLS[0];
 
@@ -62,6 +66,29 @@ function UnifiedAIAgentPageContent() {
     timestamp: new Date(message.createdAt),
     metadata: message.metadata || undefined,
   }));
+
+  // Restored after mount: reading localStorage during the first render would
+  // desync server and client markup.
+  useEffect(() => {
+    try {
+      set_is_sidebar_open(window.localStorage.getItem(HISTORY_PANEL_STORAGE_KEY) === 'open');
+    } catch (error) {
+      console.warn('[UnifiedAIAgent] history panel preference unavailable', error);
+    }
+  }, []);
+
+  /** Toggle the history panel and remember the choice for the next visit. */
+  const toggle_sidebar = useCallback(() => {
+    set_is_sidebar_open((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(HISTORY_PANEL_STORAGE_KEY, next ? 'open' : 'closed');
+      } catch (error) {
+        console.warn('[UnifiedAIAgent] history panel preference not saved', error);
+      }
+      return next;
+    });
+  }, []);
 
   /** Change the visible task focus without changing the chat thread or agent. */
   const handle_select_skill = useCallback((skill: AgentSkill) => {
@@ -75,6 +102,13 @@ function UnifiedAIAgentPageContent() {
       set_is_sidebar_open(false);
     }
   }, []);
+
+  /** Start a fresh draft and drop any `?thread=` still in the URL. */
+  const handle_new_chat = useCallback(() => {
+    chat.start_new_chat();
+    close_mobile_sidebar();
+    router.replace('/ai');
+  }, [chat, close_mobile_sidebar, router]);
 
   /** Send a user turn through the unified ReAct agent and persist its reply. */
   const handle_send_message = useCallback(async () => {
@@ -229,7 +263,7 @@ function UnifiedAIAgentPageContent() {
     <div className="h-full">
       <AIChatLayout
         is_sidebar_open={is_sidebar_open}
-        on_toggle_sidebar={() => set_is_sidebar_open((current) => !current)}
+        on_toggle_sidebar={toggle_sidebar}
         sidebar={
           <AIChatSidebar
             threads={chat.threads}
@@ -239,11 +273,7 @@ function UnifiedAIAgentPageContent() {
               chat.select_thread(thread_id);
               close_mobile_sidebar();
             }}
-            on_new_chat={() => {
-              chat.start_new_chat();
-              close_mobile_sidebar();
-              router.replace('/ai');
-            }}
+            on_new_chat={handle_new_chat}
             on_archive={chat.archive_thread}
           />
         }
@@ -255,10 +285,18 @@ function UnifiedAIAgentPageContent() {
                 title={chat.active_thread?.title || 'R&D AI Agent'}
                 badgeText={`Unified · ${active_skill.label}`}
                 leading={
-                  <SidebarToggleButton
-                    is_open={is_sidebar_open}
-                    on_toggle={() => set_is_sidebar_open((current) => !current)}
-                  />
+                  <SidebarToggleButton is_open={is_sidebar_open} on_toggle={toggle_sidebar} />
+                }
+                trailing={
+                  <button
+                    type="button"
+                    onClick={handle_new_chat}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 px-2 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 hover:text-emerald-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    title="เริ่มแชทใหม่"
+                  >
+                    <SquarePen size={13} strokeWidth={1.75} />
+                    <span className="hidden sm:inline">แชทใหม่</span>
+                  </button>
                 }
               />
             }

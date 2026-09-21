@@ -83,7 +83,7 @@ export function AIChatSidebar({
   const group_order = ['Today', 'Yesterday', 'Previous 7 days', 'Older'];
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-b from-emerald-50/80 via-white to-green-50/60">
+    <div className="flex flex-col h-full bg-emerald-50/25">
       {/* New Chat */}
       <div className="h-12 flex items-center px-3 border-b border-emerald-100/80">
         <button
