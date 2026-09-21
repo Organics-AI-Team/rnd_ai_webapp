@@ -1,3 +1,12 @@
+> **PARKED — do not resume without an explicit decision.**
+> Production runs `dev/droplet`, not this branch, and has since 2026-08-02
+> (confirmed from the droplet's deploy backups — see `CHANGELOG.md` on
+> `dev/droplet`, 2026-09-21). This branch has had no development since July 2026.
+> The port described below was planned while `v2/dev` was believed to be
+> production; that premise was wrong, so the work is **dropped**. The analysis is
+> kept because it is still accurate and would be needed if a return to Clerk is
+> ever decided.
+
 # Port /ai rework from dev/droplet onto the Clerk branch
 
 Context: `dev/droplet` (Mongo-session auth) and `v2/dev` (Clerk + multi-tenant)
