@@ -20,14 +20,15 @@
     "start:ai": "npm run start --workspace=apps/ai",
     "lint": "npm run lint --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present && rm -rf node_modules",
-    "clean-all": "rm -rf apps/*/node_modules apps/*/.next apps/*/dist packages/*/node_modules packages/*/dist node_modules .next dist .cache .turbo .vite coverage .nyc_output .pytest_cache __pycache__ *.log .DS_Store npm-debug.log* yarn-debug.log* yarn-error.log* pnpm-debug.log* lerna-debug.log* .pnpm-debug.log* .vercel .netlify .wrangler .sst .output .tmp .temp .swc .parcel-cache .eslintcache && npm cache clean --force && find . -name '*.tsbuildinfo' -delete && find . -name '.DS_Store' -delete && find . -name 'Thumbs.db' -delete && echo '✅ All cache, build artifacts, and temporary files have been removed aggressively! Environment files preserved.'",
+    "clean-all": "rm -rf apps/*/node_modules apps/*/.next apps/*/dist packages/*/node_modules packages/*/dist node_modules .next dist .cache .turbo .vite coverage .nyc_output .pytest_cache __pycache__ *.log .DS_Store npm-debug.log* yarn-debug.log* yarn-error.log* pnpm-debug.log* lerna-debug.log* .pnpm-debug.log* .vercel .netlify .wrangler .sst .output .tmp .temp .swc .parcel-cache .eslintcache && npm cache clean --force && find . -name '*.tsbuildinfo' -delete && find . -name '.DS_Store' -delete && find . -name 'Thumbs.db' -delete && echo '\u2705 All cache, build artifacts, and temporary files have been removed aggressively! Environment files preserved.'",
     "reset": "npm run clean-all && npm install --legacy-peer-deps",
     "seed-admin": "npm run seed-admin --workspace=apps/ai",
     "migrate": "npm run migrate --workspace=apps/ai",
     "create-sales-index": "npm run create-sales-index --workspace=apps/ai",
     "index-sales-data": "npm run index-sales-data --workspace=apps/ai",
     "index:qdrant": "npm run index:qdrant --workspace=apps/ai",
-    "check:qdrant": "npm run check:qdrant --workspace=apps/ai"
+    "check:qdrant": "npm run check:qdrant --workspace=apps/ai",
+    "test": "node --test tests/**/*.test.cjs evals/**/tests/*.test.cjs"
   },
   "keywords": [
     "monorepo",

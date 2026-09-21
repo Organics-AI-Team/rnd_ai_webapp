@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createTRPCContext } from '@/server/trpc';
 import { ReactAgentService } from '@/ai/agents/react/react-agent-service';
 import { PreferenceLearningService } from '@/ai/services/ml/preference-learning-service';
 
@@ -14,10 +15,34 @@ let react_agent_singleton: ReactAgentService | null = null;
 let preference_learning_service: PreferenceLearningService | null = null;
 const REACT_AGENT_TIMEOUT_MS = Number(process.env.REACT_AGENT_TIMEOUT_MS || 52_000);
 
+/**
+ * Resolve the acting user from the session cookie.
+ *
+ * The caller's `userId` is never read from the request body: a signed-in user
+ * could otherwise act as any other user by changing one field (the body is
+ * attacker-controlled, the session cookie is not). The edge middleware already
+ * rejects requests with no cookie; this re-resolves it so the handler acts on a
+ * verified identity rather than a claimed one.
+ *
+ * @returns The authenticated user and organization ids, or null when the
+ *          session is absent or expired.
+ */
+async function resolve_session_actor(): Promise<
+  { user_id: string; organization_id: string | null } | null
+> {
+  const context = await createTRPCContext();
+  if (!context.userId) {
+    return null;
+  }
+  return { user_id: context.userId, organization_id: context.organizationId };
+}
+
 /** Report configuration readiness without exposing connection values or secrets. */
 function get_agent_readiness(): { configured: boolean; missing: string[] } {
   const required = [
-    ['GEMINI_API_KEY', process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY],
+    // No NEXT_PUBLIC_* fallback: that prefix is inlined into client bundles,
+    // so reading one here would ship the provider credential to every browser.
+    ['GEMINI_API_KEY', process.env.GEMINI_API_KEY],
     ['MONGODB_URI', process.env.MONGODB_URI],
     ['RAW_MATERIALS_REAL_STOCK_MONGODB_URI', process.env.RAW_MATERIALS_REAL_STOCK_MONGODB_URI],
     ['QDRANT_URL', process.env.QDRANT_URL],
@@ -83,10 +108,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   console.log('[R&DAgentAPI] POST — start');
 
   try {
+    const actor = await resolve_session_actor();
+    if (!actor) {
+      console.warn('[R&DAgentAPI] POST — rejected: no valid session');
+      return NextResponse.json({ error: 'Unauthorized', success: false }, { status: 401 });
+    }
+
     const body = await request.json();
-    if (!body.prompt || !body.userId) {
+    if (!body.prompt) {
       return NextResponse.json(
-        { error: 'Missing required fields: prompt, userId', success: false },
+        { error: 'Missing required field: prompt', success: false },
         { status: 400 },
       );
     }
@@ -94,8 +125,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const react_result = await with_timeout(
       get_react_agent().execute({
         prompt: String(body.prompt),
-        user_id: String(body.userId),
-        organization_id: body.organizationId ? String(body.organizationId) : undefined,
+        user_id: actor.user_id,
+        organization_id: actor.organization_id ?? undefined,
         session_id: body.sessionId ? String(body.sessionId) : undefined,
         persist_formula: body.persistFormula,
         conversation_history: Array.isArray(body.conversationHistory)
@@ -155,16 +186,22 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   console.log('[R&DAgentAPI] PUT — start');
 
   try {
+    const actor = await resolve_session_actor();
+    if (!actor) {
+      console.warn('[R&DAgentAPI] PUT — rejected: no valid session');
+      return NextResponse.json({ error: 'Unauthorized', success: false }, { status: 401 });
+    }
+
     const body = await request.json();
-    if (!body.userId || !body.feedback) {
+    if (!body.feedback) {
       return NextResponse.json(
-        { error: 'Missing required fields: userId, feedback', success: false },
+        { error: 'Missing required field: feedback', success: false },
         { status: 400 },
       );
     }
 
     await get_preference_learning_service().recordInteraction({
-      userId: String(body.userId),
+      userId: actor.user_id,
       prompt: '',
       response: '',
       feedback: {
@@ -179,7 +216,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       },
     });
 
-    console.log('[R&DAgentAPI] PUT — complete', { user_id: body.userId });
+    console.log('[R&DAgentAPI] PUT — complete', { user_id: actor.user_id });
     return NextResponse.json({
       success: true,
       data: { message: 'Feedback recorded successfully', updatedPreferences: true },
