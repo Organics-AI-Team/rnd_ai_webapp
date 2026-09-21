@@ -1,5 +1,273 @@
 # Changelog
 
+## [2026-09-21] fix: Restore R&D AI chat — half-deployed agent unification, retired Gemini model, and a 5s re-render storm
+
+### Summary
+
+Users could not send any message on `https://rndai.erporganics.com/ai`. Three independent defects were stacked on that one path; the first alone was enough to block every send.
+
+1. **The unification was only half deployed.** The specialist AI workspaces were merged into a single `rnd_ai` agent in the web layer, but the tRPC router was never updated: `chatThreads` accepted only `raw_materials_ai` / `sales_rnd_ai`, and `updateMessageMetadata` did not exist at all. Every `list` / `create` / `addMessage` call from `/ai` failed input validation, so `handle_send_message` bailed at its first `await` and simply put the text back in the box — no error, no request.
+2. **The configured Gemini model was retired.** `GEMINI_MODEL=gemini-2.5-flash` 404s `generateContent` for this project, so any send that got past (1) still failed.
+3. **The session poll re-rendered the whole app every 5 seconds**, which is the "page keeps refreshing" report.
+
+The sidebar also pointed at `/ai/raw-materials-ai` and `/ai/sales-rnd-ai`, which are now `redirect('/ai')` aliases — every AI tab bounced back to `/ai`.
+
+### Evidence
+
+- `chat_threads` in production holds 5 `raw_materials_ai`, 1 `sales_rnd_ai`, 2 `formulation` documents and **zero `rnd_ai`** — the newest thread of any kind is 2026-08-02, the day the running image was built. Seven weeks of a live `/ai` page produced no thread at all.
+- `docker logs rnd-ai-web | grep -c chatThreads` → `0`. The procedure logs on entry, so the handler never ran: calls died at zod validation.
+- `POST /api/ai/rnd-agent` returned HTTP 500 with `[404 Not Found] This model models/gemini-2.5-flash is no longer available to new users`.
+
+### Root Cause
+
+**Class 1 — a rename rolled out on one side of a contract.** `apps/web` was migrated to the unified `rnd_ai` agent while `apps/ai/server/routers/chat-threads.ts` kept the pre-merge enum and lacked the procedure the new hook calls. The client and server disagreed about the same contract, and the UI swallowed the mismatch: `handle_send_message` treats a null persist result as "nothing to do" and restores the input, so a hard validation failure looked to the user like a dead button.
+
+Sweep: every `chatThreads` procedure the deployed `use_chat_threads` hook calls was checked against the router — `list`, `create`, `getMessages`, `addMessage`, `archive` existed; `updateMessageMetadata` did not. Every remaining caller passing a retired `agentType` was searched for (`grep -rn "agentType: '\(raw_materials_ai\|sales_rnd_ai\)'"` over `apps` and `packages`) — after the navigation fix, none remain. `list` now returns all three historical agent types so pre-merge conversations stay reachable in the unified workspace.
+
+**Class 2 — a Gemini model id pinned as a literal.** Google retires ids on a rolling basis; a retired id 404s and each pinned copy has to be found separately. Sweep: `grep -rnoE "gemini-[a-z0-9.-]+"` over all `*.ts|tsx|js|json|yml|yaml|md|sh`, excluding `node_modules` and `_archive`, then each id probed against `generateContent` with the production key.
+
+| Site | Id found | Live? | Action |
+| --- | --- | --- | --- |
+| droplet `/opt/rnd-ai/.env` | `gemini-2.5-flash` | 404 | repointed to `gemini-3.6-flash` (`.env` backed up) |
+| `apps/ai/agents/react/tool-handlers/web-search-handler.ts:23` | `gemini-2.5-flash` | 404 | `get_gemini_search_model()` |
+| `scripts/backfill-cas-numbers.ts:35` | `gemini-2.5-flash` | 404 | `get_gemini_model()` |
+| `evals/rag/eval-config.json:2` | `gemini-2.0-flash` | 404 | `gemini-3.6-flash` |
+| `apps/ai/agents/react/react-agent-service.ts:119` | `gemini-3.1-pro-preview` | live | `get_gemini_model()` (preview pin removed) |
+| `docker-compose.yml:28` | `gemini-3.1-pro-preview` | live | literal removed; forwards `GEMINI_SEARCH_MODEL` |
+| `tool-definitions.ts:581`, `CHANGELOG.md`, `docs/**` | assorted | mixed | left — docstring example and historical record |
+
+Structural change: `apps/ai/config/gemini-models.ts` is the single source of truth, and `get_gemini_search_model()` falls back `GEMINI_SEARCH_MODEL` → `GEMINI_MODEL` → default so pinning one variable cannot strand the search path.
+
+**Class 3 — context value rebuilt on every poll.** `apps/web/lib/auth-context.tsx` polls `auth.me` every 5s and passed `value={{ ... }}` to the provider. Identity changed on every poll whether or not the session did, re-rendering every consumer on a timer.
+
+### Changes
+
+- `apps/ai/server/routers/chat-threads.ts` — accepts `rnd_ai`; `list` returns all three historical agent types; adds the `updateMessageMetadata` procedure the unified hook requires.
+- `apps/web/components/navigation.tsx` — one "R&D AI Agent" entry pointing at `/ai` instead of the two redirect aliases; one thread query for the unified agent; `is_ai_link` / `isActive` recognise `/ai`.
+- `apps/ai/config/gemini-models.ts` — new. `DEFAULT_GEMINI_MODEL`, `get_gemini_model()`, `get_gemini_search_model()`, `get_gemini_embedding_model()`; env read lazily so `.env` load order does not matter.
+- `apps/ai/agents/react/react-agent-service.ts`, `.../tool-handlers/web-search-handler.ts`, `scripts/backfill-cas-numbers.ts` — model ids from the config module.
+- `scripts/verify-gemini-models.ts` — new. Probes every configured id against its own endpoint; exits 1 on any dead id. Registered as `npm run verify:models`.
+- `apps/web/lib/auth-context.tsx` — `useMemo` on the context value, `useCallback` on `login`/`signup`/`logout`/`refreshUser`.
+- `docker-compose.yml`, `.env.example`, `evals/rag/eval-config.json`, `package.json` — no literal model ids; model vars documented.
+
+### Verification
+
+- `npm run verify:models` on the droplet: 3/3 live, exit 0. Negative case proved — `GEMINI_MODEL=gemini-2.5-flash` reports `DEAD (404)` and exits 1.
+- `POST /api/ai/rnd-agent` on production returns `success: true` with a full Thai agent answer (previously HTTP 500).
+- `tsc --noEmit` clean for both `apps/web` and `apps/ai` (0 errors).
+
+### Notes
+
+- Production ran an image built 2026-08-02 the entire time. The droplet source tree was verified file-by-file against `HEAD` before patching — every file checked matched `HEAD`, not the local working tree, which carries a large amount of unrelated uncommitted work. Only the files in this change were committed and deployed.
+
+## [2026-08-01] feat: Add RAGAS and Promptfoo AI evaluation harness
+
+### Summary
+
+- Added a versioned synthetic RAG corpus, guarded live unified-agent collector, and local JSONL contract so the exact response, Qdrant retrieval trace, model, tool trace, and latency can be assessed without modifying the production execution path.
+- Added a locked RAGAS 0.4.3 environment that measures faithfulness, context precision/recall, factual correctness, answer relevancy, and p95 latency against configurable hard gates.
+- Added Promptfoo replay providers for the same captured output, including grounding/relevance/required-tool regression coverage and a no-judge-cost prompt-injection safety suite.
+- Ignored captured contexts and generated reports to prevent production retrieval data from entering version control; documented corpus provenance, safe capture, and release-baseline requirements.
+
+### Root Cause and Compatibility
+
+- A clean RAGAS 0.4.3 installation resolved `langchain-community` 0.4.2, which no longer provides the `chat_models.vertexai` import RAGAS requires. Pinning `langchain-community` to 0.3.31 restores the compatible import while retaining the current RAGAS collections metrics API.
+
+### Files Changed
+
+- `evals/rag/**` — RAGAS environment, corpus, guarded capture CLI, scorer, reports, and contract tests.
+- `evals/promptfoo/**` — recorded-run provider, dynamic corpus adapter, safety suite, and tests.
+- `evals/README.md` and `.gitignore` — operating guide and protection for local evaluation artifacts.
+
+---
+
+## [2026-07-31] refactor: Remove remaining legacy AI flows and APIs
+
+### Summary
+
+- Removed the retired Raw Materials API, old conversation/feedback tRPC routers, their orphaned schemas, unused analytics UI, stale migration/AI-optimization documentation, and obsolete database scripts.
+- Kept the three retired browser URLs only as server-side redirects to `/ai`; all new chat-thread calls now accept only `rnd_ai`, while existing specialist threads remain readable in the unified history.
+- Replaced the legacy `rag` tRPC namespace and specialist RAG service-name map with a direct, admin-only `vectorIndex` API and canonical Qdrant collection names. This also aligns material indexing with `raw_materials_console`.
+- Removed unused frontend/backend dependencies and repaired the backend build, including stale Qdrant import aliases and calculation logging signatures.
+
+### Files Changed
+
+- `apps/web/app/{ai,api/ai,admin/vector-indexing}/**` and `apps/web/{hooks,components,lib}/**`
+- `apps/ai/{server/routers,server/services,services/rag,services/vector,config,scripts,types}/**`
+- `packages/shared-types/src/**`, `apps/{ai,web}/package.json`, and `package-lock.json`
+- `README.md` and retired implementation documents under `docs/`
+
+---
+
+## [2026-07-31] fix: Close frontend reliability and accessibility gaps
+
+### Summary
+
+- Converted the retired Raw Materials and Sales AI URLs to server redirects, so a legacy bookmark reaches `/ai` before any old screen can render.
+- Made the unified AI workspace reliable during authentication, history loading, failed message persistence, HTTP failures, and timeouts. The mobile chat layout no longer uses a fragile viewport-height calculation.
+- Improved AI-chat keyboard and screen-reader behaviour: task controls communicate their selected state, Enter respects IME composition, history actions use valid buttons, and mobile panels have labelled dismiss controls.
+- Repaired formula-editor typing for returned records, displayed confirmed status accurately, and prevented a confirmed formula from being silently changed back to a mutable status when it is saved.
+- Corrected the ingredients sign-in route and removed the stale, deleted RAG route from the frontend configuration. Mobile navigation and the formula drawer now use accessible backdrop buttons.
+
+### Files Changed
+
+- `apps/web/app/{ai,ingredients,formulas}/**`
+- `apps/web/components/{ai,admin-navigation,navigation}.tsx`
+- `apps/web/components/formula-form.tsx`
+- `apps/web/lib/config.ts`
+- `apps/{web,ai}/lib/types.ts`, `packages/shared-types/src/index.ts`, and `apps/ai/server/routers/formulas.ts`
+
+---
+
+## [2026-07-31] fix: Make the unified R&D chat the sole agent destination
+
+### Summary
+
+- Added `/ai/agents` as a query-preserving compatibility alias that redirects to the single `/ai` R&D AI chat, preventing the former agent-directory URL from returning 404.
+- Added an accessible task-focus toggle for Materials & Stock, Formula Design, Cost & Scale, Market Research, and Sales Planning. It adjusts editable prompts and examples while retaining the same unified agent, chat thread, history, and API endpoint.
+- Updated AI navigation so the one R&D AI link stays active for compatibility aliases and exposes the unified thread history consistently.
+
+### Files Changed
+
+- `apps/web/app/ai/agents/page.tsx`
+- `apps/web/app/ai/page.tsx`
+- `apps/web/components/ai/ai_agent_skills.tsx`
+- `apps/web/components/{ai/index,conditional-layout,navigation}.tsx`
+
+---
+
+## [2026-07-31] refactor: Remove retired vector backends and repair Qdrant operations
+
+### Summary
+
+- Removed the unreachable Pinecone-only indexing API, its unlinked admin page, the unused search endpoint, and the obsolete Chroma deployment bundle. The active admin experience and indexer now consistently target Qdrant.
+- Removed dead Pinecone/LangChain/LangGraph dependencies, compatibility aliases, environment keys, bundler exclusions, duplicate sales and MySkin indexing scripts, and obsolete RAG index metadata.
+- Replaced stale Qdrant labels, environment examples, Makefile commands, quick-start instructions, and primary documentation with the live collections and embedding schemas.
+- Added the missing `check:qdrant` script. It verifies connectivity and reports the configured collection point counts, statuses, and dimensions without mutating data.
+- Retired superseded implementation and LangGraph roadmap documents; the AI module README now describes the unified agent and its five runtime Markdown skills.
+
+### Files Changed
+
+- `apps/ai/scripts/check-qdrant.ts`
+- `apps/ai/scripts/index-sales-data.ts` and `scripts/index-myskin-qdrant.ts` (removed)
+- `apps/ai/chromadb-service/*` (removed)
+- `apps/web/app/admin/ai-indexing/page.tsx` and `apps/web/app/api/{index-data,rag/searchRawMaterials}/route.ts` (removed)
+- `apps/web/lib/services/embedding.ts` (removed)
+- `apps/ai/services/rag/qdrant-rag-service.ts`, `apps/ai/services/vector/qdrant-service.ts`, and `apps/ai/config/qdrant-config.ts`
+- `apps/{ai,web}/.env.example`, `.env.example`, `Makefile`, `README.md`, `docs/{MONOREPO_README,DEPLOYMENT}.md`, and `apps/ai/README.md`
+
+---
+
+## [2026-07-31] refactor: Retire the split legacy AI stacks
+
+### Summary
+
+- Made `/api/ai/rnd-agent` the real unified ReAct endpoint and migrated internal formula and service clients to it. The former raw-material endpoint now remains only as a small compatibility alias.
+- Removed the unreachable Raw Materials AI and Sales R&D AI executors, their LangGraph and enhanced-chat routes, generic multi-agent APIs, unused management UI, demos, tests, and configuration exports.
+- Removed two additional disconnected AI paths: the unreferenced cosmetic-enhanced/dashboard pipeline and the direct-Gemini/chemical-chat implementation. Removed their detached hybrid/unified search wrappers as well; the unified agent now uses its own verified stock, Qdrant, MongoDB, formula, and web tools.
+- Removed stale bundler aliases and package scripts that pointed at deleted specialist executors. Preserved the `sales_rnd` Qdrant collection and its indexing script because the unified sales skill still uses that shared data.
+- Kept the two previous browser URLs as redirects to `/ai`, so saved links continue to land in the unified workspace.
+
+### Files Changed
+
+- `apps/web/app/api/ai/rnd-agent/route.ts`
+- `apps/web/app/api/ai/raw-materials-agent/route.ts`
+- `apps/web/app/api/ai/enhanced-chat/route.ts` (removed)
+- `apps/web/app/api/agents/*` (removed)
+- `apps/web/app/api/ai/cosmetic-enhanced/route.ts`, `apps/web/app/api/ai-chat/*`, and unused hybrid/unified RAG routes (removed)
+- `apps/ai/agents/raw-materials-ai/*` (removed)
+- `apps/ai/agents/sales-rnd-ai/*` (removed)
+- `apps/ai/agents/agent-manager*`, `apps/ai/agents/configs/*`, and obsolete generic agent UI/tests (removed)
+- `apps/ai/services/{knowledge,quality,regulatory,credibility,thresholds,response,enhanced}/*` and detached hybrid search clients/services (removed)
+- `apps/ai/server/routers/raw-materials-{conversations,feedback}.ts` (removed; thread compatibility remains in `chat-threads`)
+- `apps/ai/services/providers/gemini-tool-service.ts`
+- `apps/ai/scripts/index-sales-data.ts`
+
+---
+
+## [2026-07-31] feat: Add runtime Markdown skill cards for the unified R&D agent
+
+### Summary
+
+- Added one versioned Markdown skill card for every visible unified-agent capability: Materials & Stock, Formula Design, Cost & Scale, Market Research, and Sales Planning.
+- Added a runtime skill catalog that reads and caches all five cards, then injects them into the ReAct system prompt used by `/ai`.
+- Documented tool choice, verification rules, limits, and expected outputs per capability, including the distinction between current stock, catalog references, estimates, research facts, and sales inferences.
+- Added a safe compact fallback so a deployment with an incomplete skill-card bundle continues to respond without silently using incomplete detailed guidance.
+
+### Files Changed
+
+- `apps/ai/agents/react/skill-catalog.ts`
+- `apps/ai/agents/react/skills/materials-and-stock.md`
+- `apps/ai/agents/react/skills/formula-design.md`
+- `apps/ai/agents/react/skills/cost-and-scale.md`
+- `apps/ai/agents/react/skills/market-research.md`
+- `apps/ai/agents/react/skills/sales-planning.md`
+- `apps/ai/agents/react/react-system-prompt.ts`
+
+---
+
+## [2026-07-31] fix: Strengthen unified R&D agent tools and execution trace
+
+### Summary
+
+- Added a verified `stock_lookup` tool that reads the current stock source first and clearly separates confirmed availability from catalog-only reference matches.
+- Updated the shared R&D agent to route materials, stock, formula, cost, market, and sales requests through a concise Plan → Act → Verify → Synthesize flow. The UI shows only this high-level plan and the tools used, never private chain-of-thought.
+- Made contextual lookups read the current unified chat thread only after ownership and organization checks, while retaining legacy conversation compatibility.
+- Updated commercial-vector formatting and research fallback behavior so sales work can use its relevant data sources and current facts are not invented when grounded web search is unavailable.
+
+### Files Changed
+
+- `apps/ai/agents/react/react-agent-service.ts`
+- `apps/ai/agents/react/react-system-prompt.ts`
+- `apps/ai/agents/react/tool-definitions.ts`
+- `apps/ai/agents/react/tool-handlers/stock-lookup-handler.ts`
+- `apps/ai/agents/react/tool-handlers/context-memory-handler.ts`
+- `apps/ai/agents/react/tool-handlers/qdrant-search-handler.ts`
+- `apps/ai/agents/react/tool-handlers/web-search-handler.ts`
+- `apps/web/components/ai/ai_chat_message.tsx`
+
+---
+
+## [2026-07-31] feat: Merge stock-materials and sales AI into one agentic workspace
+
+### Summary
+
+- Replaced the separate Stock Materials AI and Sales Formulation AI entry points with one `/ai` R&D AI Agent workspace.
+- Added visible skills for materials and stock, formula design, cost and scale, market research, and sales planning. The shared ReAct agent now has matching routing guidance for commercial research and B2B planning.
+- Unified the conversation history so existing stock-material and sales chats remain visible and can be continued. New conversations use the `rnd_ai` type.
+- Preserved both previous URLs as redirects to the unified workspace, including their query parameters and history links.
+
+### Files Changed
+
+- `apps/web/app/ai/page.tsx`
+- `apps/web/app/ai/raw-materials-ai/page.tsx`
+- `apps/web/app/ai/sales-rnd-ai/page.tsx`
+- `apps/web/app/api/ai/rnd-agent/route.ts`
+- `apps/web/components/ai/ai_agent_skills.tsx`
+- `apps/web/components/ai/index.ts`
+- `apps/web/components/conditional-layout.tsx`
+- `apps/web/components/navigation.tsx`
+- `apps/web/hooks/use_chat_threads.ts`
+- `apps/web/lib/config.ts`
+- `apps/ai/agents/react/react-system-prompt.ts`
+- `apps/ai/server/routers/chat-threads.ts`
+- `prisma/schema.prisma`
+
+---
+
+## [2026-07-31] feat: Paginate formulas table and truncate long values
+
+### Summary
+
+- Added 10-item client-side pagination controls to the `/formulas` table, resetting to the first page when its search changes and keeping the current page valid after data changes.
+- Made the formula code and name columns fixed-width and single-line so lengthy values display an ellipsis; native hover titles preserve access to the complete value.
+
+### Files Changed
+
+- `apps/web/app/formulas/page.tsx`
+
+---
+
 ## [2026-07-15] docs: Dynamic agentic orchestrator design supersedes fixed OODA pipeline
 
 ### Summary

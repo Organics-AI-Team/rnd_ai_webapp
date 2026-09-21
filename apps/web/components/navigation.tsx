@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, LogOut, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Database, Sparkles, MessageSquare } from "lucide-react";
+import { Package, LogOut, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, ChevronDown, Plus, Sparkles, MessageSquare } from "lucide-react";
 import { cn } from "@rnd-ai/shared-utils";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,11 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
 
   // --- Fetch recent chat threads for sidebar history ---
-  const raw_materials_threads = trpc.chatThreads.list.useQuery(
-    { agentType: 'raw_materials_ai', limit: 5 },
-    { refetchOnWindowFocus: false, enabled: !!user },
-  );
-  const sales_rnd_threads = trpc.chatThreads.list.useQuery(
-    { agentType: 'sales_rnd_ai', limit: 5 },
+  // One query for the unified workspace. `chatThreads.list` accepts only
+  // 'rnd_ai' (z.literal) and already returns the retired specialist histories,
+  // so the old per-agent queries were both rejected and redundant.
+  const rnd_ai_threads = trpc.chatThreads.list.useQuery(
+    { agentType: 'rnd_ai', limit: 5 },
     { refetchOnWindowFocus: false, enabled: !!user },
   );
 
@@ -38,8 +37,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
    * @returns Thread array or empty array
    */
   const get_threads_for_href = (href: string) => {
-    if (href === '/ai/raw-materials-ai') return raw_materials_threads.data || [];
-    if (href === '/ai/sales-rnd-ai') return sales_rnd_threads.data || [];
+    if (href === '/ai') return rnd_ai_threads.data || [];
     return [];
   };
 
@@ -72,8 +70,9 @@ export function Navigation({ children }: { children: React.ReactNode }) {
     { type: "link", href: "/formulas", label: "Formulas", icon: Beaker },
     { type: "separator" },
     { type: "section-title", label: "AI ASSISTANT" },
-    { type: "link", href: "/ai/raw-materials-ai", label: "Stock Materials AI", icon: Database },
-    { type: "link", href: "/ai/sales-rnd-ai", label: "Sales Formulation AI", icon: Sparkles },
+    // The specialist workspaces were merged into /ai; the old URLs are now
+    // redirect aliases, so linking to them bounced every click back to /ai.
+    { type: "link", href: "/ai", label: "R&D AI Agent", icon: Sparkles },
   ];
 
   /**
@@ -167,8 +166,10 @@ export function Navigation({ children }: { children: React.ReactNode }) {
 
               if (item.type === "link") {
                 const Icon = item.icon;
-                const isActive = pathname === item.href || pathname?.startsWith(item.href + '?');
-                const is_ai_link = item.href?.startsWith('/ai/');
+                const is_ai_link = item.href === '/ai' || item.href?.startsWith('/ai/');
+                const isActive = is_ai_link
+                  ? pathname === '/ai' || pathname?.startsWith('/ai/')
+                  : pathname === item.href || pathname?.startsWith(item.href + '?');
                 const threads = is_ai_link ? get_threads_for_href(item.href) : [];
                 const is_thread_section_open = openDropdowns.includes(`threads-${item.href}`);
 

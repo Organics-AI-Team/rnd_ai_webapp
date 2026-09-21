@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
+    "verify:models": "tsx scripts/verify-gemini-models.ts",
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:ai": "npm run dev --workspace=apps/ai",
     "build": "npm run build --workspaces --if-present",

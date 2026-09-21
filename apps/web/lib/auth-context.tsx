@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { trpc } from "./trpc-client";
 import { useRouter } from "next/navigation";
 
@@ -87,7 +87,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [meData, token, meError]);
 
-  const login = async (email: string, password: string) => {
+  /** Authenticate, persist the session, and land the user on the dashboard. */
+  const login = useCallback(async (email: string, password: string) => {
     try {
       const result = await loginMutation.mutateAsync({ email, password });
       setToken(result.token);
@@ -104,9 +105,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Login - Error:", error);
       throw new Error(error.message || "Login failed");
     }
-  };
+  }, [loginMutation.mutateAsync, refetchMe, router]);
 
-  const signup = async (
+  /** Create an account plus organization, then sign the new user in. */
+  const signup = useCallback(async (
     email: string,
     password: string,
     name: string,
@@ -132,9 +134,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       throw new Error(error.message || "Signup failed");
     }
-  };
+  }, [signupMutation.mutateAsync, refetchMe, router]);
 
-  const logout = async () => {
+  /** Clear the session on the server and locally, then return to login. */
+  const logout = useCallback(async () => {
     if (token) {
       try {
         await logoutMutation.mutateAsync({ token });
@@ -149,27 +152,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Remove cookie
     document.cookie = "auth_token=; path=/; max-age=0";
     router.push("/login");
-  };
+  }, [logoutMutation.mutateAsync, router, token]);
 
-  const refreshUser = async () => {
+  /** Force an immediate re-read of the session (e.g. after a credit change). */
+  const refreshUser = useCallback(async () => {
     if (token) {
       await refetchMe();
     }
-  };
+  }, [refetchMe, token]);
+
+  // The session is polled on an interval. Without this memo the provider
+  // handed every consumer a brand-new object on each poll, re-rendering the
+  // whole authenticated tree every few seconds (visible as the UI refreshing
+  // on its own). Identity now changes only when the session actually does.
+  const context_value = useMemo(
+    () => ({ user, organization, token, isLoading, login, signup, logout, refreshUser }),
+    [user, organization, token, isLoading, login, signup, logout, refreshUser],
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        organization,
-        token,
-        isLoading,
-        login,
-        signup,
-        logout,
-        refreshUser,
-      }}
-    >
+    <AuthContext.Provider value={context_value}>
       {children}
     </AuthContext.Provider>
   );

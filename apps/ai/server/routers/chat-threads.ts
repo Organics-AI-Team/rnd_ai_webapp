@@ -10,6 +10,7 @@
  *   - create    — Start a new thread
  *   - getMessages — Paginated messages for a thread
  *   - addMessage  — Append message to thread (increments count, updates timestamp)
+ *   - updateMessageMetadata — Attach saved artifacts to a chat response
  *   - archive     — Soft delete a thread
  *   - updateTitle — Rename a thread
  *
@@ -26,7 +27,11 @@ import { ObjectId } from "mongodb";
 // Input Schemas
 // ---------------------------------------------------------------------------
 
-const agent_type_enum = z.enum(['raw_materials_ai', 'sales_rnd_ai']);
+const agent_type_enum = z.literal('rnd_ai');
+
+// Historical specialist threads remain visible inside the unified workspace,
+// but all new tRPC calls can create and address only the canonical agent.
+const unified_history_agent_types = ['rnd_ai', 'raw_materials_ai', 'sales_rnd_ai'];
 
 const list_input = z.object({
   agentType: agent_type_enum,
@@ -50,6 +55,11 @@ const add_message_input = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string(),
   metadata: z.any().optional(),
+});
+
+const update_message_metadata_input = z.object({
+  messageId: z.string(),
+  metadata: z.any(),
 });
 
 const archive_input = z.object({
@@ -90,7 +100,9 @@ export const chatThreadsRouter = router({
       const filter: Record<string, any> = {
         organizationId: ctx.organizationId,
         userId: ctx.userId,
-        agentType: input.agentType,
+        // The unified workspace retains stock-material and sales histories so
+        // users can continue any existing conversation after the UI merge.
+        agentType: { $in: unified_history_agent_types },
       };
       if (!input.includeArchived) {
         filter.isArchived = { $ne: true };
@@ -291,6 +303,48 @@ export const chatThreadsRouter = router({
         metadata: message.metadata,
         createdAt: now,
       };
+    }),
+
+  /**
+   * Update metadata for one of the current user's messages.
+   *
+   * Formula cards use this after a user saves an AI draft so the card remains
+   * linked to the real formula after navigation or a page refresh.
+   */
+  updateMessageMetadata: protectedProcedure
+    .input(update_message_metadata_input)
+    .mutation(async ({ ctx, input }) => {
+      const client = await client_promise;
+      const db = client.db();
+
+      let message_object_id: ObjectId;
+      try {
+        message_object_id = new ObjectId(input.messageId);
+      } catch {
+        throw new Error('Invalid message ID');
+      }
+
+      const message = await db.collection('chat_messages').findOne({ _id: message_object_id });
+      if (!message) {
+        throw new Error('Message not found');
+      }
+
+      const thread = await db.collection('chat_threads').findOne({
+        _id: new ObjectId(message.threadId),
+        organizationId: ctx.organizationId,
+        userId: ctx.userId,
+        isArchived: { $ne: true },
+      });
+      if (!thread) {
+        throw new Error('Message access denied');
+      }
+
+      await db.collection('chat_messages').updateOne(
+        { _id: message_object_id },
+        { $set: { metadata: input.metadata } },
+      );
+
+      return { success: true };
     }),
 
   /**

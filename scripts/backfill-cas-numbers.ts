@@ -20,6 +20,7 @@
 
 import { MongoClient, ObjectId } from 'mongodb';
 import { GoogleGenAI } from '@google/genai';
+import { get_gemini_model } from '../apps/ai/config/gemini-models';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -31,8 +32,8 @@ const MONGO_DB = 'rnd_ai';
 const CONSOLE_COLLECTION = 'raw_materials_console';
 const MYSKIN_COLLECTION = 'raw_materials_myskin';
 
-/** Gemini model for CAS lookup — fast model with good chemistry knowledge */
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+/** Gemini model for CAS lookup — resolved from the shared model config. */
+const GEMINI_MODEL = get_gemini_model();
 
 /** Number of ingredients per AI batch call */
 const BATCH_SIZE = 20;

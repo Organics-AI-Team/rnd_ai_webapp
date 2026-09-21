@@ -14,13 +14,15 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import { get_gemini_search_model } from '../../../config/gemini-models';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Gemini model used for search-grounded queries */
-const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
+/** Gemini model used for search-grounded queries. Resolved per call so a
+ *  retired id is fixed in one place (config/gemini-models). */
+const SEARCH_MODEL = get_gemini_search_model();
 
 // ---------------------------------------------------------------------------
 // Types

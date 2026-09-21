@@ -1,5 +1,5 @@
 {
-  "judge_model": "gemini-2.0-flash",
+  "judge_model": "gemini-3.6-flash",
   "embedding_model": "gemini-embedding-001",
   "thresholds": {
     "faithfulness": 0.85,
