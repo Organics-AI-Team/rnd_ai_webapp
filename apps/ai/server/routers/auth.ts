@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { SignupInputSchema, LoginInputSchema } from "@/lib/types";
@@ -18,7 +19,7 @@ export const authRouter = router({
       // Check if account already exists
       const existingAccount = await db.collection("accounts").findOne({ email: input.email });
       if (existingAccount) {
-        throw new Error("An account with this email already exists");
+        throw new TRPCError({ code: "CONFLICT", message: "An account with this email already exists" });
       }
 
       // Hash password
@@ -106,23 +107,23 @@ export const authRouter = router({
       // Find account
       const account = await db.collection("accounts").findOne({ email: input.email });
       if (!account) {
-        throw new Error("Invalid email or password");
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid email or password" });
       }
 
       if (!account.isActive) {
-        throw new Error("Account is deactivated");
+        throw new TRPCError({ code: "FORBIDDEN", message: "Account is deactivated" });
       }
 
       // Verify password
       const isValidPassword = await bcrypt.compare(input.password, account.passwordHash);
       if (!isValidPassword) {
-        throw new Error("Invalid email or password");
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid email or password" });
       }
 
       // Get user profile
       const user = await db.collection("users").findOne({ accountId: account._id.toString() });
       if (!user) {
-        throw new Error("User profile not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "User profile not found" });
       }
 
       // Create session
@@ -197,13 +198,13 @@ export const authRouter = router({
         expiresAt: { $gt: new Date() },
       });
       if (!session) {
-        throw new Error("Invalid or expired session");
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid or expired session" });
       }
 
       // Get user
       const user = await db.collection("users").findOne({ accountId: session.accountId });
       if (!user) {
-        throw new Error("User not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
       }
 
       // Get organization

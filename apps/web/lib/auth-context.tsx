@@ -49,7 +49,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     {
       enabled: !!token,
       retry: false,
-      refetchInterval: 5000, // Refetch every 5 seconds
+      // The session is re-read on a timer only as a backstop for changes made
+      // elsewhere (credits spent by another tab, an account deactivated by an
+      // admin). At 5s this was three queries per signed-in user every five
+      // seconds, forever, to observe data that changes maybe once a session.
+      // Anything needing immediacy calls refreshUser(); returning to the tab
+      // refetches regardless.
+      refetchInterval: 60_000,
       refetchOnWindowFocus: true,
     }
   );

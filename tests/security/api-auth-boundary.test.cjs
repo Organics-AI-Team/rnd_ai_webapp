@@ -17,6 +17,12 @@ const repo_root = path.join(__dirname, '..', '..');
 const middleware_path = path.join(repo_root, 'apps', 'web', 'middleware.ts');
 const api_root = path.join(repo_root, 'apps', 'web', 'app', 'api');
 
+/** Files on the authentication/authorization critical path. */
+const AUTH_CRITICAL_PATH = [
+  path.join(repo_root, 'apps', 'ai', 'server', 'routers', 'auth.ts'),
+  path.join(repo_root, 'apps', 'ai', 'server', 'trpc.ts'),
+];
+
 /** Endpoints that legitimately authorize themselves instead of at the edge. */
 const EXPECTED_PUBLIC_API_PREFIXES = ['/api/trpc'];
 
@@ -73,5 +79,22 @@ test('no route handler takes the acting identity from the request body', () => {
     'the request body is attacker-controlled: an authenticated caller can act ' +
       'as any user by editing one field. Resolve the actor from the session ' +
       '(createTRPCContext) instead',
+  );
+});
+
+test('the auth path throws typed TRPCError, never a bare Error', () => {
+  // A bare `throw new Error` reaches the client as HTTP 500
+  // INTERNAL_SERVER_ERROR, so a caller cannot tell "your password is wrong"
+  // from "the database is down" — and every failed login pages whoever
+  // watches the 5xx rate.
+  const offenders = AUTH_CRITICAL_PATH.filter((file) =>
+    /throw new Error\(/.test(fs.readFileSync(file, 'utf8')),
+  );
+
+  assert.deepEqual(
+    offenders.map((file) => path.relative(repo_root, file)),
+    [],
+    'use TRPCError with an explicit code (UNAUTHORIZED / FORBIDDEN / NOT_FOUND / ' +
+      'CONFLICT) so auth failures are distinguishable from server faults',
   );
 });

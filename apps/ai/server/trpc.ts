@@ -1,4 +1,4 @@
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import client_promise from "@rnd-ai/shared-database";
@@ -45,7 +45,10 @@ export const publicProcedure = t.procedure;
 // Protected procedure that requires authentication
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.userId || !ctx.user) {
-    throw new Error("Unauthorized - Please log in");
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Unauthorized - Please log in",
+    });
   }
 
   return next({
