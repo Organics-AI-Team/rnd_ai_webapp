@@ -29,6 +29,10 @@ interface ArtifactCandidate {
   /** Stable content hash of the producing observation — the draft artifact id. */
   readonly content_hash: string;
 }
+type ArtifactCandidateResult =
+  | { readonly kind: "none" }
+  | { readonly kind: "invalid"; readonly tool_name: string }
+  | { readonly kind: "candidate"; readonly value: ArtifactCandidate };
 
 /**
  * Recover the most recent tenant artifact the run produced, if any.
@@ -45,7 +49,7 @@ interface ArtifactCandidate {
 function extract_artifact_candidate(
   state: AgentLoopStateType,
   runtime: AgentLoopRuntime,
-): ArtifactCandidate | null {
+): ArtifactCandidateResult {
   for (let index = state.observations.length - 1; index >= 0; index -= 1) {
     const observation = state.observations[index]!;
     if (observation.type !== "tool_result") continue;
@@ -55,15 +59,17 @@ function extract_artifact_candidate(
     if (!definition?.produces_artifact) continue;
     try {
       return {
-        artifact: JSON.parse(observation.content),
-        content_hash: observation.content_hash,
+        kind: "candidate",
+        value: {
+          artifact: JSON.parse(observation.content),
+          content_hash: observation.content_hash,
+        },
       };
     } catch {
-      // A produces_artifact tool result must be JSON; skip an unparseable one.
-      return null;
+      return { kind: "invalid", tool_name };
     }
   }
-  return null;
+  return { kind: "none" };
 }
 
 /**
@@ -209,10 +215,21 @@ export async function finalize(
     uncertainty: action.request.uncertainty,
   };
 
-  const candidate = extract_artifact_candidate(state, runtime);
-  if (!candidate) {
+  const candidate_result = extract_artifact_candidate(state, runtime);
+  if (candidate_result.kind === "none") {
     return complete_run(state, runtime, base_args);
   }
+  if (candidate_result.kind === "invalid") {
+    return fail_command(
+      build_run_error(
+        runtime,
+        "TOOL_OUTPUT_INVALID",
+        `The artifact returned by ${candidate_result.tool_name} was malformed and was not published.`,
+      ),
+      { pending_action: null },
+    );
+  }
+  const candidate = candidate_result.value;
 
   const validation = await runtime.ports.artifacts.validate_draft(
     candidate.artifact,

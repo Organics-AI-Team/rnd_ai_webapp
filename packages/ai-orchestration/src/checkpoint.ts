@@ -1,8 +1,8 @@
 /**
  * Durable checkpointing for the governed loop (G4.7).
  *
- * Builds the LangGraph thread ID from INTERNAL tenant + thread IDs only (never a
- * client-controlled raw key) and provides a lazy MongoDBSaver getter so the
+ * Builds the LangGraph checkpoint ID from INTERNAL tenant + run IDs only (never
+ * a client-controlled conversation key) and provides a lazy MongoDBSaver getter so the
  * checkpoint package is loaded as a deployment concern, not a module-import side
  * effect. Tests use an in-memory saver via the same thread-config helper.
  */
@@ -24,14 +24,14 @@ export const LANGGRAPH_CHECKPOINT_DB = "langgraph";
  * server-resolved thread ID.
  *
  * @param tenant_id - Verified internal tenant ID.
- * @param thread_id - Internal conversation thread ID.
+ * @param run_id - Trusted, server-created governed run ID.
  * @returns The namespaced checkpoint thread key.
  */
 export function build_checkpoint_thread_id(
   tenant_id: string,
-  thread_id: string,
+  run_id: string,
 ): string {
-  return `tenant:${tenant_id}::thread:${thread_id}`;
+  return `tenant:${tenant_id}::run:${run_id}`;
 }
 
 /**
@@ -49,15 +49,15 @@ const GRAPH_RECURSION_LIMIT = Number(
  * Build the LangGraph thread config for invoke/stream/resume.
  *
  * @param tenant_id - Verified internal tenant ID.
- * @param thread_id - Internal conversation thread ID.
+ * @param run_id - Trusted, server-created governed run ID.
  * @returns The `{ configurable, recursionLimit }` config.
  */
 export function build_thread_config(
   tenant_id: string,
-  thread_id: string,
+  run_id: string,
 ): { configurable: { thread_id: string }; recursionLimit: number } {
   return {
-    configurable: { thread_id: build_checkpoint_thread_id(tenant_id, thread_id) },
+    configurable: { thread_id: build_checkpoint_thread_id(tenant_id, run_id) },
     recursionLimit: GRAPH_RECURSION_LIMIT,
   };
 }

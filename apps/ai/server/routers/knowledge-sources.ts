@@ -71,24 +71,15 @@ export const knowledgeSourcesRouter = router({
         .strict(),
     )
     .mutation(async ({ ctx, input }) => {
-      const db = (await client_promise).db();
-      const result = await db.collection(SOURCES).insertOne({
-        scope: "tenant",
-        scopeKey: ctx.tenant_context.tenant_id,
-        tenantId: ctx.tenant_context.tenant_id,
-        sourceType: input.source_type,
-        name: input.name,
-        visibility: "managers",
-        allowedRoles: [],
-        contentHash: input.content_hash,
-        sourceVersion: 1,
-        status: "pending",
-        createdByProfileId: ctx.principal.internal_user_id,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+      // No production object-storage/ingestion consumer is deployed yet.
+      // Fail before creating a source so callers can never strand a document
+      // indefinitely in pending/quarantined state.
+      void ctx;
+      void input;
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Knowledge uploads require a deployed, healthy ingestion consumer.",
       });
-      return { source_id: result.insertedId.toString(), status: "pending" };
     }),
 
   /** Soft-delete a tenant knowledge source (pinned to the caller's tenant). */

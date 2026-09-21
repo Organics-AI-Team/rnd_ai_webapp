@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
 
 interface FormulaIngredient {
   phase?: string;
@@ -62,20 +64,20 @@ export function AIFormulaResult({
   const warnings = Array.isArray(formula.warnings) ? formula.warnings : [];
 
   return (
-    <div className="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white">
-      <div className="border-b border-gray-100 bg-gray-50 px-3 py-2">
+    <Surface variant="default" className="mt-4 overflow-hidden">
+      <SurfaceHeader className="px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <div className="truncate text-xs font-semibold text-gray-900">
+            <div className="truncate text-sm font-semibold text-ink">
               {text(formula.formula_name, isThai ? 'สูตร draft จาก AI' : 'AI draft formula')}
             </div>
-            <div className="mt-0.5 text-[11px] text-gray-500">
+            <div className="mt-1 text-xs text-muted">
               {formula.formula_code && <span>{formula.formula_code} · </span>}
               {text(formula.product_type, isThai ? 'ไม่ระบุประเภท' : 'unspecified type')}
               {formula.batch_size_grams ? ` · ${formula.batch_size_grams} g` : ''}
             </div>
           </div>
-          <div className="text-right text-[11px] text-gray-500">
+          <div className="text-right text-xs text-muted">
             <div>{isThai ? 'รวม' : 'Total'} {fmtNumber(formula.total_percentage ?? 100)}%</div>
             {formula.estimated_cost_thb != null && (
               <div>{fmtNumber(formula.estimated_cost_thb)} THB</div>
@@ -87,19 +89,19 @@ export function AIFormulaResult({
             {formula.target_benefits.slice(0, 8).map((benefit) => (
               <span
                 key={benefit}
-                className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-500"
+                className="rounded-full border border-border bg-subtle px-2 py-0.5 text-xs font-medium text-muted"
               >
                 {benefit}
               </span>
             ))}
           </div>
         )}
-      </div>
+      </SurfaceHeader>
 
       {ingredients.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-[11px]">
-            <thead className="border-b border-gray-100 bg-white text-gray-400">
+          <table className="min-w-full text-left text-xs">
+            <thead className="border-b border-border bg-subtle text-muted">
               <tr>
                 <th className="px-3 py-2 font-medium">{isThai ? 'Phase' : 'Phase'}</th>
                 <th className="px-3 py-2 font-medium">RM</th>
@@ -109,22 +111,22 @@ export function AIFormulaResult({
                 <th className="px-3 py-2 text-right font-medium">g</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {ingredients.map((ing, index) => (
                 <tr key={`${ing.rm_code || ing.inci_name || index}-${index}`} className="align-top">
-                  <td className="whitespace-nowrap px-3 py-2 text-gray-500">{text(ing.phase || ing.phase_label)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-gray-500">{text(ing.rm_code)}</td>
-                  <td className="min-w-48 px-3 py-2 text-gray-800">
+                  <td className="whitespace-nowrap px-4 py-3 text-muted">{text(ing.phase || ing.phase_label)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono text-muted">{text(ing.rm_code)}</td>
+                  <td className="min-w-48 px-4 py-3 text-ink">
                     <div>{text(ing.inci_name || ing.trade_name)}</div>
                     {ing.inci_name && ing.trade_name && ing.inci_name !== ing.trade_name && (
-                      <div className="text-gray-400">{ing.trade_name}</div>
+                      <div className="text-muted">{ing.trade_name}</div>
                     )}
                   </td>
-                  <td className="min-w-36 px-3 py-2 text-gray-500">{text(ing.function || ing.function_desc)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-gray-800">
+                  <td className="min-w-36 px-4 py-3 text-muted">{text(ing.function || ing.function_desc)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-ink">
                     {fmtNumber(ing.percentage)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-gray-500">
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-muted">
                     {fmtNumber(ing.amount_grams)}
                   </td>
                 </tr>
@@ -135,7 +137,7 @@ export function AIFormulaResult({
       )}
 
       {warnings.length > 0 && (
-        <div className="border-t border-gray-100 bg-amber-50/40 px-3 py-2">
+        <div className="border-t border-amber-100 bg-amber-50/55 px-3 py-2">
           <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
             <AlertTriangle size={12} />
             {isThai ? 'จุดที่ต้องตรวจสอบ' : 'Review items'}
@@ -149,37 +151,38 @@ export function AIFormulaResult({
       )}
 
       {(quickActions.length > 0 || citations.length > 0) && (
-        <div className="border-t border-gray-100 px-3 py-2">
+        <div className="border-t border-border px-4 py-3">
           {quickActions.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {quickActions.map((action, index) => action.href ? (
                 <a
                   key={`${action.label}-${index}`}
                   href={action.href}
-                  className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                  className="inline-flex h-8 items-center gap-1 rounded-full border border-border-strong bg-surface px-3 text-xs font-medium text-ink hover:bg-subtle"
                 >
                   {action.label}
                   <ExternalLink size={11} />
                 </a>
               ) : (
-                <button
+                <Button
                   key={`${action.label}-${index}`}
                   type="button"
                   onClick={() => action.prompt && onQuickAction?.(action.prompt)}
-                  className="rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                  variant="outline"
+                  size="sm"
                 >
                   {action.label}
-                </button>
+                </Button>
               ))}
             </div>
           )}
 
           {citations.length > 0 && (
-            <details className="mt-2 text-[11px] text-gray-400">
-              <summary className="cursor-pointer select-none hover:text-gray-600">
+          <details className="mt-3 text-xs text-muted">
+            <summary className="cursor-pointer select-none hover:text-ink">
                 {isThai ? 'แหล่งข้อมูล' : 'Sources'} ({citations.length})
               </summary>
-              <div className="mt-1 space-y-0.5 text-gray-500">
+              <div className="mt-1 space-y-0.5 text-ink">
                 {citations.slice(0, 8).map((citation, index) => (
                   <div key={`${citation.source}-${citation.rm_code || index}`}>
                     {index + 1}. {citation.source}
@@ -193,6 +196,6 @@ export function AIFormulaResult({
           )}
         </div>
       )}
-    </div>
+    </Surface>
   );
 }

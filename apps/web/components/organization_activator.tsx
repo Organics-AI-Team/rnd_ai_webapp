@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useOrganizationList } from "@clerk/nextjs";
 
@@ -22,18 +22,21 @@ export function OrganizationActivator() {
     userMemberships: { pageSize: 20 },
   });
   const activating = useRef(false);
+  const [activation_error, set_activation_error] = useState<string | null>(null);
   const memberships = userMemberships?.data ?? [];
 
   useEffect(() => {
     if (!auth_loaded || !list_loaded || orgId || activating.current) return;
     if (memberships.length !== 1 || !setActive) return; // >1 → explicit picker below
     activating.current = true;
+    set_activation_error(null);
     console.info("[organization-activator] activating sole membership");
     void setActive({ organization: memberships[0].organization.id })
       .then(() => router.refresh())
       .catch((error) => {
         activating.current = false;
         console.error("[organization-activator] activation failed", error);
+        set_activation_error("The organization could not be activated. Please retry.");
       });
   }, [auth_loaded, list_loaded, orgId, memberships, setActive, router]);
 
@@ -45,12 +48,14 @@ export function OrganizationActivator() {
   const choose = (organization_id: string) => {
     if (!setActive || activating.current) return;
     activating.current = true;
+    set_activation_error(null);
     console.info("[organization-activator] activating chosen organization");
     void setActive({ organization: organization_id })
       .then(() => router.refresh())
       .catch((error) => {
         activating.current = false;
         console.error("[organization-activator] activation failed", error);
+        set_activation_error("The organization could not be activated. Please retry.");
       });
   };
 
@@ -75,6 +80,9 @@ export function OrganizationActivator() {
             </button>
           ))}
         </div>
+        {activation_error && (
+          <p role="alert" className="text-sm text-red-700">{activation_error}</p>
+        )}
       </div>
     </div>
   );

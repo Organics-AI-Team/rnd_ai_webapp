@@ -111,7 +111,7 @@ export const FormulaIngredientSchema = z.object({
   rm_code: z.string(),
   productName: z.string(),
   inci_name: z.string().optional(),
-  amount: z.number().positive("Amount must be positive"), // Amount in grams/ml
+  amount: z.number().nonnegative("Amount must be zero or greater"), // Drafts may carry unresolved 0% rows
   percentage: z.number().min(0).max(100, "Percentage must be 0-100").optional(), // % in formula
   notes: z.string().optional(),
 });

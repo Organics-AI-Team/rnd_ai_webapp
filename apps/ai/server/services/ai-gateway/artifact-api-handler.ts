@@ -13,6 +13,7 @@
 
 import { formula_artifact_v1_schema } from "@rnd-ai/ai-orchestration/artifacts";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
+import { ResourceNotFoundError } from "../../repositories/tenant-repository-base";
 import type { Document, WithId } from "mongodb";
 
 import type { AIArtifactRepository } from "../../repositories/ai-artifact-repository";
@@ -42,10 +43,20 @@ export async function handle_get_artifact(
   let document: WithId<Document>;
   try {
     document = await deps.artifacts.get_artifact(context, artifact_id);
-  } catch {
+  } catch (error) {
+    if (error instanceof ResourceNotFoundError) {
+      return Response.json(
+        { error: "AI_ARTIFACT_NOT_FOUND", message: "The artifact was not found." },
+        { status: 404 },
+      );
+    }
+    console.error("[artifact-api] handle_get_artifact — repository failure", {
+      correlation_id: context.correlation_id,
+      error_name: error instanceof Error ? error.name : "unknown",
+    });
     return Response.json(
-      { error: "AI_ARTIFACT_NOT_FOUND", message: "The artifact was not found." },
-      { status: 404 },
+      { error: "AI_ARTIFACT_UNAVAILABLE", message: "The artifact store is unavailable." },
+      { status: 503 },
     );
   }
   const parsed = formula_artifact_v1_schema.safeParse(document.content);

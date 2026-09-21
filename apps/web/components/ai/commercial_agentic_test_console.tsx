@@ -6,6 +6,11 @@ import type { AgentKeyV1 } from '@rnd-ai/shared-types/src/ai/contracts';
 
 import { useAgentRun } from '@/hooks/use_agent_run';
 import { AiRunView } from './ai_run_view';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Surface } from '@/components/ui/surface';
 
 /** Props supplied by the guarded server-only commercial test page. */
 export interface CommercialAgenticTestConsoleProps {
@@ -46,35 +51,37 @@ export function CommercialAgenticTestConsole({
     <main ref={mark_mounted} className="mx-auto max-w-3xl space-y-5 p-6">
       <div>
         <h1 className="text-2xl font-semibold">Agentic test console</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-muted">
           Credential-free contract runner for local and CI verification only.
         </p>
         {mounted && <span className="sr-only" data-testid="commercial-test-ready">Ready</span>}
       </div>
 
-      <section className="grid gap-4 rounded-lg border border-gray-200 p-4 sm:grid-cols-2">
-        <label className="space-y-1 text-sm font-medium">
-          <span>Agent</span>
-          <select
+      <Surface asChild variant="default">
+        <section className="grid gap-4 p-5 sm:grid-cols-2">
+          <Label className="space-y-2 text-sm">
+            <span>Agent</span>
+            <Select
             aria-label="Agent"
             value={agent_key}
-            onChange={(event) => set_agent_key(event.target.value as AgentKeyV1)}
-            className="block w-full rounded-md border border-gray-300 bg-white p-2"
-          >
-            <option value="raw_material_research">Raw material research</option>
-            <option value="formulation">Formulation</option>
-            <option value="sales_rnd">Sales R&amp;D</option>
-          </select>
-        </label>
-        <label className="space-y-1 text-sm font-medium">
-          <span>Scenario message</span>
-          <input
+              onValueChange={(value) => set_agent_key(value as AgentKeyV1)}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="raw_material_research">Raw material research</SelectItem>
+                <SelectItem value="formulation">Formulation</SelectItem>
+                <SelectItem value="sales_rnd">Sales R&amp;D</SelectItem>
+              </SelectContent>
+            </Select>
+          </Label>
+          <Label className="space-y-2 text-sm">
+            <span>Scenario message</span>
+            <Input
             aria-label="Scenario message"
             value={message}
             onChange={(event) => set_message(event.target.value)}
-            className="block w-full rounded-md border border-gray-300 p-2"
-          />
-        </label>
+            />
+          </Label>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -84,18 +91,19 @@ export function CommercialAgenticTestConsole({
           />
           Render as manager
         </label>
-        <button
+        <Button
           type="button"
           onClick={() => void start_run()}
           disabled={!mounted || agent_run.is_starting || message.trim().length === 0}
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="h-10 px-5"
         >
           Start governed run
-        </button>
-      </section>
+        </Button>
+        </section>
+      </Surface>
 
       {agent_run.run_id && (
-        <p className="font-mono text-xs text-gray-500" data-testid="commercial-test-run-id">
+        <p className="font-mono text-xs text-muted" data-testid="commercial-test-run-id">
           {agent_run.run_id}
         </p>
       )}

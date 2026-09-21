@@ -21,6 +21,8 @@ import { create_ai_policy_repository } from "../../repositories/ai-policy-reposi
 import { create_ai_rollout_repository } from "../../repositories/ai-rollout-repository";
 import { create_ai_run_repository } from "../../repositories/ai-run-repository";
 import { create_ai_usage_repository } from "../../repositories/ai-usage-repository";
+import { create_conversation_repository } from "../../repositories/conversation-repository";
+import { ResourceNotFoundError } from "../../repositories/tenant-repository-base";
 import { create_budget_service } from "../ai-control/budget-service";
 import { ContextAssembler } from "../ai-control/context-assembler";
 import { canonical_json } from "../ai-control/hashing";
@@ -32,6 +34,7 @@ import {
 } from "../ai-control/tools";
 import {
   AIDisabledError,
+  AIRunInputInvalidError,
   create_ai_gateway,
   type AIGateway,
   type CompiledRunPolicy,
@@ -86,8 +89,9 @@ export function create_production_run_gateway(
   );
   for (const definition of definitions) catalogue.register(definition);
   const assembler = new ContextAssembler({ catalogue });
+  const conversations = create_conversation_repository(database);
 
-  return create_ai_gateway({
+  const gateway = create_ai_gateway({
     client,
     runs: create_ai_run_repository(database),
     jobs: create_run_job_queue(database),
@@ -180,6 +184,23 @@ export function create_production_run_gateway(
       (() => `ai-run-${randomUUID()}`),
     events_url: (run_id) => `/api/ai/runs/${run_id}/events`,
   });
+  return {
+    async create_run(tenant, input) {
+      const thread_id =
+        input && typeof input === "object" && !Array.isArray(input)
+          ? (input as { thread_id?: unknown }).thread_id
+          : undefined;
+      if (typeof thread_id === "string") {
+        try {
+          await conversations.get_thread(tenant, thread_id);
+        } catch (error) {
+          if (error instanceof ResourceNotFoundError) throw new AIRunInputInvalidError();
+          throw error;
+        }
+      }
+      return gateway.create_run(tenant, input);
+    },
+  };
 }
 
 /**
@@ -202,6 +223,8 @@ export async function resolve_run_api_runtime(): Promise<RunApiCollaborators> {
       // get() throws AIRunNotFoundError for cross-tenant or missing runs.
       await runs.get(tenant_id, run_id);
     },
+    get_run_status: async (tenant_id, run_id) => String((await runs.get(tenant_id, run_id)).status),
+    get_run_output: async (tenant_id, run_id) => (await runs.get(tenant_id, run_id)).output,
     submit_resume: (args) => submit_resume(args, { runs, jobs, now: () => new Date() }),
   };
 }

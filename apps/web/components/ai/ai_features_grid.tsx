@@ -26,9 +26,9 @@ export function AIFeaturesGrid({ features }: AIFeaturesGridProps) {
         <Card key={index} className="p-3">
           <div className="flex items-center gap-1.5 mb-1">
             {feature.icon}
-            <h3 className="font-medium text-xs text-gray-900">{feature.title}</h3>
+            <h3 className="text-sm font-medium text-ink">{feature.title}</h3>
           </div>
-          <p className="text-2xs text-gray-500 leading-relaxed">{feature.description}</p>
+          <p className="text-2xs leading-relaxed text-muted">{feature.description}</p>
         </Card>
       ))}
     </div>

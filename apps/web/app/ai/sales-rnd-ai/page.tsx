@@ -1,11 +1,12 @@
 'use client';
 
-import React, { Suspense, useState, useCallback } from 'react';
+import React, { Suspense, useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TrendingUp, BarChart3 } from 'lucide-react';
 import { useAuth } from "@/lib/app-auth";
 import { useChatThreads } from '@/hooks/use_chat_threads';
 import { useAgentRun } from '@/hooks/use_agent_run';
+import { trpc } from '@/lib/trpc-client';
 import {
   AIChatHeader,
   AIChatMessagesContainer,
@@ -45,13 +46,21 @@ function SalesRndAIPageContent() {
   const agent_run = useAgentRun();
 
   const [input, setInput] = useState('');
+  const [send_error, set_send_error] = useState<string | null>(null);
+  const [feedback_error, set_feedback_error] = useState<string | null>(null);
+  const [is_sending, set_is_sending] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<Set<string>>(new Set());
   const [inputAreaHeight, setInputAreaHeight] = useState<number>(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') return window.innerWidth >= 1024;
     return true;
   });
-  const isLoading = agent_run.is_starting || agent_run.is_streaming;
+  const isLoading = is_sending || agent_run.is_starting || agent_run.is_streaming;
+  const submit_feedback = trpc.feedback.submit.useMutation();
+
+  useEffect(() => {
+    if (agent_run.state.status === 'completed') void chat.refresh_messages();
+  }, [agent_run.state.status, chat.refresh_messages]);
 
   /**
    * Convert persistent ChatMessages to the Message type expected by UI components.
@@ -73,21 +82,29 @@ function SalesRndAIPageContent() {
     if (!input.trim() || isLoading) return;
 
     const user_input = input;
-    setInput('');
+    set_is_sending(true);
+    set_send_error(null);
     console.log('[SalesRndAI] handle_send_message — start');
-    const added_message = await chat.add_message('user', user_input);
-    if (!added_message) return;
-    await agent_run.start_run({
-      thread_id: added_message.thread_id,
-      agent_key: 'sales_rnd',
-      message: user_input,
-      attachment_source_ids: [],
-      response_preferences: {
-        language: THAI_CHAR_REGEX.test(user_input) ? 'th' : 'en',
-        detail: 'standard',
-      },
-    });
-    console.log('[SalesRndAI] handle_send_message — governed run requested');
+    try {
+      const added_message = await chat.add_message('user', user_input);
+      setInput('');
+      await agent_run.start_run({
+        thread_id: added_message.thread_id,
+        agent_key: 'sales_rnd',
+        message: user_input,
+        attachment_source_ids: [],
+        response_preferences: {
+          language: THAI_CHAR_REGEX.test(user_input) ? 'th' : 'en',
+          detail: 'standard',
+        },
+      });
+      console.log('[SalesRndAI] handle_send_message — governed run requested');
+    } catch {
+      set_send_error('Your message could not be saved. Please retry.');
+      console.error('[SalesRndAI] message persistence failed');
+    } finally {
+      set_is_sending(false);
+    }
   }, [input, isLoading, chat, agent_run]);
 
   /**
@@ -99,25 +116,27 @@ function SalesRndAIPageContent() {
   const handle_feedback = async (messageId: string, isPositive: boolean) => {
     if (feedbackSubmitted.has(messageId)) return;
 
+    set_feedback_error(null);
     try {
-      const response = await fetch('/api/ai/enhanced-chat', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          feedback: {
-            messageId,
-            type: isPositive ? 'positive' : 'negative',
-            score: isPositive ? 5 : 2,
-            timestamp: new Date(),
-          },
-        }),
+      const response_index = display_messages.findIndex((message) => message.id === messageId);
+      const response = display_messages[response_index];
+      const prompt = [...display_messages.slice(0, response_index)]
+        .reverse()
+        .find((message) => message.role === 'user');
+      if (!response || response.role !== 'assistant') return;
+      await submit_feedback.mutateAsync({
+        responseId: messageId,
+        service_name: 'sales_rnd',
+        type: isPositive ? 'helpful' : 'not_helpful',
+        score: isPositive ? 5 : 2,
+        prompt: prompt?.content ?? '',
+        aiResponse: response.content,
+        aiModel: 'governed-agentic',
       });
-
-      if (response.ok) {
-        setFeedbackSubmitted((prev) => new Set([...prev, messageId]));
-      }
-    } catch (error) {
-      console.error('[SalesRndAI] handle_feedback — error', error);
+      setFeedbackSubmitted((prev) => new Set([...prev, messageId]));
+    } catch {
+      console.error('[SalesRndAI] feedback persistence failed');
+      set_feedback_error('Your feedback could not be saved. Please retry.');
     }
   };
 
@@ -208,6 +227,22 @@ function SalesRndAIPageContent() {
               />
             }
           />
+
+          {send_error && (
+            <p role="alert" className="px-4 py-2 text-sm text-red-600 dark:text-red-400">
+              {send_error}
+            </p>
+          )}
+          {feedback_error && (
+            <p role="alert" className="px-4 py-2 text-sm text-red-600 dark:text-red-400">
+              {feedback_error}
+            </p>
+          )}
+          {chat.sync_error && (
+            <p role="status" className="px-4 py-2 text-sm text-amber-700 dark:text-amber-300">
+              {chat.sync_error}
+            </p>
+          )}
 
           <AIChatInputContainer
             inputArea={

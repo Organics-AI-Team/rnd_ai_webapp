@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { SurfaceHeader } from '@/components/ui/surface';
 
 /**
  * AI Chat Header — Ultra-minimal toolbar. Cloudflare/ChatGPT-inspired.
@@ -26,14 +27,14 @@ export function AIChatHeader({
   leading,
 }: AIChatHeaderProps) {
   return (
-    <div className="flex items-center gap-2 h-11 px-3 border-b border-gray-100/80">
+    <SurfaceHeader className="h-16 justify-start gap-3 px-5 py-0">
       {leading}
-      <span className="text-[13px] font-medium text-gray-800 truncate">{title}</span>
+      <span className="truncate text-base font-semibold text-ink">{title}</span>
       {badgeText && (
-        <span className="text-[10px] text-gray-400 font-normal">
+        <span className="rounded-full border border-border bg-subtle px-2.5 py-1 text-xs font-medium text-muted">
           {badgeText}
         </span>
       )}
-    </div>
+    </SurfaceHeader>
   );
 }

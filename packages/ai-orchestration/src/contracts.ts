@@ -96,6 +96,25 @@ export const proposed_action_v1_schema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("tool_batch"),
+      actions: z
+        .array(
+          z
+            .object({
+              kind: z.literal("tool"),
+              call_id: z.string().min(1).max(128),
+              tool_name: z.string().min(1).max(200),
+              arguments: z.unknown(),
+              arguments_hash: z.string().regex(/^[a-f0-9]{64}$/),
+            })
+            .strict(),
+        )
+        .min(2)
+        .max(8),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("clarification"),
       call_id: z.string().min(1).max(128),
       request: clarification_request_v1_schema,

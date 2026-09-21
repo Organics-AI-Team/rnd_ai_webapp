@@ -54,7 +54,7 @@ describe("formula_artifact_to_form_state", () => {
       inci_name: "",
       amount: 5,
       percentage: 5,
-      notes: "Evidence-backed active.",
+      notes: "Phase A — Evidence-backed active.",
     });
   });
 
@@ -66,5 +66,17 @@ describe("formula_artifact_to_form_state", () => {
     expect(state.ingredients).toHaveLength(1);
     expect(formula_artifact_to_form_state(null)).toBeNull();
     expect(formula_artifact_to_form_state({ name: "", ingredients: [] })).toBeNull();
+  });
+
+  it("normalizes kg/L artifact values into the editor's g/ml units", () => {
+    const state = formula_artifact_to_form_state({
+      ...artifact,
+      batch_size: "1.5",
+      batch_unit: "kg",
+      ingredients: [{ ...artifact.ingredients[0], amount: "1.5", unit: "kg" }],
+    })!;
+
+    expect(state.totalAmount).toBe(1500);
+    expect(state.ingredients[0].amount).toBe(1500);
   });
 });

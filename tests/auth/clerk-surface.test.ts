@@ -3,6 +3,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { is_route_guarded_event_stream } from "../../apps/web/proxy";
+
 const repository_root = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
 /**
@@ -41,6 +43,19 @@ describe("Clerk authentication surface (G1.1)", () => {
     expect(proxy_source).toContain("clerkMiddleware");
     expect(proxy_source).toContain("auth.protect");
     expect(proxy_source).toContain("/(api|trpc)(.*)");
+  });
+
+  it("lets only the resource-guarded run event endpoint bypass Clerk redirects", () => {
+    expect(is_route_guarded_event_stream("/api/ai/runs/run_123/events")).toBe(true);
+    expect(is_route_guarded_event_stream("/api/ai/runs/run_123/resume")).toBe(false);
+    expect(is_route_guarded_event_stream("/api/ai/runs/run_123/events/nested")).toBe(false);
+    expect(is_route_guarded_event_stream("/api/ai/runs//events")).toBe(false);
+  });
+
+  it("derives formula manager authority from the authenticated user", () => {
+    const formula_form = read_source("apps/web/components/formula-form.tsx");
+    expect(formula_form).toContain('user?.role === "admin"');
+    expect(formula_form).not.toContain("is_manager={true}");
   });
 
   it("routes Clerk enforcement to /sign-in, never the legacy /login page", () => {
@@ -90,6 +105,40 @@ describe("Clerk authentication surface (G1.1)", () => {
     const activator = read_source("apps/web/components/organization_activator.tsx");
     expect(activator).toContain("useOrganizationList");
     expect(activator).toContain("setActive");
+  });
+
+  it("waits for the server Clerk session before exposing the switched tenant", () => {
+    const switcher = read_source("apps/web/components/org_switcher_panel.tsx");
+    expect(switcher).toContain("isLoaded");
+    expect(switcher).toContain("queryClient.cancelQueries()");
+    expect(switcher).toContain('fetch("/api/auth/session-organization"');
+    expect(switcher).toContain("body?.organization_id === current");
+    expect(switcher).toContain("queryClient.clear()");
+    expect(switcher).not.toContain("afterSelectOrganizationUrl");
+    const session_route = read_source("apps/web/app/api/auth/session-organization/route.ts");
+    expect(session_route).toContain("const session = await auth()");
+    expect(session_route).not.toContain("with_request_principal");
+  });
+
+  it("keeps retired AI endpoints authenticated and permanently gone", () => {
+    for (const path of [
+      "apps/web/app/api/ai/cosmetic-enhanced/route.ts",
+      "apps/web/app/api/ai/enhanced-chat/route.ts",
+      "apps/web/app/api/ai/raw-materials-agent/route.ts",
+      "apps/web/app/api/ai/raw-materials-agent/langgraph-route.ts",
+      "apps/web/app/api/ai-chat/route.ts",
+      "apps/web/app/api/ai-chat/refresh/route.ts",
+      "apps/web/app/api/agents/execute/route.ts",
+      "apps/web/app/api/agents/[agentId]/chat/route.ts",
+      "apps/web/app/api/rag/unified-search/route.ts",
+      "apps/web/app/api/rag/hybrid-search/route.ts",
+      "apps/web/app/api/rag/searchRawMaterials/route.ts",
+      "apps/web/app/api/index-data/route.ts",
+    ]) {
+      const route = read_source(path);
+      expect(route).toContain("with_request_principal");
+      expect(route).toContain("{ status: 410 }");
+    }
   });
 
   it("every invitation path redirects invitees to our onboarding page", () => {

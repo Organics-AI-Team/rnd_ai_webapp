@@ -182,8 +182,8 @@ export function OrderForm() {
           status: "pending",
         });
       }
-      utils.orders.list.invalidate();
-      utils.orders.getStats.invalidate();
+      utils.orders.listTenant.invalidate();
+      utils.orders.getTenantStats.invalidate();
       utils.products.list.invalidate();
       setOrdersList([]);
       alert(`บันทึกออเดอร์สำเร็จ ${ordersList.length} รายการ`);

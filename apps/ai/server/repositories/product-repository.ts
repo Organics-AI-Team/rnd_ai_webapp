@@ -1,4 +1,4 @@
-import type { Db, Document, Sort, WithId } from "mongodb";
+import type { ClientSession, Db, Document, Sort, WithId } from "mongodb";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 
 import {
@@ -119,15 +119,25 @@ export interface ProductRepository {
   create_product(
     context: TenantExecutionContext,
     input: Record<string, unknown>,
+    session?: ClientSession,
   ): Promise<WithId<Document>>;
-  get_product(context: TenantExecutionContext, product_id: string): Promise<WithId<Document>>;
+  get_product(
+    context: TenantExecutionContext,
+    product_id: string,
+    session?: ClientSession,
+  ): Promise<WithId<Document>>;
   list_products(context: TenantExecutionContext): Promise<WithId<Document>[]>;
   update_product(
     context: TenantExecutionContext,
     product_id: string,
     patch: Record<string, unknown>,
+    session?: ClientSession,
   ): Promise<WithId<Document>>;
-  delete_product(context: TenantExecutionContext, product_id: string): Promise<void>;
+  delete_product(
+    context: TenantExecutionContext,
+    product_id: string,
+    session?: ClientSession,
+  ): Promise<void>;
   search_products(
     context: TenantExecutionContext,
     options: ProductSearchOptions,
@@ -143,7 +153,14 @@ export interface ProductRepository {
     context: TenantExecutionContext,
     product_id: string,
     quantity_delta: number,
+    session?: ClientSession,
   ): Promise<WithId<Document>>;
+  decrement_stock_if_available(
+    context: TenantExecutionContext,
+    product_id: string,
+    quantity: number,
+    session?: ClientSession,
+  ): Promise<WithId<Document> | null>;
   list_low_stock_products(context: TenantExecutionContext): Promise<WithId<Document>[]>;
 }
 
@@ -156,20 +173,20 @@ export interface ProductRepository {
 export function create_product_repository(db: Db): ProductRepository {
   const products = db.collection("products");
   return {
-    async create_product(context, input) {
-      return insert_scoped_document(products, context, input, "actor");
+    async create_product(context, input, session) {
+      return insert_scoped_document(products, context, input, "actor", session);
     },
-    async get_product(context, product_id) {
-      return get_scoped_document(products, context, product_id, NOT_FOUND);
+    async get_product(context, product_id, session) {
+      return get_scoped_document(products, context, product_id, NOT_FOUND, session);
     },
     async list_products(context) {
       return list_scoped_documents(products, context);
     },
-    async update_product(context, product_id, patch) {
-      return update_scoped_document(products, context, product_id, NOT_FOUND, patch);
+    async update_product(context, product_id, patch, session) {
+      return update_scoped_document(products, context, product_id, NOT_FOUND, patch, {}, session);
     },
-    async delete_product(context, product_id) {
-      return delete_scoped_document(products, context, product_id, NOT_FOUND);
+    async delete_product(context, product_id, session) {
+      return delete_scoped_document(products, context, product_id, NOT_FOUND, session);
     },
 
     /**
@@ -243,16 +260,32 @@ export function create_product_repository(db: Db): ProductRepository {
      *
      * @throws ResourceNotFoundError for cross-tenant, missing, or malformed IDs.
      */
-    async adjust_stock_quantity(context, product_id, quantity_delta) {
+    async adjust_stock_quantity(context, product_id, quantity_delta, session) {
       const updated = await products.findOneAndUpdate(
         scoped_id_filter(context, product_id, NOT_FOUND),
         {
           $inc: { stockQuantity: quantity_delta },
           $set: { updatedAt: new Date() },
         },
-        { returnDocument: "after" },
+        { returnDocument: "after", session },
       );
       if (!updated) throw new ResourceNotFoundError(NOT_FOUND);
+      return updated;
+    },
+
+    async decrement_stock_if_available(context, product_id, quantity, session) {
+      const updated = await products.findOneAndUpdate(
+        {
+          ...scoped_id_filter(context, product_id, NOT_FOUND),
+          isActive: { $ne: false },
+          stockQuantity: { $gte: quantity },
+        },
+        {
+          $inc: { stockQuantity: -quantity },
+          $set: { updatedAt: new Date() },
+        },
+        { returnDocument: "after", session },
+      );
       return updated;
     },
 

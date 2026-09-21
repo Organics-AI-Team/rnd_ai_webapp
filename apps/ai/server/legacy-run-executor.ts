@@ -19,7 +19,10 @@ import {
 } from "@rnd-ai/ai-orchestration";
 import type { FeedbackPatterns } from "../types/ai-types";
 
-import { AgentManager } from "../agents/agent-manager";
+import {
+  AgentManager,
+  type AgentExecutionResult,
+} from "../agents/agent-manager";
 import { create_ai_runtime_state_repository } from "./repositories/ai-runtime-state-repository";
 import { create_ai_usage_repository } from "./repositories/ai-usage-repository";
 import { create_budget_service } from "./services/ai-control/budget-service";
@@ -49,6 +52,15 @@ export class LegacyRunExecutionError extends Error {
 interface LegacyModelService {
   readonly manager_service: ConstructorParameters<typeof AgentManager>[0];
   usage(): ModelTurnUsageV1;
+}
+
+/** Test seam around the only provider/RAG side effect in the rollback path. */
+export interface LegacyRunExecutorOverrides {
+  readonly execute_agent?: (input: {
+    readonly agent_id: (typeof AGENT_MAP)[keyof typeof AGENT_MAP];
+    readonly actor_profile_id: string;
+    readonly message: string;
+  }) => Promise<AgentExecutionResult>;
 }
 
 function feedback_patterns(): FeedbackPatterns {
@@ -139,6 +151,7 @@ function required(value: unknown): string {
 export function create_production_legacy_run_executor(
   db: Db,
   options: ProductionAgenticRuntimeOptions,
+  overrides: LegacyRunExecutorOverrides = {},
 ): RunExecutor {
   const now = options.now ?? (() => new Date());
   const runtime_state = create_ai_runtime_state_repository(db);
@@ -213,12 +226,18 @@ export function create_production_legacy_run_executor(
         context,
       );
       const started = now();
-      const result = await new AgentManager(model.manager_service).executeAgent({
-        agentId: legacy_agent,
-        userId: actor_profile_id,
-        request: input.data.message,
-        options: { forceRAG: true },
-      });
+      const result = overrides.execute_agent
+        ? await overrides.execute_agent({
+            agent_id: legacy_agent,
+            actor_profile_id,
+            message: input.data.message,
+          })
+        : await new AgentManager(model.manager_service).executeAgent({
+            agentId: legacy_agent,
+            userId: actor_profile_id,
+            request: input.data.message,
+            options: { forceRAG: true },
+          });
       const completed = now();
       const turn_usage = model.usage();
       const total_tokens = turn_usage.input_tokens + turn_usage.output_tokens;
@@ -251,7 +270,7 @@ export function create_production_legacy_run_executor(
           evidence_coverage: sources.length > 0 ? 0.5 : 0,
           source_quality: sources.length > 0 ? 0.25 : 0,
           source_freshness_days: null,
-          contradiction_state: "unknown",
+          contradiction_state: "none",
           validation_rate: 0,
           completeness: result.response.response.length > 0 ? 0.5 : 0,
           risk_severity: "medium",

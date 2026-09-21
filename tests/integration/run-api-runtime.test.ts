@@ -3,6 +3,7 @@ import { MongoClient, ObjectId, type Db } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
+import { create_production_legacy_run_executor } from "../../apps/ai/server/legacy-run-executor";
 import { create_production_run_gateway } from "../../apps/ai/server/services/ai-gateway/run-api-runtime";
 import { create_production_agentic_runtime_loader } from "../../apps/ai/server/services/ai-gateway/production-run-runtime";
 
@@ -12,6 +13,7 @@ let db: Db;
 
 const TENANT = "507f1f77bcf86cd7994390a1";
 const ACTOR = "507f1f77bcf86cd79943a001";
+const THREAD = "507f1f77bcf86cd79943e001";
 const PROMPT = new ObjectId();
 const DEPLOYMENT = new ObjectId("507f1f77bcf86cd7994390d1");
 const ROLLOUT_ASSIGNMENT = new ObjectId("507f1f77bcf86cd7994390c1");
@@ -64,6 +66,7 @@ beforeEach(async () => {
     db.collection("ai_rollout_assignments").deleteMany({}),
     db.collection("user_profiles").deleteMany({}),
     db.collection("tenant_membership_projections").deleteMany({}),
+    db.collection("chat_threads").deleteMany({}),
     db.collection("platform_ai_state").deleteMany({}),
   ]);
   await db.collection("user_profiles").insertOne({
@@ -77,6 +80,15 @@ beforeEach(async () => {
     userProfileId: ACTOR,
     tenantRole: "manager",
     status: "active",
+  });
+  await db.collection("chat_threads").insertOne({
+    _id: new ObjectId(THREAD),
+    tenantId: TENANT,
+    ownerProfileId: ACTOR,
+    agentType: "raw_materials_ai",
+    title: "Runtime thread",
+    messageCount: 0,
+    isArchived: false,
   });
   await db.collection("tenant_ai_profiles").insertOne({
     tenantId: new ObjectId(TENANT),
@@ -140,7 +152,7 @@ describe("production run API gateway composition", () => {
     });
     const accepted = await gateway.create_run(tenant, {
       schema_version: "1",
-      thread_id: "507f1f77bcf86cd79943e001",
+      thread_id: THREAD,
       agent_key: "raw_material_research",
       message: "Find a gentle surfactant with retrievable evidence.",
       attachment_source_ids: [],
@@ -174,6 +186,59 @@ describe("production run API gateway composition", () => {
     })).toBe(1);
   });
 
+  it("rejects an absent chat thread before reserving a governed run", async () => {
+    const gateway = create_production_run_gateway(client, db, {
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
+      correlation_id: () => "corr-runtime-missing-thread",
+    });
+
+    await expect(gateway.create_run(tenant, {
+      schema_version: "1",
+      thread_id: new ObjectId().toHexString(),
+      agent_key: "raw_material_research",
+      message: "Find evidence for a gentle surfactant.",
+      attachment_source_ids: [],
+      response_preferences: { language: "en", detail: "standard" },
+      idempotency_key: "runtime-missing-thread-key",
+    })).rejects.toMatchObject({ code: "AI_RUN_INPUT_INVALID" });
+    expect(await db.collection("ai_runs").countDocuments({})).toBe(0);
+    expect(await db.collection("ai_usage_ledger").countDocuments({})).toBe(0);
+  });
+
+  it("does not let paused human-input runs consume execution capacity", async () => {
+    const gateway = create_production_run_gateway(client, db, {
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
+      correlation_id: () => `corr-runtime-paused-${new ObjectId().toHexString()}`,
+    });
+    const paused = await Promise.all(
+      Array.from({ length: 3 }, (_, index) =>
+        gateway.create_run(tenant, {
+          schema_version: "1",
+          thread_id: THREAD,
+          agent_key: "raw_material_research",
+          message: "Find evidence for a gentle surfactant.",
+          attachment_source_ids: [],
+          response_preferences: { language: "en", detail: "standard" },
+          idempotency_key: `runtime-paused-key-${index}`,
+        }),
+      ),
+    );
+    await db.collection("ai_runs").updateMany(
+      { _id: { $in: paused.map(({ run_id }) => new ObjectId(run_id)) } },
+      { $set: { status: "waiting_clarification", currentStage: "waiting_user" } },
+    );
+
+    await expect(gateway.create_run(tenant, {
+      schema_version: "1",
+      thread_id: THREAD,
+      agent_key: "raw_material_research",
+      message: "Find evidence for a gentle surfactant.",
+      attachment_source_ids: [],
+      response_preferences: { language: "en", detail: "standard" },
+      idempotency_key: "runtime-after-paused-key",
+    })).resolves.toMatchObject({ status: "accepted", executor: "agentic" });
+  });
+
   it("admits a second agentic agent whose deployment differs from the assignment pin", async () => {
     const second_deployment = new ObjectId("507f1f77bcf86cd79943d0aa");
     const second_prompt = new ObjectId("507f1f77bcf86cd79943d0ab");
@@ -200,7 +265,7 @@ describe("production run API gateway composition", () => {
 
     const accepted = await gateway.create_run(tenant, {
       schema_version: "1",
-      thread_id: "507f1f77bcf86cd79943e001",
+      thread_id: THREAD,
       agent_key: "formulation",
       message: "Draft a brightening serum from stocked actives.",
       attachment_source_ids: [],
@@ -230,7 +295,7 @@ describe("production run API gateway composition", () => {
     await expect(
       gateway.create_run(tenant, {
         schema_version: "1",
-        thread_id: "507f1f77bcf86cd79943e001",
+        thread_id: THREAD,
         agent_key: "sales_rnd",
         message: "There is no sales_rnd deployment for this tenant.",
         attachment_source_ids: [],
@@ -240,7 +305,7 @@ describe("production run API gateway composition", () => {
     ).rejects.toMatchObject({ code: "AI_DISABLED" });
   });
 
-  it("pins a rolled-back tenant to legacy and still enqueues one governed job", async () => {
+  it("admits and executes a rolled-back tenant through the pinned legacy boundary", async () => {
     await db.collection("ai_rollout_assignments").updateOne(
       { _id: ROLLOUT_ASSIGNMENT },
       { $set: { executor: "legacy", status: "rolled_back", version: 5 } },
@@ -252,7 +317,7 @@ describe("production run API gateway composition", () => {
 
     const accepted = await gateway.create_run(tenant, {
       schema_version: "1",
-      thread_id: "507f1f77bcf86cd79943e001",
+      thread_id: THREAD,
       agent_key: "raw_material_research",
       message: "Use the tenant's rolled-back executor.",
       attachment_source_ids: [],
@@ -261,12 +326,72 @@ describe("production run API gateway composition", () => {
     });
 
     expect(accepted.executor).toBe("legacy");
-    expect(await db.collection("ai_runs").findOne({ _id: new ObjectId(accepted.run_id) })).toMatchObject({
+    const run = await db.collection("ai_runs").findOne({
+      _id: new ObjectId(accepted.run_id),
+    });
+    expect(run).toMatchObject({
       executor: "legacy",
       rolloutAssignmentId: ROLLOUT_ASSIGNMENT.toHexString(),
       rolloutAssignmentVersion: 5,
     });
     expect(await db.collection("ai_run_jobs").countDocuments({ runId: accepted.run_id })).toBe(1);
+
+    const execute_agent = vi.fn(async () => ({
+      response: {
+        id: "legacy-response",
+        response: "The compatibility executor produced a bounded answer.",
+        model: "gemini-2.5-flash",
+        temperature: 0,
+        maxTokens: 0,
+        timestamp: new Date("2026-07-16T00:00:01.000Z"),
+        context: { length: 53, complexity: "moderate", feedbackAdjusted: false },
+        metadata: {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          latency: 1,
+        },
+      },
+      agentConfig: {},
+      ragResults: { sources: ["approved-legacy-index"] },
+      executionTime: 1,
+      tokensUsed: { prompt: 0, completion: 0, total: 0 },
+    })) as never;
+    const executor = create_production_legacy_run_executor(db, {
+      gemini_api_key: "not-called",
+      rate_card_version: "commercial-2026-07-v1",
+      input_price_microusd_per_million_tokens: 1n,
+      output_price_microusd_per_million_tokens: 2n,
+      embedding_model: "gemini-embedding-001",
+      embedding_version: "v1",
+      embedding_dimensions: 768,
+      now: () => new Date("2026-07-16T00:00:01.000Z"),
+    }, { execute_agent });
+    const result = await executor.execute({
+      job_id: "legacy-job",
+      tenant_id: TENANT,
+      run_id: accepted.run_id,
+      command: "start",
+      attempts: 1,
+    }, run!);
+
+    expect(execute_agent).toHaveBeenCalledWith({
+      agent_id: "raw-materials-specialist",
+      actor_profile_id: ACTOR,
+      message: "Use the tenant's rolled-back executor.",
+    });
+    expect(result).toMatchObject({
+      status: "completed",
+      output: {
+        answer: "The compatibility executor produced a bounded answer.",
+        citations: [{ source_id: "approved-legacy-index" }],
+      },
+    });
+    expect(await db.collection("ai_usage_ledger").countDocuments({
+      tenantId: TENANT,
+      runId: accepted.run_id,
+      kind: "actual",
+    })).toBe(1);
   });
 
   it("rebuilds trusted runtime ports and rechecks emergency state per action", async () => {
@@ -276,7 +401,7 @@ describe("production run API gateway composition", () => {
     });
     const accepted = await gateway.create_run(tenant, {
       schema_version: "1",
-      thread_id: "507f1f77bcf86cd79943e001",
+      thread_id: THREAD,
       agent_key: "raw_material_research",
       message: "Find evidence for a gentle surfactant.",
       attachment_source_ids: [],
@@ -328,6 +453,44 @@ describe("production run API gateway composition", () => {
     });
   });
 
+  it("treats an absent first-use chat thread as empty history", async () => {
+    const gateway = create_production_run_gateway(client, db, {
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
+      correlation_id: () => "corr-runtime-empty-history",
+    });
+    const accepted = await gateway.create_run(tenant, {
+      schema_version: "1",
+      thread_id: THREAD,
+      agent_key: "raw_material_research",
+      message: "Find evidence for a gentle surfactant.",
+      attachment_source_ids: [],
+      response_preferences: { language: "en", detail: "standard" },
+      idempotency_key: "runtime-empty-history-key-1",
+    });
+    const run = await db.collection("ai_runs").findOne({ _id: new ObjectId(accepted.run_id) });
+    const loader = create_production_agentic_runtime_loader(client, db, {
+      gemini_api_key: "private-test-key",
+      rate_card_version: "commercial-2026-07-v1",
+      input_price_microusd_per_million_tokens: 1n,
+      output_price_microusd_per_million_tokens: 2n,
+      embedding_model: "gemini-embedding-001",
+      embedding_version: "v1",
+      embedding_dimensions: 768,
+    });
+    const bundle = await loader(run!, {
+      job_id: "job-runtime-empty-history",
+      tenant_id: TENANT,
+      run_id: accepted.run_id,
+      command: "start",
+      attempts: 1,
+    });
+
+    await expect(bundle.runtime.ports.knowledge.load_thread_summary(
+      THREAD,
+      bundle.runtime.context,
+    )).resolves.toBeNull();
+  });
+
   it("wires configured web search only inside the private runtime", async () => {
     await Promise.all([
       db.collection("tenant_ai_profiles").updateOne(
@@ -345,7 +508,7 @@ describe("production run API gateway composition", () => {
     });
     const accepted = await gateway.create_run(tenant, {
       schema_version: "1",
-      thread_id: "507f1f77bcf86cd79943e001",
+      thread_id: THREAD,
       agent_key: "raw_material_research",
       message: "Search public regulatory sources.",
       attachment_source_ids: [],

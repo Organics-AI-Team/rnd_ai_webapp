@@ -22,9 +22,16 @@ describe("formulate action wiring", () => {
     expect(form).toContain('agent_key: "formulation"');
     expect(form).toContain("<AiRunView");
     expect(form).toContain("/api/ai/artifacts/");
+    expect(form).toContain("agent_run.state.output?.artifacts");
     expect(form).toContain("formula_artifact_to_form_state");
+    expect(form).toContain('agentType: "formulation"');
+    expect(form).toContain("add_formulation_message.mutateAsync");
+    expect(form).not.toContain("thread_id: `formulate_");
     expect(form).not.toContain("/api/ai/raw-materials-agent");
     expect(form).not.toContain("/api/ai/enhanced-chat");
+    expect(form).toContain("limit: 1000");
+    expect(form).toContain("find_catalog_product");
+    expect(form).toContain("The form was not changed");
   });
 
   it("exposes a tenant-scoped, permissioned artifact read route", () => {

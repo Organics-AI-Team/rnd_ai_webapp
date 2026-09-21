@@ -24,7 +24,10 @@ import type {
 } from "@rnd-ai/shared-types/src/ai/contracts";
 import { run_error_code_v1 } from "@rnd-ai/shared-types/src/ai/contracts";
 
-import type { AIRunRepository } from "../../repositories/ai-run-repository";
+import {
+  AIRunNotFoundError,
+  type AIRunRepository,
+} from "../../repositories/ai-run-repository";
 import type { EventStore } from "./event-store";
 import type { ClaimedRunJob, RunJobQueue } from "./run-job-queue";
 
@@ -68,12 +71,32 @@ export interface ShadowAfterPrimaryPort {
   }): Promise<unknown>;
 }
 
+/** Durable chat sink for a completed governed answer. */
+export interface AssistantMessagePort {
+  /**
+   * Persist the terminal answer in its conversation before the job is acked.
+   *
+   * Implementations must be idempotent by run id because a worker may resume
+   * after losing its lease or crashing between durable steps.
+   */
+  persist_completed_answer(args: {
+    readonly tenant_id: string;
+    readonly actor_profile_id: string;
+    readonly thread_id: string;
+    readonly run_id: string;
+    readonly answer: string;
+    readonly metadata: Record<string, unknown>;
+    readonly completed_at: Date;
+  }): Promise<void>;
+}
+
 /** Injected collaborators and knobs for the worker. */
 export interface RunWorkerDeps {
   readonly jobs: RunJobQueue;
   readonly runs: AIRunRepository;
   readonly events: EventStore;
   readonly executor: RunExecutor;
+  readonly assistant_messages?: AssistantMessagePort;
   readonly shadow?: ShadowAfterPrimaryPort;
   readonly worker_id: string;
   readonly now: () => Date;
@@ -181,8 +204,14 @@ function start_lease_heartbeat(
       .then((renewed) => {
         if (!renewed) lease_owned = false;
       })
-      .catch(() => {
+      .catch((error) => {
         lease_owned = false;
+        console.error({
+          boundary: "ai-worker",
+          event: "job.lease_heartbeat_failed",
+          run_id: job.run_id,
+          error_name: error instanceof Error ? error.name : "unknown",
+        });
       })
       .finally(() => {
         running = false;
@@ -210,17 +239,29 @@ function start_lease_heartbeat(
  */
 export async function process_one_job(deps: RunWorkerDeps): Promise<ProcessOutcome> {
   const now = deps.now();
+  const processing_started_ms = Date.now();
   const job = await deps.jobs.claim({
     worker_id: deps.worker_id,
     now,
     lease_ms: deps.lease_ms,
   });
   if (!job) return { processed: false };
+  console.info({
+    boundary: "ai-worker",
+    event: "job.claimed",
+    run_id: job.run_id,
+    command: job.command,
+    attempt: job.attempts,
+    queue_wait_ms: job.created_at
+      ? Math.max(0, now.getTime() - job.created_at.getTime())
+      : null,
+  });
 
   let run: WithId<Document>;
   try {
     run = await deps.runs.get(job.tenant_id, job.run_id);
-  } catch {
+  } catch (error) {
+    if (!(error instanceof AIRunNotFoundError)) throw error;
     // The run vanished (or is cross-tenant): nothing to execute — retire the job.
     await deps.jobs.complete({ job_id: job.job_id, worker_id: deps.worker_id });
     return { processed: true, run_id: job.run_id, status: "orphaned" };
@@ -230,23 +271,64 @@ export async function process_one_job(deps: RunWorkerDeps): Promise<ProcessOutco
     const heartbeat = start_lease_heartbeat(deps, job);
     await deps.runs.mark_status(job.tenant_id, job.run_id, { status: "running", startedAt: now });
     let result: RunExecutionResult;
+    const execution_started_ms = Date.now();
     try {
       result = await deps.executor.execute(job, run);
     } catch (error) {
       await heartbeat.stop();
       throw error;
     }
+    const execution_ms = Math.max(0, Date.now() - execution_started_ms);
     if (!(await heartbeat.stop())) {
       // Another worker owns the lease now. It will resume from the durable
       // checkpoint; this worker must not append or acknowledge anything.
       return { processed: true, run_id: job.run_id, status: "lease_lost" };
     }
+    const completed_at = deps.now();
+    const persistence_started_ms = Date.now();
+    if (result.status === "completed" && result.output?.answer && deps.assistant_messages) {
+      await deps.assistant_messages.persist_completed_answer({
+        tenant_id: job.tenant_id,
+        actor_profile_id: String(run.actorProfileId),
+        thread_id: String(run.threadId),
+        run_id: job.run_id,
+        answer: result.output.answer,
+        metadata: {
+          governedRun: {
+            runId: job.run_id,
+            citations: result.output.citations ?? [],
+            artifacts: result.output.artifacts ?? [],
+            qualityDimensions: result.output.quality_dimensions ?? null,
+            usageSummary: result.output.usage_summary ?? null,
+          },
+        },
+        completed_at,
+      });
+      console.info({
+        boundary: "ai-worker",
+        event: "assistant_message.persisted",
+        run_id: job.run_id,
+      });
+    }
     await deps.events.append(
       { tenant_id: job.tenant_id, run_id: job.run_id },
       result.events,
     );
-    await deps.runs.mark_status(job.tenant_id, job.run_id, status_patch(result, deps.now()));
+    await deps.runs.mark_status(job.tenant_id, job.run_id, status_patch(result, completed_at));
     await deps.jobs.complete({ job_id: job.job_id, worker_id: deps.worker_id });
+    console.info({
+      boundary: "ai-worker",
+      event: "job.completed",
+      run_id: job.run_id,
+      status: result.status,
+      queue_wait_ms: job.created_at
+        ? Math.max(0, now.getTime() - job.created_at.getTime())
+        : null,
+      execution_ms,
+      persistence_ms: Math.max(0, Date.now() - persistence_started_ms),
+      total_worker_ms: Math.max(0, Date.now() - processing_started_ms),
+      event_count: result.events.length,
+    });
     // Shadow work starts only after the primary events/status and queue ack are
     // durable. Its failure is intentionally isolated from the accepted result.
     if (result.status === "completed" && deps.shadow) {
@@ -255,7 +337,16 @@ export async function process_one_job(deps: RunWorkerDeps): Promise<ProcessOutco
         status: result.status,
         ...(result.output !== undefined ? { output: result.output } : {}),
       } as WithId<Document>;
-      await deps.shadow.run_after_primary({ run: completed_run, result }).catch(() => undefined);
+      try {
+        await deps.shadow.run_after_primary({ run: completed_run, result });
+      } catch (error) {
+        console.error({
+          boundary: "ai-worker",
+          event: "shadow.unhandled_failure",
+          run_id: job.run_id,
+          error_name: error instanceof Error ? error.name : "unknown",
+        });
+      }
     }
     return { processed: true, run_id: job.run_id, status: result.status };
   } catch (error) {
@@ -304,16 +395,32 @@ export async function process_one_job(deps: RunWorkerDeps): Promise<ProcessOutco
   }
 }
 
-/**
- * Map an internal job error code onto the public run-error enum.
- *
- * @param code - Internal code from safe_error_code (e.g. MODEL_PROVIDER_ERROR).
- * @returns A valid RunErrorCodeV1 (unknown codes become PROVIDER_UNAVAILABLE —
- *          honest for dependency failures without leaking internals).
- */
-function public_error_code(code: string): RunErrorCodeV1 {
+/** Public, actionable terminal failure. It never includes provider details or secrets. */
+function public_failure(code: string): {
+  readonly code: RunErrorCodeV1;
+  readonly safe_message: string;
+  readonly retryable: boolean;
+} {
+  if (code === "RUN_RUNTIME_UNAVAILABLE" || code === "RUN_EXECUTION_STATE_INVALID") {
+    return {
+      code: "RUNTIME_UNAVAILABLE",
+      safe_message: "The AI runtime is updating or temporarily unavailable. Please try again in a moment.",
+      retryable: true,
+    };
+  }
+  if (code === "MODEL_PROVIDER_ERROR") {
+    return {
+      code: "PROVIDER_UNAVAILABLE",
+      safe_message: "The configured AI provider could not complete this request. Please try again shortly.",
+      retryable: true,
+    };
+  }
   const parsed = run_error_code_v1.safeParse(code);
-  return parsed.success ? parsed.data : "PROVIDER_UNAVAILABLE";
+  return {
+    code: parsed.success ? parsed.data : "RUNTIME_UNAVAILABLE",
+    safe_message: "The AI run could not be completed. Please try again shortly.",
+    retryable: true,
+  };
 }
 
 /**
@@ -344,11 +451,7 @@ async function append_terminal_failure_event(
         sequence: next_sequence,
         occurred_at: failed_at.toISOString(),
         type: "run.failed",
-        payload: {
-          code: public_error_code(error_code),
-          safe_message: "The AI run could not be completed.",
-          retryable: false,
-        },
+        payload: public_failure(error_code),
       },
     ]);
   } catch {

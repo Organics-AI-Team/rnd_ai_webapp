@@ -23,6 +23,10 @@
  */
 
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
+import {
+  agent_run_output_v1_schema,
+  type AgentRunEventV1,
+} from "@rnd-ai/shared-types/src/ai/contracts";
 
 import { AIRunNotFoundError } from "../../repositories/ai-run-repository";
 import {
@@ -56,8 +60,10 @@ export class RunApiNotWiredError extends Error {
 /** Event types that terminate a run's event stream. */
 const TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set(["run.completed", "run.failed"]);
 
-/** Default SSE heartbeat / tail-poll cadence in milliseconds. */
+/** Default SSE heartbeat cadence in milliseconds. */
 export const DEFAULT_HEARTBEAT_MS = 15_000;
+/** Default event-store tail-poll cadence in milliseconds. */
+export const DEFAULT_EVENT_POLL_MS = 250;
 
 /**
  * Collaborators the run handlers delegate to. All are injectable so the
@@ -77,8 +83,14 @@ export interface RunApiCollaborators {
     run_id: string;
     payload: unknown;
   }) => Promise<ResumeAccepted>;
-  /** SSE heartbeat / tail-poll cadence; defaults to DEFAULT_HEARTBEAT_MS. */
+  /** SSE heartbeat cadence; defaults to DEFAULT_HEARTBEAT_MS. */
   readonly heartbeat_ms?: number;
+  /** Event-store tail-poll cadence; defaults to DEFAULT_EVENT_POLL_MS. */
+  readonly event_poll_ms?: number;
+  /** Optional durable run-status fallback when a terminal event is missing. */
+  readonly get_run_status?: (tenant_id: string, run_id: string) => Promise<string>;
+  /** Optional terminal output used only to repair a missing completed event. */
+  readonly get_run_output?: (tenant_id: string, run_id: string) => Promise<unknown>;
   /** Injectable timer so the tail loop is deterministic in tests. */
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -201,14 +213,17 @@ export async function handle_run_events(
 
   const run = { tenant_id: tenant.tenant_id, run_id };
   const heartbeat_ms = deps.heartbeat_ms ?? DEFAULT_HEARTBEAT_MS;
+  const event_poll_ms = deps.event_poll_ms ?? DEFAULT_EVENT_POLL_MS;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const encoder = new TextEncoder();
   let cursor = parse_last_event_id(last_event_id);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let stream_failed = false;
       try {
         let terminal = false;
+        let elapsed_since_heartbeat = 0;
         while (!terminal && !signal?.aborted) {
           const batch = await deps.events.replay(run, cursor);
           for (const run_event of batch) {
@@ -217,13 +232,75 @@ export async function handle_run_events(
             if (TERMINAL_EVENT_TYPES.has(run_event.type)) terminal = true;
           }
           if (terminal || signal?.aborted) break;
-          controller.enqueue(encoder.encode(SSE_HEARTBEAT));
-          await sleep(heartbeat_ms);
+          if (batch.length === 0 && deps.get_run_status) {
+            const status = await deps.get_run_status(run.tenant_id, run.run_id);
+            let fallback_event: AgentRunEventV1 | null = null;
+            if (status === "completed") {
+              const output = deps.get_run_output
+                ? agent_run_output_v1_schema.safeParse(
+                    await deps.get_run_output(run.tenant_id, run.run_id),
+                  )
+                : null;
+              fallback_event = output?.success
+                ? {
+                    schema_version: "1",
+                    event_id: `status-fallback-${run.run_id}-${cursor + 1}`,
+                    run_id: run.run_id,
+                    sequence: cursor + 1,
+                    occurred_at: new Date().toISOString(),
+                    type: "run.completed",
+                    payload: {
+                      status: "completed",
+                      output_schema_version: "1",
+                      output: output.data,
+                    },
+                  }
+                : {
+                    schema_version: "1",
+                    event_id: `status-fallback-${run.run_id}-${cursor + 1}`,
+                    run_id: run.run_id,
+                    sequence: cursor + 1,
+                    occurred_at: new Date().toISOString(),
+                    type: "run.failed",
+                    payload: {
+                      code: "ORCHESTRATOR_INVARIANT_VIOLATION",
+                      safe_message: "The AI run finished without a recoverable response.",
+                      retryable: false,
+                    },
+                  };
+            } else if (status === "failed" || status === "cancelled") {
+              fallback_event = {
+                schema_version: "1",
+                event_id: `status-fallback-${run.run_id}-${cursor + 1}`,
+                run_id: run.run_id,
+                sequence: cursor + 1,
+                occurred_at: new Date().toISOString(),
+                type: "run.failed",
+                payload: {
+                  code: "PROVIDER_UNAVAILABLE",
+                  safe_message: "The AI run could not be completed.",
+                  retryable: false,
+                },
+              };
+            }
+            if (fallback_event) {
+              controller.enqueue(encoder.encode(format_sse_frame(fallback_event)));
+              break;
+            }
+          }
+          if (elapsed_since_heartbeat >= heartbeat_ms) {
+            controller.enqueue(encoder.encode(SSE_HEARTBEAT));
+            elapsed_since_heartbeat = 0;
+          }
+          await sleep(event_poll_ms);
+          elapsed_since_heartbeat += event_poll_ms;
         }
       } catch (error) {
+        stream_failed = true;
         console.error({ boundary: "run-api", op: "run_events", phase: "stream_error", run_id }, error);
+        controller.error(error);
       } finally {
-        controller.close();
+        if (!stream_failed) controller.close();
       }
     },
   });

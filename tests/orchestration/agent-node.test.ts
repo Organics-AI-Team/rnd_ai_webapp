@@ -5,6 +5,8 @@ import { ingress } from "../../packages/ai-orchestration/src/nodes/ingress";
 import {
   build_loop_messages,
   declared_tools,
+  MAX_LOOP_MESSAGE_CHARACTERS,
+  MAX_OBSERVATION_CONTENT_CHARACTERS,
   render_context_pack,
 } from "../../packages/ai-orchestration/src/nodes/message-builder";
 import { build_observation } from "../../packages/ai-orchestration/src/schemas/observation";
@@ -143,6 +145,44 @@ describe("agent reasoning node", () => {
     expect(model.requests).toHaveLength(1);
   });
 
+  it("preserves independent catalogue calls as one governed batch", async () => {
+    const model = new ScriptedModelGateway([{
+      content: "Check internal and product evidence together.",
+      tool_calls: [
+        {
+          call_id: "call_knowledge",
+          tool_name: "knowledge.search",
+          arguments: { query: "niacinamide evidence" },
+        },
+        {
+          call_id: "call_material",
+          tool_name: "material.search",
+          arguments: { query: "niacinamide products" },
+        },
+      ],
+      usage: { input_tokens: 100, output_tokens: 20, cost_usd: "0.001" },
+    }]);
+    const { runtime } = make_fake_runtime({ model });
+    const pack = make_context_pack(["knowledge.search", "material.search"]);
+    const base = make_loop_state();
+    const state = {
+      ...base,
+      context_pack: pack,
+      pins: { ...base.pins, context_pack_hash: pack.pack_hash },
+    };
+    const command = (await agent(state, runtime)) as Command;
+    const update = command.update as Partial<AgentLoopStateType>;
+    expect(goto_targets(command)).toEqual(["gate"]);
+    expect(update.pending_action).toMatchObject({
+      kind: "tool_batch",
+      actions: [
+        { tool_name: "knowledge.search" },
+        { tool_name: "material.search" },
+      ],
+    });
+    expect(update.decision_log).toHaveLength(2);
+  });
+
   it("reuses conversation context on a follow-up turn", async () => {
     const model = new ScriptedModelGateway([
       tool_call_turn("formula.draft", { base: "gel" }),
@@ -221,6 +261,29 @@ describe("agent reasoning node", () => {
     const update = command.update as Partial<AgentLoopStateType>;
     expect(update.pending_action).toMatchObject({ kind: "finalize" });
     expect(update.decision_log?.[0]).toMatchObject({ kind: "finalize" });
+  });
+
+  it("records a non-empty public decision summary when the provider returns only a function call", async () => {
+    const model = new ScriptedModelGateway([
+      tool_call_turn("finalize", {
+        answer: "Hello — how can I help your R&D team today?",
+        citations: [],
+        uncertainty: [],
+      }, null),
+    ]);
+    const { runtime } = make_fake_runtime({ model });
+    const command = (await agent(make_loop_state(), runtime)) as Command;
+    const update = command.update as Partial<AgentLoopStateType>;
+
+    expect(update.decision_log?.[0]?.rationale_summary).toBe(
+      "Finalize because the available conversation context and observations are sufficient to answer.",
+    );
+    expect(update.events?.find((event) => event.type === "decision.recorded")?.payload)
+      .toMatchObject({
+        kind: "finalize",
+        rationale_summary:
+          "Finalize because the available conversation context and observations are sufficient to answer.",
+      });
   });
 
   it("retries an unknown tool once then fails with MODEL_OUTPUT_INVALID", async () => {
@@ -386,5 +449,41 @@ describe("message builder", () => {
       state.observations[1]!.content_hash,
     );
     expect(tool_message?.content).toContain("2026-07-15T00:00:01.000Z");
+  });
+
+  it("bounds repeated retrieval context and keeps the newest evidence", () => {
+    const state = make_loop_state({ iteration: 6 });
+    for (let index = 0; index < 8; index += 1) {
+      state.observations.push(build_observation({
+        observation_id: `obs_large_${index}`,
+        run_id: "run_0001",
+        iteration: index + 1,
+        type: "tool_result",
+        source: {
+          kind: "tool",
+          tool_name: "knowledge.search",
+          source_ids: [`doc_${index}`],
+        },
+        content: `${index}:${"x".repeat(40_000)}`,
+        trust: "untrusted_content",
+        cost_usd: "0",
+        latency_ms: 5,
+        occurred_at: `2026-07-15T00:00:${String(index + 1).padStart(2, "0")}.000Z`,
+        metadata: {},
+      }));
+    }
+
+    const messages = build_loop_messages(state);
+    const rendered_characters = messages.reduce(
+      (total, message) => total + message.content.length,
+      0,
+    );
+    expect(messages[0]?.content).toContain("context compaction");
+    expect(messages.at(-1)?.content).toContain("7:");
+    expect(messages.at(-1)?.content).toContain("content truncated");
+    expect(messages.at(-1)?.content.length).toBeLessThan(
+      MAX_OBSERVATION_CONTENT_CHARACTERS + 1_000,
+    );
+    expect(rendered_characters).toBeLessThan(MAX_LOOP_MESSAGE_CHARACTERS + 1_000);
   });
 });

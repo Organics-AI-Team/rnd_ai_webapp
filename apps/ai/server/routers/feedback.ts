@@ -6,8 +6,8 @@ export const feedbackRouter = router({
   submit: tenantProcedure("ai:feedback:create")
     .input(
       z.object({
-        responseId: z.string(),
-        service_name: z.string().optional(), // AI service/agent name for isolated learning
+        responseId: z.string().min(1).max(128),
+        service_name: z.string().max(80).optional(), // AI service/agent name for isolated learning
         type: z.enum([
           'too_long',
           'too_short',
@@ -19,10 +19,10 @@ export const feedbackRouter = router({
           'excellent'
         ]),
         score: z.number().min(1).max(5),
-        comment: z.string().optional(),
-        prompt: z.string(),
-        aiResponse: z.string(),
-        aiModel: z.string()
+        comment: z.string().max(4_000).optional(),
+        prompt: z.string().min(1).max(32_000),
+        aiResponse: z.string().min(1).max(64_000),
+        aiModel: z.string().min(1).max(200)
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -35,7 +35,7 @@ export const feedbackRouter = router({
       });
 
       try {
-        const created = await ctx.repositories.feedback.create_feedback(
+        const created = await ctx.repositories.feedback.submit_feedback(
           ctx.tenant_context,
           {
             ...input,
@@ -47,23 +47,15 @@ export const feedbackRouter = router({
               category: infer_category(input.prompt)
             }
           },
+          {
+            type: 'feedback_submitted',
+            responseId: input.responseId,
+            feedbackType: input.type,
+            score: input.score,
+            timestamp: new Date(),
+            model: input.aiModel,
+          },
         );
-
-        // Fold the feedback into the tenant's per-response rollup and log
-        // the analytics event (both tenant-scoped inside the repository).
-        await ctx.repositories.feedback.record_response_feedback(
-          ctx.tenant_context,
-          input.responseId,
-          created,
-        );
-        await ctx.repositories.feedback.record_feedback_event(ctx.tenant_context, {
-          type: 'feedback_submitted',
-          responseId: input.responseId,
-          feedbackType: input.type,
-          score: input.score,
-          timestamp: new Date(),
-          model: input.aiModel
-        });
 
         console.log('📝 [feedback.submit] Done:', {
           feedbackId: created._id.toString(),
@@ -79,7 +71,7 @@ export const feedbackRouter = router({
     .input(
       z.object({
         timeRange: z.enum(['24h', '7d', '30d', '90d', 'all']).default('30d'),
-        model: z.string().optional()
+        model: z.string().max(200).optional()
       }).optional()
     )
     .query(async ({ ctx, input }) => {
@@ -129,7 +121,7 @@ export const feedbackRouter = router({
 
   // Get feedback for a specific response (tenant-scoped)
   getForResponse: tenantProcedure("ai:run")
-    .input(z.object({ responseId: z.string() }))
+    .input(z.object({ responseId: z.string().min(1).max(128) }))
     .query(async ({ ctx, input }) => {
       const feedback = await ctx.repositories.feedback.list_feedback_for_response(
         ctx.tenant_context,
@@ -147,7 +139,7 @@ export const feedbackRouter = router({
   getUserHistory: tenantProcedure("ai:run")
     .input(
       z.object({
-        serviceName: z.string().optional(), // Filter by service for isolated learning
+        serviceName: z.string().max(80).optional(), // Filter by service for isolated learning
         limit: z.number().min(1).max(100).default(20),
         offset: z.number().min(0).default(0)
       }).optional()

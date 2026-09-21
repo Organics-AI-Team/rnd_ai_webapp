@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
 import { AIChatMessage } from './ai_chat_message';
 import { AILoadingIndicator } from './ai_loading_indicator';
 import { AIEmptyState } from './ai_empty_state';
@@ -119,7 +120,7 @@ export function AIChatMessagesArea({
     <div className="relative flex-1 min-h-0">
       <ScrollArea className="h-full px-4 pt-2" onScrollCapture={handle_scroll}>
         <div
-          className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "max-w-2xl mx-auto space-y-1"}
+          className={messages.length === 0 ? "min-h-full flex items-center justify-center" : "max-w-2xl mx-auto space-y-1 py-2"}
           style={{ paddingBottom: `${bottomPadding}px` }}
           ref={scroll_container_ref}
         >
@@ -158,14 +159,16 @@ export function AIChatMessagesArea({
 
       {/* Scroll to bottom button — visible when user scrolled up */}
       {!is_near_bottom && messages.length > 0 && (
-        <button
+        <Button
           onClick={scroll_to_bottom}
-          className="absolute bottom-4 right-4 z-10 bg-white border border-gray-200 shadow-md rounded-full p-2 hover:bg-gray-50 transition-all text-gray-500 hover:text-gray-700"
+          variant="outline"
+          size="icon"
+          className="absolute bottom-4 right-4 z-10 h-10 w-10 shadow-panel"
           aria-label="Scroll to latest message"
           title="Scroll to bottom"
         >
           <ChevronDown size={16} />
-        </button>
+        </Button>
       )}
     </div>
   );

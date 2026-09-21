@@ -13,6 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   create_production_member_admin_ports,
+  create_production_member_ports,
   type MemberAdminClerkLike,
 } from "../../apps/ai/server/services/provisioning/production-member-ports";
 import { DuplicatePendingInvitationError } from "../../apps/ai/server/services/provisioning/member-admin-ports";
@@ -38,6 +39,12 @@ function recording_clerk(
 ) {
   const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
   const clerk: MemberAdminClerkLike = {
+    allowlistIdentifiers: {
+      async createAllowlistIdentifier(params) {
+        calls.push({ method: "createAllowlistIdentifier", params });
+        return {};
+      },
+    },
     organizations: {
       async createOrganizationInvitation(params) {
         calls.push({ method: "createOrganizationInvitation", params });
@@ -155,9 +162,37 @@ describe("clerk member-admin calls", () => {
       ports.clerk.create_user_invitation("org_test", "member@x.ac.th"),
     ).rejects.toBeInstanceOf(DuplicatePendingInvitationError);
   });
+
+  it("allowlists an invitee before creating the restricted-mode invitation", async () => {
+    const world = recording_clerk();
+    const ports = create_production_member_admin_ports(db, world.clerk);
+    await ports.clerk.create_user_invitation("org_test", "new.member@x.ac.th");
+    expect(world.calls.slice(0, 2)).toEqual([
+      {
+        method: "createAllowlistIdentifier",
+        params: { identifier: "new.member@x.ac.th", notify: false },
+      },
+      {
+        method: "createOrganizationInvitation",
+        params: expect.objectContaining({
+          organizationId: "org_test",
+          emailAddress: "new.member@x.ac.th",
+        }),
+      },
+    ]);
+  });
 });
 
 describe("membership projections", () => {
+  it("finds existing memberships by the webhook primaryEmail contract case-insensitively", async () => {
+    const ports = create_production_member_ports(db, recording_clerk().clerk);
+    await expect(
+      ports.memberships.find_memberships_by_email("MEMBER@X.AC.TH"),
+    ).resolves.toEqual([
+      { tenant_id: TENANT.toHexString(), status: "active" },
+    ]);
+  });
+
   it("finds, updates status/role, and counts active managers", async () => {
     const ports = create_production_member_admin_ports(db, recording_clerk().clerk);
     const found = await ports.memberships.find_membership(
@@ -172,6 +207,13 @@ describe("membership projections", () => {
       "suspended",
     );
     expect(await ports.memberships.count_active_managers(TENANT.toHexString())).toBe(0);
+    await expect(db.collection("tenant_membership_projections").findOne({
+      tenantId: TENANT.toHexString(),
+      userProfileId: PROFILE.toHexString(),
+    })).resolves.toMatchObject({
+      status: "suspended",
+      manualStatusOverride: true,
+    });
     await ports.memberships.set_membership_role(
       TENANT.toHexString(),
       PROFILE.toHexString(),

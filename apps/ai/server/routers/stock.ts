@@ -13,6 +13,10 @@ import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { logActivity } from "@/lib/userLog";
 
+function escape_regex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export const stockRouter = router({
   /**
    * List all stock entries with filtering and pagination
@@ -274,7 +278,7 @@ export const stockRouter = router({
   getMaterials: tenantProcedure("tenant:knowledge:read")
     .input(
       z.object({
-        searchTerm: z.string().optional(),
+        searchTerm: z.string().trim().min(1).max(256).optional(),
         limit: z.number().min(1).max(100).default(20),
       }).optional()
     )
@@ -290,11 +294,12 @@ export const stockRouter = router({
       // Build search filter
       const searchFilter: any = {};
       if (searchTerm) {
+        const escaped_search_term = escape_regex(searchTerm);
         searchFilter.$or = [
-          { rm_code: { $regex: searchTerm, $options: "i" } },
-          { trade_name: { $regex: searchTerm, $options: "i" } },
-          { INCI_name: { $regex: searchTerm, $options: "i" } },
-          { inci_name: { $regex: searchTerm, $options: "i" } },
+          { rm_code: { $regex: escaped_search_term, $options: "i" } },
+          { trade_name: { $regex: escaped_search_term, $options: "i" } },
+          { INCI_name: { $regex: escaped_search_term, $options: "i" } },
+          { inci_name: { $regex: escaped_search_term, $options: "i" } },
         ];
       }
 

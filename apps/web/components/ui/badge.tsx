@@ -4,21 +4,21 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@rnd-ai/shared-utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-1.5 py-0.5 text-2xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
+  "inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-gray-900 text-white",
+          "border-brand-soft bg-brand-soft text-brand",
         secondary:
-          "border-gray-200 bg-gray-50 text-gray-700",
+          "border-border bg-subtle text-muted",
         destructive:
           "border-transparent bg-red-600 text-white",
-        outline: "text-gray-700 border-gray-200",
+        outline: "text-ink border-border bg-surface",
         line: "bg-emerald-50 text-emerald-700 border-emerald-200",
         shopee: "bg-orange-50 text-orange-700 border-orange-200",
         lazada: "bg-blue-50 text-blue-700 border-blue-200",
-        other: "bg-gray-50 text-gray-600 border-gray-200",
+        other: "bg-subtle text-muted border-border",
         pending: "bg-amber-50 text-amber-700 border-amber-200",
         processing: "bg-blue-50 text-blue-700 border-blue-200",
         sent_to_logistic: "bg-violet-50 text-violet-700 border-violet-200",

@@ -1,4 +1,4 @@
-import { Db } from "mongodb";
+import type { ClientSession, Db } from "mongodb";
 
 interface LogProductActivityParams {
   db: Db;
@@ -14,6 +14,7 @@ interface LogProductActivityParams {
   organizationId: string;
   refId?: string;
   notes?: string;
+  session?: ClientSession;
 }
 
 export async function logProductActivity({
@@ -30,6 +31,7 @@ export async function logProductActivity({
   organizationId,
   refId,
   notes,
+  session,
 }: LogProductActivityParams) {
   const now = new Date();
   const day = String(now.getDate()).padStart(2, '0');
@@ -41,21 +43,24 @@ export async function logProductActivity({
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const time = `${hours}:${minutes}`;
 
-  await db.collection("product_logs").insertOne({
-    date,
-    time,
-    productId,
-    productCode,
-    productName,
-    action,
-    quantityChange: quantityChange || null,
-    previousStock: previousStock !== undefined ? previousStock : null,
-    newStock: newStock !== undefined ? newStock : null,
-    userId,
-    userName: userName || "",
-    organizationId,
-    refId: refId || "",
-    notes: notes || "",
-    createdAt: now,
-  });
+  await db.collection("product_logs").insertOne(
+    {
+      date,
+      time,
+      productId,
+      productCode,
+      productName,
+      action,
+      quantityChange: quantityChange || null,
+      previousStock: previousStock !== undefined ? previousStock : null,
+      newStock: newStock !== undefined ? newStock : null,
+      userId,
+      userName: userName || "",
+      organizationId,
+      refId: refId || "",
+      notes: notes || "",
+      createdAt: now,
+    },
+    { session },
+  );
 }

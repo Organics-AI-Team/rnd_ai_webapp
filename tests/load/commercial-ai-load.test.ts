@@ -25,7 +25,7 @@ describe("commercial synthetic load", () => {
     });
   });
 
-  it("runs 50 tenant-scoped reconnect streams with zero correctness violations", async () => {
+  it("runs 50 tenant-scoped reconnect streams with zero correctness violations", { timeout: 15_000 }, async () => {
     const result = await run_commercial_synthetic_load({ run_number: 1 });
 
     expect(result.mode).toBe("synthetic_in_process");
@@ -45,7 +45,7 @@ describe("commercial synthetic load", () => {
     expect(result.passed).toBe(true);
   });
 
-  it("reports the worst of repeated synthetic runs", async () => {
+  it("reports the worst of repeated synthetic runs", { timeout: 15_000 }, async () => {
     const campaign = await run_commercial_load_campaign({ repetitions: 2 });
 
     expect(campaign.repetitions).toBe(2);

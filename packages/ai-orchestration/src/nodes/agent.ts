@@ -124,14 +124,38 @@ function interpret_turn(
   state: AgentLoopStateType,
   runtime: AgentLoopRuntime,
 ): TurnInterpretation {
-  if (turn.tool_calls.length !== 1) {
+  if (turn.tool_calls.length === 0 || turn.tool_calls.length > 8) {
     return {
       ok: false,
       violation:
         turn.tool_calls.length === 0
           ? "You must respond with exactly one tool call (use the finalize tool to answer)."
-          : "You must respond with exactly one tool call per turn.",
+          : "A reasoning turn may propose at most 8 independent read-only tool calls.",
     };
+  }
+  if (turn.tool_calls.length > 1) {
+    const actions = [];
+    for (const call of turn.tool_calls) {
+      if (
+        call.tool_name === BUILTIN_TOOLS.request_clarification
+        || call.tool_name === BUILTIN_TOOLS.finalize
+        || !(call.tool_name in state.context_pack.tool_cards)
+      ) {
+        return {
+          ok: false,
+          violation:
+            "Parallel calls may contain only declared catalogue tools; clarification and finalize must be proposed alone.",
+        };
+      }
+      actions.push({
+        kind: "tool" as const,
+        call_id: call.call_id,
+        tool_name: call.tool_name,
+        arguments: call.arguments,
+        arguments_hash: hash_arguments(call.arguments),
+      });
+    }
+    return { ok: true, action: { kind: "tool_batch", actions } };
   }
   const call = turn.tool_calls[0]!;
   const arguments_hash = hash_arguments(call.arguments);
@@ -260,17 +284,28 @@ function derive_decision_record(
   rationale: string | null,
   occurred_at: string,
 ): DecisionRecordV1 {
+  const public_summary = rationale?.trim() || (
+    action.kind === "tool"
+      ? `Use ${action.tool_name} because the current request needs governed evidence or an authorized action.`
+      : action.kind === "tool_batch"
+        ? `Run ${action.actions.length} independent governed evidence lookups in parallel.`
+      : action.kind === "clarification"
+        ? "Ask for the missing information needed to choose a reliable next action."
+        : "Finalize because the available conversation context and observations are sufficient to answer."
+  );
   return {
     iteration,
     kind:
-      action.kind === "tool"
+      action.kind === "tool" || action.kind === "tool_batch"
         ? "tool"
         : action.kind === "clarification"
           ? "clarify"
           : "finalize",
     tool_name: action.kind === "tool" ? action.tool_name : null,
-    arguments_hash: action.arguments_hash,
-    rationale_summary: (rationale ?? "").slice(0, 600),
+    arguments_hash: action.kind === "tool_batch"
+      ? hash_arguments(action.actions.map((item) => item.arguments_hash))
+      : action.arguments_hash,
+    rationale_summary: public_summary.slice(0, 600),
     occurred_at,
   };
 }
@@ -313,14 +348,20 @@ export async function agent(
   };
 
   const consumed_turns: ModelTurnV1[] = [];
+  let model_latency_ms = 0;
   let request = base_request;
   let last_violation = "no valid tool call";
   const max_attempts = 1 + runtime.config.max_model_retries;
 
   for (let attempt = 1; attempt <= max_attempts; attempt += 1) {
+    const model_started_ms = runtime.ports.clock.now_ms();
     const turn = await runtime.ports.model.complete_turn(
       request,
       runtime.context,
+    );
+    model_latency_ms += Math.max(
+      0,
+      runtime.ports.clock.now_ms() - model_started_ms,
     );
     consumed_turns.push(turn);
     const interpretation = interpret_turn(turn, state, runtime);
@@ -336,52 +377,70 @@ export async function agent(
 
     const iteration = state.iteration + 1;
     const occurred_at = runtime.ports.clock.now_iso();
-    const decision = derive_decision_record(
-      interpretation.action,
-      iteration,
-      turn.content,
-      occurred_at,
-    );
     const usage = accumulate_usage(state, consumed_turns);
     const sources = { clock: runtime.ports.clock, ids: runtime.ports.ids };
     const stage =
-      interpretation.action.kind === "tool"
+      interpretation.action.kind === "tool" || interpretation.action.kind === "tool_batch"
         ? "acting"
         : interpretation.action.kind === "clarification"
           ? "waiting_user"
           : "finalizing";
     const goto =
-      interpretation.action.kind === "tool"
+      interpretation.action.kind === "tool" || interpretation.action.kind === "tool_batch"
         ? "gate"
         : interpretation.action.kind === "clarification"
           ? "request_clarification"
           : "finalize";
+    const decisions = interpretation.action.kind === "tool_batch"
+      ? interpretation.action.actions.map((action) =>
+          derive_decision_record(action, iteration, turn.content, occurred_at))
+      : [derive_decision_record(
+          interpretation.action,
+          iteration,
+          turn.content,
+          occurred_at,
+        )];
+    const decision_events = decisions.map((record, index) =>
+      build_run_event(state, sources, index, "decision.recorded", {
+        iteration: record.iteration,
+        kind: record.kind,
+        tool_name: record.tool_name,
+        arguments_hash: record.arguments_hash,
+        rationale_summary: record.rationale_summary,
+      }));
+    decision_events.push(
+      build_run_event(state, sources, decisions.length, "stage.changed", { stage }),
+      build_run_event(state, sources, decisions.length + 1, "usage.updated", {
+        model_calls: usage.model_calls,
+        tool_calls: usage.tool_calls,
+        tokens_used: usage.tokens_used,
+        cost_usd_used: usage.cost_usd_used,
+        model_latency_ms,
+      }),
+    );
+    if (interpretation.action.kind === "clarification") {
+      decision_events.push(build_run_event(state, sources, decisions.length + 2, "clarification.required", {
+        questions: interpretation.action.request.questions,
+      }));
+    }
     const update: AgentLoopStateUpdate = {
       iteration,
       usage,
       pending_action: interpretation.action,
-      decision_log: [decision],
-      events: [
-        build_run_event(state, sources, 0, "decision.recorded", {
-          iteration: decision.iteration,
-          kind: decision.kind,
-          tool_name: decision.tool_name,
-          arguments_hash: decision.arguments_hash,
-          rationale_summary: decision.rationale_summary,
-        }),
-        build_run_event(state, sources, 1, "stage.changed", { stage }),
-        build_run_event(state, sources, 2, "usage.updated", {
-          model_calls: usage.model_calls,
-          tool_calls: usage.tool_calls,
-          tokens_used: usage.tokens_used,
-          cost_usd_used: usage.cost_usd_used,
-        }),
-      ],
+      decision_log: decisions,
+      events: decision_events,
     };
     log_loop_event(runtime, "info", "agent.finish", {
       iteration,
       kind: interpretation.action.kind,
       goto,
+      model_latency_ms,
+      message_count: base_request.messages.length,
+      message_characters: base_request.messages.reduce(
+        (total, message) => total + message.content.length,
+        0,
+      ),
+      system_characters: base_request.system.length,
     });
     return new Command({ goto, update });
   }

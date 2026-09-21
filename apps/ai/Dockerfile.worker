@@ -54,6 +54,7 @@ ENV NODE_ENV=production
 
 # Bundle the worker (esbuild, CJS, node24 target, @prisma/client external)
 RUN npm run build:worker
+RUN npm run build:reconcile-clerk --workspace=apps/ai
 
 # Stage 3: Runner
 # Minimal runtime: worker bundle + generated Prisma client only

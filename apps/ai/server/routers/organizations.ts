@@ -2,12 +2,12 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, tenantProcedure, tenantMemberProcedure, managerProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
-import { ObjectId } from "mongodb";
 import {
   find_tenant_organization,
   legacy_organization_filter,
   require_tenant_organization,
 } from "./users";
+import { mutate_credit_balance } from "../services/credit-ledger";
 
 /**
  * Organization (university) router. Every procedure is scoped to
@@ -25,7 +25,12 @@ export const organizationsRouter = router({
     const client = await client_promise;
     const db = client.db();
     const org = await find_tenant_organization(db, ctx.tenant_context.tenant_id);
-    if (!org) return [];
+    if (!org) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "The tenant organization projection is missing.",
+      });
+    }
     return [{ ...org, _id: org._id.toString() }];
   }),
 
@@ -69,37 +74,21 @@ export const organizationsRouter = router({
 
       const org = await require_tenant_organization(db, tenant_id);
 
-      const balanceBefore = org.credits || 0;
-      const balanceAfter = balanceBefore + input.amount;
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("organizations").updateOne(
-        { _id: new ObjectId(tenant_id) },
-        {
-          $set: {
-            credits: balanceAfter,
-            updatedAt: new Date(),
-          },
-        }
-      );
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("credit_transactions").insertOne({
-        organizationId: tenant_id,
-        organizationName: org.name,
+      const result = await mutate_credit_balance(client, {
+        tenant_id,
         type: "add",
         amount: input.amount,
-        balanceBefore,
-        balanceAfter,
-        description: input.description,
-        performedBy: ctx.tenant_context.actor_profile_id,
-        performedByName: ctx.user.name,
-        createdAt: new Date(),
+        transaction: {
+          organizationName: org.name,
+          description: input.description,
+          performedBy: ctx.tenant_context.actor_profile_id,
+          performedByName: ctx.user.name,
+        },
       });
 
       return {
         success: true,
-        newBalance: balanceAfter,
+        newBalance: result.balance_after,
       };
     }),
 
@@ -121,38 +110,21 @@ export const organizationsRouter = router({
 
       const org = await require_tenant_organization(db, tenant_id);
 
-      const balanceBefore = org.credits || 0;
-      const balanceAfter = input.newAmount;
-      const amount = balanceAfter - balanceBefore;
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("organizations").updateOne(
-        { _id: new ObjectId(tenant_id) },
-        {
-          $set: {
-            credits: balanceAfter,
-            updatedAt: new Date(),
-          },
-        }
-      );
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("credit_transactions").insertOne({
-        organizationId: tenant_id,
-        organizationName: org.name,
+      const result = await mutate_credit_balance(client, {
+        tenant_id,
         type: "adjust",
-        amount,
-        balanceBefore,
-        balanceAfter,
-        description: input.description,
-        performedBy: ctx.tenant_context.actor_profile_id,
-        performedByName: ctx.user.name,
-        createdAt: new Date(),
+        new_balance: input.newAmount,
+        transaction: {
+          organizationName: org.name,
+          description: input.description,
+          performedBy: ctx.tenant_context.actor_profile_id,
+          performedByName: ctx.user.name,
+        },
       });
 
       return {
         success: true,
-        newBalance: balanceAfter,
+        newBalance: result.balance_after,
       };
     }),
 

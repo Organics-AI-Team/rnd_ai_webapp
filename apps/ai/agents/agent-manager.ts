@@ -131,7 +131,7 @@ export class AgentManager {
     for (const indexId of ragIndexIds) {
       const indexConfig = getRAGIndexConfig(indexId);
       if (!indexConfig || indexConfig.status !== 'active') {
-        continue;
+        throw new Error(`Required RAG index is unavailable: ${indexId}`);
       }
 
       const ragService = this.getRAGService(indexConfig);
@@ -145,7 +145,8 @@ export class AgentManager {
         allResults.push(...results);
         allSources.push(indexConfig.name);
       } catch (error) {
-        console.warn(`RAG search failed for index ${indexId}:`, error);
+        console.error(`RAG search failed for required index ${indexId}:`, error);
+        throw new Error(`Required RAG search failed: ${indexId}`);
       }
     }
 
@@ -153,6 +154,10 @@ export class AgentManager {
     const sortedResults = allResults
       .sort((a, b) => (b.score || 0) - (a.score || 0))
       .slice(0, ragOptions?.maxResults || 10);
+
+    if (sortedResults.length === 0) {
+      throw new Error("Required RAG search returned no evidence.");
+    }
 
     // Format results for AI context
     const formattedResults = this.formatRAGResults(sortedResults, allSources);

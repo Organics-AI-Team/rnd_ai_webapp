@@ -1,13 +1,15 @@
-import type { Collection, Db, Document, WithId } from "mongodb";
+import { ObjectId, type Collection, type Db, type Document, type MongoClient, type WithId } from "mongodb";
 import { raw_materials_client_promise } from "@rnd-ai/shared-database";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 
 import {
+  assert_no_security_fields,
   delete_scoped_document,
   get_scoped_document,
   insert_scoped_document,
   list_scoped_documents,
   object_id_or_not_found,
+  ResourceNotFoundError,
   tenant_scope,
   update_scoped_document,
 } from "./tenant-repository-base";
@@ -298,6 +300,98 @@ export interface ConversationRepository {
   ): Promise<Document[]>;
 }
 
+/** Input for the worker-owned, idempotent completed-answer write. */
+export interface CompletedAnswerInput {
+  readonly tenant_id: string;
+  readonly actor_profile_id: string;
+  readonly thread_id: string;
+  readonly run_id: string;
+  readonly answer: string;
+  readonly metadata: Record<string, unknown>;
+  readonly completed_at: Date;
+}
+
+/** Repository boundary used by the private worker to materialize chat output. */
+export interface CompletedAnswerRepository {
+  persist_completed_answer(input: CompletedAnswerInput): Promise<void>;
+}
+
+/**
+ * Build the transactional bridge from terminal governed runs into normal chat.
+ *
+ * The insert and thread counter update commit together. Retrying the same run
+ * matches `runId`, so it cannot duplicate the assistant turn or counter.
+ */
+export function create_completed_answer_repository(
+  client: MongoClient,
+  db: Db,
+): CompletedAnswerRepository {
+  const chat_messages = db.collection("chat_messages");
+  const chat_threads = db.collection("chat_threads");
+
+  return {
+    async persist_completed_answer(input): Promise<void> {
+      if (
+        !ObjectId.isValid(input.thread_id) ||
+        input.tenant_id.length === 0 ||
+        input.actor_profile_id.length === 0 ||
+        input.run_id.length === 0 ||
+        input.answer.length === 0
+      ) {
+        throw new Error("Completed AI run is missing durable chat identity.");
+      }
+
+      const session = client.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const inserted = await chat_messages.updateOne(
+            {
+              tenantId: input.tenant_id,
+              runId: input.run_id,
+              role: "assistant",
+            },
+            {
+              $setOnInsert: {
+                tenantId: input.tenant_id,
+                actorProfileId: input.actor_profile_id,
+                threadId: input.thread_id,
+                runId: input.run_id,
+                role: "assistant",
+                content: input.answer,
+                metadata: input.metadata,
+                createdAt: input.completed_at,
+              },
+            },
+            { upsert: true, session },
+          );
+          if (inserted.upsertedCount === 0) return;
+
+          const thread_update = await chat_threads.updateOne(
+            {
+              _id: new ObjectId(input.thread_id),
+              tenantId: input.tenant_id,
+              ownerProfileId: input.actor_profile_id,
+            },
+            {
+              $inc: { messageCount: 1 },
+              $set: {
+                lastMessageAt: input.completed_at,
+                updatedAt: input.completed_at,
+              },
+            },
+            { session },
+          );
+          if (thread_update.matchedCount !== 1) {
+            throw new Error("Completed AI run conversation thread was not found.");
+          }
+        });
+      } finally {
+        await session.endSession();
+      }
+    },
+  };
+}
+
 /**
  * Create the conversation repository bound to a database handle.
  *
@@ -339,6 +433,20 @@ export function create_conversation_repository(db: Db): ConversationRepository {
     return get_scoped_document(chat_threads, context, thread_id, THREAD_NOT_FOUND);
   }
 
+  /** Resolve a chat thread owned by the current actor without disclosing it. */
+  async function get_owned_thread(
+    context: TenantExecutionContext,
+    thread_id: string,
+  ): Promise<WithId<Document>> {
+    const thread = await chat_threads.findOne({
+      _id: object_id_or_not_found(thread_id, THREAD_NOT_FOUND),
+      ...tenant_scope(context),
+      ownerProfileId: context.actor_profile_id,
+    });
+    if (!thread) throw new ResourceNotFoundError(THREAD_NOT_FOUND);
+    return thread;
+  }
+
   return {
     async create_conversation(context, input) {
       return insert_scoped_document(conversations, context, input, "actor");
@@ -371,10 +479,12 @@ export function create_conversation_repository(db: Db): ConversationRepository {
       return insert_scoped_document(chat_threads, context, input, "owner");
     },
     async get_thread(context, thread_id) {
-      return get_scoped_thread(context, thread_id);
+      return get_owned_thread(context, thread_id);
     },
     async list_threads(context) {
-      return list_scoped_documents(chat_threads, context);
+      return list_scoped_documents(chat_threads, context, {
+        ownerProfileId: context.actor_profile_id,
+      });
     },
     async update_own_thread(context, thread_id, patch) {
       return update_scoped_document(chat_threads, context, thread_id, THREAD_NOT_FOUND, patch, {
@@ -383,7 +493,7 @@ export function create_conversation_repository(db: Db): ConversationRepository {
     },
 
     async add_chat_message(context, thread_id, input) {
-      const thread = await get_scoped_thread(context, thread_id);
+      const thread = await get_owned_thread(context, thread_id);
       return insert_scoped_document(
         chat_messages,
         context,
@@ -392,7 +502,7 @@ export function create_conversation_repository(db: Db): ConversationRepository {
       );
     },
     async list_chat_messages(context, thread_id) {
-      const thread = await get_scoped_thread(context, thread_id);
+      const thread = await get_owned_thread(context, thread_id);
       return list_scoped_documents(chat_messages, context, {
         threadId: String(thread._id),
       });
@@ -415,7 +525,7 @@ export function create_conversation_repository(db: Db): ConversationRepository {
     },
 
     async list_thread_messages(context, thread_id, options) {
-      const thread = await get_scoped_thread(context, thread_id);
+      const thread = await get_owned_thread(context, thread_id);
       const filter: Document = {
         ...tenant_scope(context),
         threadId: String(thread._id),
@@ -431,18 +541,53 @@ export function create_conversation_repository(db: Db): ConversationRepository {
     },
 
     async append_thread_message(context, thread_id, input) {
-      const thread = await get_scoped_thread(context, thread_id);
+      const thread_object_id = object_id_or_not_found(thread_id, THREAD_NOT_FOUND);
       const now = new Date();
-      const message = await insert_scoped_document(
-        chat_messages,
-        context,
-        { ...input, threadId: String(thread._id) },
-        "actor",
-      );
-      await chat_threads.updateOne(
-        { _id: thread._id, ...tenant_scope(context) },
-        { $inc: { messageCount: 1 }, $set: { lastMessageAt: now, updatedAt: now } },
-      );
+      let message: WithId<Document> | null = null;
+      const session = db.client.startSession();
+
+      try {
+        await session.withTransaction(async () => {
+          const thread = await chat_threads.findOne(
+            {
+              _id: thread_object_id,
+              ...tenant_scope(context),
+              ownerProfileId: context.actor_profile_id,
+            },
+            { session },
+          );
+          if (!thread) throw new ResourceNotFoundError(THREAD_NOT_FOUND);
+
+          assert_no_security_fields(input);
+          const document: Document = {
+            ...input,
+            threadId: String(thread._id),
+            ...tenant_scope(context),
+            actorProfileId: context.actor_profile_id,
+            createdAt: now,
+            updatedAt: now,
+          };
+          const inserted = await chat_messages.insertOne(document, { session });
+          message = { _id: inserted.insertedId, ...document } as WithId<Document>;
+
+          const thread_update = await chat_threads.updateOne(
+            {
+              _id: thread._id,
+              ...tenant_scope(context),
+              ownerProfileId: context.actor_profile_id,
+            },
+            { $inc: { messageCount: 1 }, $set: { lastMessageAt: now, updatedAt: now } },
+            { session },
+          );
+          if (thread_update.matchedCount !== 1) {
+            throw new ResourceNotFoundError(THREAD_NOT_FOUND);
+          }
+        });
+      } finally {
+        await session.endSession();
+      }
+
+      if (!message) throw new Error("Chat message transaction completed without a message.");
       return message;
     },
 

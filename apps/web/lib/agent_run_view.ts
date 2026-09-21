@@ -23,13 +23,17 @@ export type RunViewStatus = "pending" | "running" | "completed" | "failed";
 
 /** One tool action the run has attempted, with its live status. */
 export interface RunActionView {
+  readonly sequence: number;
   readonly action_id: string;
   readonly tool_name: string;
   readonly status: "running" | "ok" | "error" | "denied";
+  readonly latency_ms: number | null;
+  readonly cost_usd: string | null;
 }
 
 /** One safe, typed decision summary suitable for the activity trail. */
 export interface RunDecisionView {
+  readonly sequence: number;
   readonly iteration: number;
   readonly kind: "tool" | "clarify" | "finalize";
   readonly tool_name: string | null;
@@ -42,10 +46,12 @@ export interface RunUsageView {
   readonly tool_calls: number;
   readonly tokens_used: number;
   readonly cost_usd_used: string;
+  readonly model_latency_ms: number | null;
 }
 
 /** One normalized observation reference surfaced as evidence. */
 export interface RunObservationView {
+  readonly sequence: number;
   readonly observation_id: string;
   readonly observation_type: string;
   readonly trust: "trusted_system" | "trusted_user" | "untrusted_content";
@@ -125,6 +131,7 @@ export function apply_typed_run_event(
         observations: [
           ...state.observations,
           {
+            sequence: event.sequence,
             observation_id: event.payload.observation_id,
             observation_type: event.payload.observation_type,
             trust: event.payload.trust,
@@ -140,6 +147,7 @@ export function apply_typed_run_event(
         decisions: [
           ...state.decisions,
           {
+            sequence: event.sequence,
             iteration: event.payload.iteration,
             kind: event.payload.kind,
             tool_name: event.payload.tool_name,
@@ -155,7 +163,14 @@ export function apply_typed_run_event(
         pending_approval: null,
         actions: [
           ...state.actions,
-          { action_id: event.payload.action_id, tool_name: event.payload.tool_name, status: "running" },
+          {
+            sequence: event.sequence,
+            action_id: event.payload.action_id,
+            tool_name: event.payload.tool_name,
+            status: "running",
+            latency_ms: null,
+            cost_usd: null,
+          },
         ],
       };
     case "action.completed":
@@ -163,7 +178,12 @@ export function apply_typed_run_event(
         ...base,
         actions: state.actions.map((action) =>
           action.action_id === event.payload.action_id
-            ? { ...action, status: event.payload.status }
+            ? {
+                ...action,
+                status: event.payload.status,
+                latency_ms: event.payload.latency_ms,
+                cost_usd: event.payload.cost_usd,
+              }
             : action,
         ),
       };
@@ -200,6 +220,7 @@ export function apply_typed_run_event(
           tool_calls: event.payload.tool_calls,
           tokens_used: event.payload.tokens_used,
           cost_usd_used: event.payload.cost_usd_used,
+          model_latency_ms: event.payload.model_latency_ms ?? null,
         },
       };
     case "run.completed":

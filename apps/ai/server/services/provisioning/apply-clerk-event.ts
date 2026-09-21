@@ -218,7 +218,10 @@ export async function apply_clerk_event(
           clerkUserId: clerk_user_id,
           occurred_at,
         });
-        return;
+        // Fail the receipt so Svix retries after the prerequisite organization
+        // or user projection arrives. Completing this event would permanently
+        // strand a valid Clerk member outside the application tenant.
+        throw new Error("MEMBERSHIP_PROJECTION_PREREQUISITE_MISSING");
       }
       const outcome = await deps.projections.upsert_membership(
         {

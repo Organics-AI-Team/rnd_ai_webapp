@@ -36,6 +36,7 @@ import {
 import { create_legacy_identity_store } from "./auth/mongo-legacy-identity-store";
 import { resolve_clerk_principal } from "./auth/clerk-principal-resolver";
 import { create_identity_projection_repositories } from "./auth/identity-repositories";
+import { ensure_runtime_indexes } from "./repositories/runtime-indexes";
 
 /**
  * Request context resolved once per request from verified server state. No
@@ -44,7 +45,12 @@ import { create_identity_projection_repositories } from "./auth/identity-reposit
  */
 export interface TRPCContext {
   principal: RequestPrincipal | null;
-  auth_error: "UNAUTHENTICATED" | "MEMBERSHIP_INACTIVE" | "FORBIDDEN" | null;
+  auth_error:
+    | "UNAUTHENTICATED"
+    | "MEMBERSHIP_INACTIVE"
+    | "FORBIDDEN"
+    | "SERVICE_UNAVAILABLE"
+    | null;
   /**
    * Safe human-readable rejection reason from the resolver (never secrets),
    * surfaced so an authorization failure such as "The organization is not
@@ -102,8 +108,8 @@ function failed_context(
   console.error("[trpc] principal resolution failed:", error);
   return {
     principal: null,
-    auth_error: "UNAUTHENTICATED",
-    auth_error_message: null,
+    auth_error: "SERVICE_UNAVAILABLE",
+    auth_error_message: "Authentication could not be verified. Please retry.",
     legacy_user: null,
     resolver_used,
   };
@@ -218,6 +224,13 @@ function to_trpc_error(error: AuthorizationError): TRPCError {
 
 const authenticated_middleware = t.middleware(({ ctx, next }) => {
   if (!ctx.principal) {
+    if (ctx.auth_error === "SERVICE_UNAVAILABLE") {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message:
+          ctx.auth_error_message || "Authentication could not be verified.",
+      });
+    }
     if (ctx.auth_error === "MEMBERSHIP_INACTIVE") {
       throw new TRPCError({
         code: "FORBIDDEN",
@@ -328,6 +341,7 @@ async function attach_tenant_scope(
     throw error;
   }
   const client = await client_promise;
+  await ensure_runtime_indexes(client.db());
   return { tenant_context, repositories: create_tenant_repositories(client.db()) };
 }
 

@@ -149,6 +149,57 @@ describe("process_one_job", () => {
     expect(await db.collection("ai_run_jobs").countDocuments({ status: "completed" })).toBe(1);
   });
 
+  it("persists the completed assistant answer before acknowledging the job", async () => {
+    const run_id = await seed_run("idem-w-chat", "corr-w-chat");
+    const executor = new FakeExecutor({
+      status: "completed",
+      events: [event(run_id, 0, "run.completed", { status: "completed", output_schema_version: "1" })],
+      output: { schema_version: "1", run_id, answer: "Durable assistant turn." },
+    });
+    const observed_job_statuses: string[] = [];
+    const persist_completed_answer = vi.fn(async () => {
+      const job = await db.collection("ai_run_jobs").findOne({ runId: run_id });
+      observed_job_statuses.push(String(job?.status));
+    });
+
+    const outcome = await process_one_job({
+      ...make_deps(executor),
+      assistant_messages: { persist_completed_answer },
+    });
+
+    expect(outcome.status).toBe("completed");
+    expect(persist_completed_answer).toHaveBeenCalledWith(expect.objectContaining({
+      tenant_id: TENANT,
+      actor_profile_id: "507f1f77bcf86cd79943a001",
+      run_id,
+      answer: "Durable assistant turn.",
+      metadata: expect.objectContaining({
+        governedRun: expect.objectContaining({ runId: run_id }),
+      }),
+      completed_at: T0,
+    }));
+    expect(observed_job_statuses).toEqual(["leased"]);
+    expect(await db.collection("ai_run_jobs").findOne({ runId: run_id }))
+      .toMatchObject({ status: "completed" });
+  });
+
+  it("does not persist an assistant message for failed or interrupted runs", async () => {
+    const run_id = await seed_run("idem-w-waiting", "corr-w-waiting");
+    const persist_completed_answer = vi.fn(async () => undefined);
+
+    const outcome = await process_one_job({
+      ...make_deps(new FakeExecutor({
+        status: "waiting_clarification",
+        events: [],
+        current_stage: "waiting_user",
+      })),
+      assistant_messages: { persist_completed_answer },
+    });
+
+    expect(outcome).toEqual({ processed: true, run_id, status: "waiting_clarification" });
+    expect(persist_completed_answer).not.toHaveBeenCalled();
+  });
+
   it("starts isolated shadow work only after the primary run and job are committed", async () => {
     const run_id = await seed_run("idem-w-shadow", "corr-w-shadow");
     const executor = new FakeExecutor({
@@ -219,7 +270,7 @@ describe("process_one_job", () => {
     expect(await db.collection("ai_run_events").findOne({ runId: run_id })).toMatchObject({
       type: "run.failed",
       sequence: 0,
-      event: { payload: { code: "PROVIDER_UNAVAILABLE", retryable: false } },
+      event: { payload: { code: "RUNTIME_UNAVAILABLE", retryable: true } },
     });
   });
 
@@ -314,5 +365,22 @@ describe("process_one_job", () => {
     const outcome = await process_one_job(make_deps(new FakeExecutor({ status: "completed", events: [] })));
     expect(outcome.status).toBe("orphaned");
     expect(await db.collection("ai_run_jobs").countDocuments({ status: "completed" })).toBe(1);
+  });
+
+  it("does not disguise run repository outages as orphaned jobs", async () => {
+    await seed_run("idem-w-outage", "corr-w-outage");
+    const normal_deps = make_deps(new FakeExecutor({ status: "completed", events: [] }));
+    const deps: RunWorkerDeps = {
+      ...normal_deps,
+      runs: {
+        ...normal_deps.runs,
+        get: async () => {
+          throw new Error("database unavailable");
+        },
+      },
+    };
+
+    await expect(process_one_job(deps)).rejects.toThrow("database unavailable");
+    expect(await db.collection("ai_run_jobs").countDocuments({ status: "completed" })).toBe(0);
   });
 });

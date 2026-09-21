@@ -2,11 +2,11 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 import client_promise, { parseArrayField } from "@rnd-ai/shared-database";
-import { ObjectId, type Document, type WithId } from "mongodb";
+import { ObjectId, type ClientSession, type Document, type MongoClient, type WithId } from "mongodb";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
-import { logActivity } from "@/lib/userLog";
-import { auto_index_material, auto_delete_material } from "../services/auto-index-service";
+import { logActivity } from "../../lib/userLog";
 import type { ProductRepository } from "../repositories/product-repository";
+import { allocate_tenant_sequence } from "../services/tenant-sequence";
 
 /**
  * G2.5 conversion note: this router now reads and writes the canonical
@@ -17,8 +17,8 @@ import type { ProductRepository } from "../repositories/product-repository";
  */
 
 /**
- * Batch-lookup CAS numbers from raw_materials_myskin by inci_name.
- * raw_materials_myskin is platform-global chemical reference data (not
+ * Batch-lookup CAS numbers from inci_reference by normalized INCI.
+ * inci_reference is platform-global chemical reference data (not
  * tenant-owned), so the raw read below carries no tenant filter.
  * // TODO(G2.6): move into a reference-data repository.
  *
@@ -45,21 +45,24 @@ async function build_cas_no_map(
     return new Map();
   }
 
-  // Case-insensitive regex match for each inci_name
-  const myskin_docs = await db
-    .collection("raw_materials_myskin")
+  const normalized_inci = inci_names.map((name) =>
+    name.toLowerCase().replace(/\s+/g, " "),
+  );
+  const reference_docs = await db
+    .collection("inci_reference")
     .find({
-      inci_name: {
-        $in: inci_names.map((n: string) => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i")),
-      },
+      inci: { $in: normalized_inci },
       cas_no: { $exists: true, $ne: "" },
     })
-    .project({ inci_name: 1, cas_no: 1 })
+    .project({ inci: 1, inci_name: 1, cas_no: 1 })
     .toArray();
 
   const cas_map = new Map<string, string>();
-  for (const doc of myskin_docs) {
-    const key = (doc.inci_name || "").toLowerCase().trim();
+  for (const doc of reference_docs) {
+    const key = String(doc.inci || doc.inci_name || "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ");
     if (key && doc.cas_no && !cas_map.has(key)) {
       cas_map.set(key, doc.cas_no);
     }
@@ -88,15 +91,11 @@ async function compute_next_product_code(
   products_repository: ProductRepository,
   tenant_context: TenantExecutionContext,
 ): Promise<{ next_code: string; max_number: number }> {
-  const [total_count, latest_product] = await Promise.all([
-    products_repository.count_products(tenant_context),
-    products_repository.find_latest_product(tenant_context),
-  ]);
-
-  let max_number = total_count;
-  const latest_code = latest_product?.productCode || latest_product?.rm_code;
-  if (latest_code) {
-    const match = latest_code.toString().match(/(\d+)/);
+  const products = await products_repository.list_products(tenant_context);
+  let max_number = products.length;
+  for (const product of products) {
+    const code = product.productCode || product.rm_code;
+    const match = code ? code.toString().match(/(\d+)/) : null;
     if (match) {
       max_number = Math.max(max_number, parseInt(match[1], 10));
     }
@@ -157,11 +156,22 @@ function map_product_response(
  * @returns Favorite ingredient ID strings (empty when unavailable).
  */
 async function read_favorite_ingredients(db: any, tenant_id: string): Promise<string[]> {
-  if (!ObjectId.isValid(tenant_id)) return [];
-  const organization = await db
-    .collection("organizations")
-    .findOne({ _id: new ObjectId(tenant_id) });
-  return organization?.favoriteIngredients || [];
+  if (!ObjectId.isValid(tenant_id)) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Tenant identity is invalid." });
+  }
+  const tenant_object_id = new ObjectId(tenant_id);
+  const [tenant, organization] = await Promise.all([
+    db.collection("tenants").findOne({ _id: tenant_object_id }),
+    db.collection("organizations").findOne({ _id: tenant_object_id }),
+  ]);
+  const favorites = tenant?.favoriteIngredients ?? organization?.favoriteIngredients ?? [];
+  if (!Array.isArray(favorites)) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Favorite ingredient data is malformed.",
+    });
+  }
+  return favorites.map(String);
 }
 
 /**
@@ -185,6 +195,56 @@ function to_indexable_material(product: WithId<Document>): any {
     benefits_cached: doc.benefits || "",
     usecase_cached: doc.usecase || "",
   };
+}
+
+/** Run one product mutation with its audit record and index outbox atomically. */
+async function in_product_mutation_transaction<T>(
+  client: MongoClient,
+  operation: (session: ClientSession) => Promise<T>,
+): Promise<T> {
+  const session = client.startSession();
+  try {
+    return await session.withTransaction(() => operation(session));
+  } finally {
+    await session.endSession();
+  }
+}
+
+/** Persist one durable material-index task inside the product mutation transaction. */
+async function enqueue_material_index(
+  db: ReturnType<MongoClient["db"]>,
+  tenant_id: string,
+  product_id: string,
+  operation: "upsert" | "delete",
+  material: Record<string, unknown>,
+  session: ClientSession,
+): Promise<void> {
+  const now = new Date();
+  await db.collection("material_index_outbox").updateOne(
+    { tenantId: tenant_id, productId: product_id, operation },
+    operation === "upsert"
+      ? {
+          $set: {
+            material,
+            status: "pending",
+            attempts: 0,
+            nextAttemptAt: now,
+            updatedAt: now,
+          },
+          $setOnInsert: { createdAt: now },
+        }
+      : {
+          $set: {
+            material,
+            status: "pending",
+            attempts: 0,
+            nextAttemptAt: now,
+            updatedAt: now,
+          },
+          $setOnInsert: { createdAt: now },
+        },
+    { upsert: true, session },
+  );
 }
 
 export const productsRouter = router({
@@ -305,51 +365,57 @@ export const productsRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      const { next_code } = await compute_next_product_code(
+      const { max_number } = await compute_next_product_code(
         ctx.repositories.products,
         ctx.tenant_context,
       );
+      const allocated_number = await allocate_tenant_sequence(
+        db,
+        ctx.tenant_context.tenant_id,
+        "product_code",
+        max_number,
+      );
+      const next_code = `RM${String(allocated_number).padStart(6, "0")}`;
 
       // tenantId/actorProfileId/createdAt/updatedAt are stamped by the
       // repository from the execution context — never from the input.
-      const created = await ctx.repositories.products.create_product(
-        ctx.tenant_context,
-        {
-          productCode: next_code,
-          productName: input.productName,
-          name: input.productName,
-          inci_name: input.inciName || "",
-          description: input.description || "",
-          supplier: input.supplier || "",
-          price: input.price || 0,
-          benefits: input.benefits || "",
-          usecase: input.details || "",
-          stockQuantity: input.stockQuantity ?? 0,
-          lowStockThreshold: input.lowStockThreshold ?? 10,
-          isActive: true,
-        },
-      );
-
-      // Display-only activity log; identity fields are for audit text only.
-      await logActivity({
-        db,
-        userId: ctx.userId,
-        userName: ctx.user.name,
-        activity: "create material",
-        refId: created._id.toString(),
-        organizationId: ctx.tenant_context.tenant_id,
-      });
-
-      // 🔄 AUTO-SYNC: Index new material to Qdrant for AI search
-      // This runs asynchronously without blocking the response
-      auto_index_material(to_indexable_material(created)).then(success => {
-        if (success) {
-          console.log(`✅ [ProductsRouter] Auto-indexed material ${next_code} to Qdrant`);
-        } else {
-          console.warn(`⚠️  [ProductsRouter] Failed to auto-index material ${next_code} to Qdrant`);
-        }
-      }).catch(error => {
-        console.error(`❌ [ProductsRouter] Error auto-indexing material ${next_code}:`, error);
+      const created = await in_product_mutation_transaction(client, async (session) => {
+        const product = await ctx.repositories.products.create_product(
+          ctx.tenant_context,
+          {
+            productCode: next_code,
+            productName: input.productName,
+            name: input.productName,
+            inci_name: input.inciName || "",
+            description: input.description || "",
+            supplier: input.supplier || "",
+            price: input.price || 0,
+            benefits: input.benefits || "",
+            usecase: input.details || "",
+            stockQuantity: input.stockQuantity ?? 0,
+            lowStockThreshold: input.lowStockThreshold ?? 10,
+            isActive: true,
+          },
+          session,
+        );
+        await enqueue_material_index(
+          db,
+          ctx.tenant_context.tenant_id,
+          product._id.toString(),
+          "upsert",
+          to_indexable_material(product),
+          session,
+        );
+        await logActivity({
+          db,
+          userId: ctx.userId,
+          userName: ctx.user.name,
+          activity: "create material",
+          refId: product._id.toString(),
+          organizationId: ctx.tenant_context.tenant_id,
+          session,
+        });
+        return product;
       });
 
       return {
@@ -416,36 +482,35 @@ export const productsRouter = router({
       }
       if (updateData.isActive !== undefined) patch.isActive = updateData.isActive;
 
-      let updated: WithId<Document>;
       try {
-        updated = await ctx.repositories.products.update_product(
-          ctx.tenant_context,
-          id,
-          patch,
-        );
+        await in_product_mutation_transaction(client, async (session) => {
+          const updated = await ctx.repositories.products.update_product(
+            ctx.tenant_context,
+            id,
+            patch,
+            session,
+          );
+          await enqueue_material_index(
+            db,
+            ctx.tenant_context.tenant_id,
+            updated._id.toString(),
+            "upsert",
+            to_indexable_material(updated),
+            session,
+          );
+          await logActivity({
+            db,
+            userId: ctx.userId,
+            userName: ctx.user.name,
+            activity: "update material",
+            refId: id,
+            organizationId: ctx.tenant_context.tenant_id,
+            session,
+          });
+        });
       } catch (error) {
         throw_from_repository_error(error);
       }
-
-      await logActivity({
-        db,
-        userId: ctx.userId,
-        userName: ctx.user.name,
-        activity: "update material",
-        refId: id,
-        organizationId: ctx.tenant_context.tenant_id,
-      });
-
-      // 🔄 AUTO-SYNC: Re-index updated material to Qdrant
-      auto_index_material(to_indexable_material(updated)).then(success => {
-        if (success) {
-          console.log(`✅ [ProductsRouter] Auto-updated material in Qdrant`);
-        } else {
-          console.warn(`⚠️  [ProductsRouter] Failed to auto-update material in Qdrant`);
-        }
-      }).catch(error => {
-        console.error(`❌ [ProductsRouter] Error auto-updating material:`, error);
-      });
 
       return { success: true };
     }),
@@ -491,40 +556,38 @@ export const productsRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      // Read before delete: the Qdrant cleanup needs the product code.
-      let product: WithId<Document>;
       try {
-        product = await ctx.repositories.products.get_product(
-          ctx.tenant_context,
-          input.id,
-        );
-        await ctx.repositories.products.delete_product(ctx.tenant_context, input.id);
+        await in_product_mutation_transaction(client, async (session) => {
+          const product = await ctx.repositories.products.get_product(
+            ctx.tenant_context,
+            input.id,
+            session,
+          );
+          await ctx.repositories.products.delete_product(ctx.tenant_context, input.id, session);
+
+          const product_code = (product as any).productCode || (product as any).rm_code;
+          if (product_code) {
+            await enqueue_material_index(
+              db,
+              ctx.tenant_context.tenant_id,
+              input.id,
+              "delete",
+              { rm_code: String(product_code) },
+              session,
+            );
+          }
+          await logActivity({
+            db,
+            userId: ctx.userId,
+            userName: ctx.user.name,
+            activity: "delete material",
+            refId: input.id,
+            organizationId: ctx.tenant_context.tenant_id,
+            session,
+          });
+        });
       } catch (error) {
         throw_from_repository_error(error);
-      }
-
-      const product_code = (product as any).productCode || (product as any).rm_code;
-
-      await logActivity({
-        db,
-        userId: ctx.userId,
-        userName: ctx.user.name,
-        activity: "delete material",
-        refId: input.id,
-        organizationId: ctx.tenant_context.tenant_id,
-      });
-
-      // 🔄 AUTO-SYNC: Delete material from Qdrant
-      if (product_code) {
-        auto_delete_material(product_code).then(success => {
-          if (success) {
-            console.log(`✅ [ProductsRouter] Auto-deleted material ${product_code} from Qdrant`);
-          } else {
-            console.warn(`⚠️  [ProductsRouter] Failed to auto-delete material ${product_code} from Qdrant`);
-          }
-        }).catch(error => {
-          console.error(`❌ [ProductsRouter] Error auto-deleting material ${product_code}:`, error);
-        });
       }
 
       return { success: true };

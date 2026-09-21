@@ -70,7 +70,14 @@ describe("reduce_run_event", () => {
     expect(state.stage).toBe("thinking");
     expect(state.last_sequence).toBe(6);
     expect(state.observations).toHaveLength(1);
-    expect(state.actions).toEqual([{ action_id: "act_1", tool_name: "formula.draft", status: "ok" }]);
+    expect(state.actions).toEqual([{
+      sequence: 3,
+      action_id: "act_1",
+      tool_name: "formula.draft",
+      status: "ok",
+      latency_ms: 20,
+      cost_usd: "0.0003",
+    }]);
     expect(state.artifacts).toEqual([{ artifact_id: "artf_1", artifact_type: "formula", version: 1 }]);
     expect(state.pending_approval).toBeNull();
     expect(state.error).toBeNull();
@@ -156,6 +163,7 @@ describe("reduce_run_event", () => {
     ]);
     expect(state.decisions).toEqual([
       {
+        sequence: 1,
         iteration: 1,
         kind: "tool",
         tool_name: "knowledge.search",
@@ -167,6 +175,7 @@ describe("reduce_run_event", () => {
       tool_calls: 1,
       tokens_used: 120,
       cost_usd_used: "0.004",
+      model_latency_ms: null,
     });
   });
 

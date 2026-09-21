@@ -90,6 +90,10 @@ describe("scan_private_boundaries fixtures", () => {
         "export async function GET() { return Response.json({ status: 'ok' }); }",
       ),
       source(
+        "apps/web/app/api/auth/session-organization/route.ts",
+        "export async function GET() { return Response.json({ organization_id: null }); }",
+      ),
+      source(
         "apps/web/app/api/example/route.ts",
         "export async function OPTIONS() { return new Response(null); }",
       ),

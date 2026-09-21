@@ -11,6 +11,7 @@
  */
 
 import { interrupt } from "@langchain/langgraph";
+import { build_run_event } from "../events";
 import type { ProposedActionV1 } from "../contracts";
 import { build_observation } from "../schemas/observation";
 import type { AgentLoopRuntime } from "../ports";
@@ -68,12 +69,47 @@ export async function request_approval(
     approval_id: approval.approval_id,
   });
 
-  const resumed = interrupt({
+  const pending_approval = {
     schema_version: "1",
     approval_id: approval.approval_id,
     run_id: state.run_id,
     summary,
-  });
+  } as const;
+  const event = build_run_event(
+    state,
+    { clock: runtime.ports.clock, ids: runtime.ports.ids },
+    0,
+    "approval.required",
+    {
+      approval_id: approval.approval_id,
+      summary,
+      tool_name: action.tool_name,
+    },
+  );
+  return { pending_approval, events: [event] };
+}
+
+/**
+ * Durably interrupt after the approval request and its public event have been
+ * checkpointed by the preceding preparation node.
+ */
+export async function await_approval(
+  state: AgentLoopStateType,
+  runtime: AgentLoopRuntime,
+): Promise<AgentLoopStateUpdate> {
+  const action = state.pending_action;
+  const pending = state.pending_approval;
+  if (!action || action.kind !== "tool" || !pending) {
+    return {
+      error: build_run_error(
+        runtime,
+        "ORCHESTRATOR_INVARIANT_VIOLATION",
+        "Approval wait was reached without a durable approval request.",
+      ),
+    };
+  }
+  const key = approval_idempotency_key(state.run_id, action);
+  const resumed = interrupt(pending);
 
   const result = await runtime.ports.approvals.verify_resume(
     { run_id: state.run_id, action_idempotency_key: key, resume: resumed },
@@ -86,6 +122,7 @@ export async function request_approval(
     });
     return {
       approval_result: { ...result, action_arguments_hash: action.arguments_hash },
+      pending_approval: null,
     };
   }
 
@@ -110,5 +147,10 @@ export async function request_approval(
   log_loop_event(runtime, "info", "request_approval.denied", {
     approval_id: result.approval_id,
   });
-  return { approval_result: result, pending_action: null, observations: [observation] };
+  return {
+    approval_result: result,
+    pending_action: null,
+    pending_approval: null,
+    observations: [observation],
+  };
 }

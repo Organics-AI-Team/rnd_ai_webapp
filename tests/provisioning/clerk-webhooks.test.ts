@@ -218,6 +218,39 @@ describe("handle_clerk_webhook", () => {
     expect(world.memberships.size).toBe(1);
   });
 
+  it("fails a membership receipt until its user projection exists, then reapplies", async () => {
+    const world = fake_world();
+    const message_id = "msg_deferred_membership";
+    const first = await handle_clerk_webhook(
+      signed_request({ payload: membership_created_payload(), message_id }),
+      world.deps,
+    );
+    expect(first.status).toBe(500);
+    expect(world.receipts.get(message_id)).toEqual({
+      completed: false,
+      failed: true,
+    });
+    expect(world.audit_events).toContainEqual(
+      expect.objectContaining({ action: "membership_projection_deferred" }),
+    );
+
+    world.profiles.set("user_1", {
+      clerkUserId: "user_1",
+      status: "active",
+      clerkSyncedAt: new Date(0),
+    });
+    const second = await handle_clerk_webhook(
+      signed_request({ payload: membership_created_payload(), message_id }),
+      world.deps,
+    );
+    expect(second.status).toBe(200);
+    expect(world.receipts.get(message_id)).toEqual({
+      completed: true,
+      failed: false,
+    });
+    expect(world.memberships.size).toBe(1);
+  });
+
   it("applies user create then ignores an out-of-order older update", async () => {
     const world = fake_world();
     const newer = {

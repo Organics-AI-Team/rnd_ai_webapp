@@ -20,6 +20,12 @@ import {
  * boundary — same pattern as platform-tenants.ts request_clerk_client).
  */
 export interface MemberAdminClerkLike {
+  allowlistIdentifiers?: {
+    createAllowlistIdentifier(params: {
+      identifier: string;
+      notify: boolean;
+    }): Promise<unknown>;
+  };
   organizations: {
     createOrganizationInvitation(params: {
       organizationId: string;
@@ -65,6 +71,10 @@ function default_clerk_backend(): MemberAdminClerkLike {
   }
   const clerk = createClerkClient({ secretKey: secret });
   return {
+    allowlistIdentifiers: {
+      createAllowlistIdentifier: (params) =>
+        clerk.allowlistIdentifiers.createAllowlistIdentifier(params),
+    },
     organizations: {
       createOrganizationInvitation: (params) =>
         clerk.organizations.createOrganizationInvitation(params),
@@ -90,6 +100,28 @@ function default_clerk_backend(): MemberAdminClerkLike {
         clerk.organizations.deleteOrganizationMembership(params),
     },
   };
+}
+
+/** Ensure restricted-mode Clerk accepts the organization invitation target. */
+async function ensure_allowlisted(
+  clerk: MemberAdminClerkLike,
+  email: string,
+): Promise<void> {
+  if (!clerk.allowlistIdentifiers) return;
+  try {
+    await clerk.allowlistIdentifiers.createAllowlistIdentifier({
+      identifier: email,
+      notify: false,
+    });
+  } catch (error) {
+    const clerk_error = error as { errors?: Array<{ code?: string }> } | null;
+    const duplicate = clerk_error?.errors?.some(
+      (entry) =>
+        typeof entry?.code === "string"
+        && entry.code.toLowerCase().includes("duplicate"),
+    );
+    if (!duplicate) throw error;
+  }
 }
 
 /**
@@ -264,6 +296,7 @@ export function create_production_member_ports(
     clerk: {
       async create_user_invitation(clerk_organization_id, email) {
         try {
+          await ensure_allowlisted(clerk, email);
           const created = await clerk.organizations.createOrganizationInvitation({
             organizationId: clerk_organization_id,
             emailAddress: email,
@@ -299,6 +332,7 @@ export function create_production_member_ports(
             role: String(existing.role),
           };
         }
+        await ensure_allowlisted(clerk, email);
         const created = await clerk.organizations.createOrganizationInvitation({
           organizationId: clerk_organization_id,
           emailAddress: email,
@@ -374,7 +408,13 @@ export function create_production_member_admin_ports(
         });
         await memberships.updateOne(
           { tenantId: tenant_id, userProfileId: user_profile_id },
-          { $set: { status, updatedAt: new Date() } },
+          {
+            $set: {
+              status,
+              manualStatusOverride: status === "suspended",
+              updatedAt: new Date(),
+            },
+          },
           { session },
         );
       },

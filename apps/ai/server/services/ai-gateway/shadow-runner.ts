@@ -132,14 +132,23 @@ export function create_shadow_runner(
           retention_days: request.policy.retention_days,
         });
         return { selected: true, status: shadow_status };
-      } catch {
-        await Promise.resolve(
-          ports.record_incident({
+      } catch (error) {
+        try {
+          await ports.record_incident({
             tenant_id: request.tenant_id,
             primary_run_id: request.primary_run_id,
             code: "SHADOW_EXECUTION_FAILED",
-          }),
-        ).catch(() => undefined);
+          });
+        } catch (incident_error) {
+          console.error({
+            boundary: "shadow-runner",
+            event: "shadow.incident_record_failed",
+            tenant_id: request.tenant_id,
+            primary_run_id: request.primary_run_id,
+            execution_error: error instanceof Error ? error.name : "unknown",
+            incident_error: incident_error instanceof Error ? incident_error.name : "unknown",
+          });
+        }
         return { selected: true, status: "failed" };
       }
     },

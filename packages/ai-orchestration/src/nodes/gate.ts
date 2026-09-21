@@ -72,7 +72,7 @@ export async function gate(
   }
 
   const action = state.pending_action;
-  if (!action || action.kind !== "tool") {
+  if (!action || (action.kind !== "tool" && action.kind !== "tool_batch")) {
     log_loop_event(runtime, "error", "gate.missing_pending_action");
     return fail_command(
       build_run_error(
@@ -81,6 +81,84 @@ export async function gate(
         "The gate received no pending tool action.",
       ),
     );
+  }
+
+  if (action.kind === "tool_batch") {
+    for (const item of action.actions) {
+      const definition = runtime.ports.tools.describe(item.tool_name, runtime.context);
+      if (!definition || definition.side_effect !== "read") {
+        return route_denial(state, runtime, item, {
+          reason_code: "PARALLEL_ACTION_NOT_READ_ONLY",
+          safe_reason:
+            "Only independent read-only tools may run in parallel. Propose draft, commit, approval, clarification, and finalize actions one at a time.",
+        });
+      }
+      if (
+        is_loop_detected(
+          state.decision_log,
+          item,
+          runtime.config.loop_detection_threshold,
+        )
+      ) {
+        return fail_command(
+          build_run_error(
+            runtime,
+            "LOOP_DETECTED",
+            "The run repeated an action in a parallel batch too many times and was stopped.",
+          ),
+          { pending_action: null },
+        );
+      }
+      if (
+        is_duplicate_proposal(
+          state.decision_log,
+          item,
+          runtime.config.loop_detection_threshold,
+        )
+      ) {
+        return route_denial(state, runtime, item, {
+          reason_code: "DUPLICATE_ACTION",
+          safe_reason:
+            "One call in this parallel batch already ran; use its existing observation and re-plan.",
+        });
+      }
+    }
+    const verdicts = await Promise.all(
+      action.actions.map((item) =>
+        runtime.policy.evaluate_action(
+          { tool_name: item.tool_name, arguments: item.arguments },
+          runtime.context,
+        )),
+    );
+    for (let index = 0; index < verdicts.length; index += 1) {
+      const verdict = verdicts[index]!;
+      const item = action.actions[index]!;
+      if (verdict.kind === "denied") {
+        if (verdict.fatal) {
+          return fail_command(
+            build_run_error(
+              runtime,
+              to_run_error_code(verdict.reason_code),
+              verdict.safe_reason,
+            ),
+            { pending_action: null },
+          );
+        }
+        return route_denial(state, runtime, item, verdict);
+      }
+      if (verdict.kind === "approval_required") {
+        return route_denial(state, runtime, item, {
+          reason_code: "PARALLEL_ACTION_REQUIRES_APPROVAL",
+          safe_reason:
+            "An approval-gated action must be proposed alone so its exact arguments can be reviewed.",
+        });
+      }
+    }
+    log_loop_event(runtime, "info", "gate.parallel_read_batch_allowed", {
+      tool_count: action.actions.length,
+      tools: action.actions.map((item) => item.tool_name),
+    });
+    return new Command({ goto: LOOP_NODE.act });
   }
 
   if (

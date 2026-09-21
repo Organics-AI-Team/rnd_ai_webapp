@@ -15,7 +15,7 @@
  * hit the same in-memory database this file seeds.
  */
 
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { MongoClient, ObjectId, type Db } from "mongodb";
 import {
   afterAll,
@@ -85,7 +85,7 @@ import {
 } from "../../apps/ai/server/trpc";
 import { appRouter } from "../../apps/ai/server/index";
 
-let server: MongoMemoryServer;
+let server: MongoMemoryReplSet;
 let client: MongoClient;
 let db: Db;
 
@@ -124,6 +124,10 @@ const TENANT_COLLECTIONS = [
   "users",
   "organizations",
   "user_logs",
+  "tenants",
+  "user_profiles",
+  "tenant_membership_projections",
+  "credit_transactions",
 ];
 
 /**
@@ -206,6 +210,14 @@ const a_manager_caller = () =>
   );
 const platform_admin_caller = () =>
   create_caller(build_ctx(platform_admin_principal()));
+const public_caller = () =>
+  create_caller({
+    principal: null,
+    auth_error: "UNAUTHENTICATED",
+    auth_error_message: null,
+    legacy_user: null,
+    resolver_used: "legacy",
+  });
 
 /**
  * Capture a rejected tRPC call's error for code assertions.
@@ -234,16 +246,54 @@ async function capture_trpc_error(
 async function seed_fixtures(database: Db): Promise<void> {
   const now = new Date();
 
+  await database.collection("tenants").insertMany([
+    { _id: new ObjectId(TENANT_A), name: "Tenant A", creditBalance: 25 },
+    { _id: new ObjectId(TENANT_B), name: "Tenant B", creditBalance: 900 },
+  ]);
+  await database.collection("user_profiles").insertMany([
+    {
+      _id: new ObjectId(PROFILE_A_MANAGER),
+      displayName: "Manager A",
+      primaryEmail: "manager-a@example.com",
+      status: "active",
+    },
+    {
+      _id: new ObjectId(PROFILE_B_MANAGER),
+      displayName: "Manager B",
+      primaryEmail: "manager-b@example.com",
+      status: "active",
+    },
+  ]);
+  await database.collection("tenant_membership_projections").insertMany([
+    {
+      tenantId: TENANT_A,
+      userProfileId: PROFILE_A_MANAGER,
+      tenantRole: "manager",
+      status: "active",
+    },
+    {
+      tenantId: TENANT_B,
+      userProfileId: PROFILE_B_MANAGER,
+      tenantRole: "manager",
+      status: "active",
+    },
+  ]);
+
   await database.collection("formulas").insertMany([
     {
       _id: new ObjectId(FORMULA_A_ID),
       tenantId: TENANT_A,
       ownerProfileId: PROFILE_A_USER,
       name: "Formula Alpha A",
-      formulaName: "Formula Alpha A",
-      status: "draft",
+      rd_formula_id: "legacy-101",
+      status: "0",
       version: 0,
-      ingredients: [],
+      lines: [{
+        rm_code: "RM-A",
+        inci_name: "Aqua",
+        amount: 100,
+        percentage: 100,
+      }],
       createdAt: now,
       updatedAt: now,
     },
@@ -430,7 +480,7 @@ async function expect_not_found_or_clean(
 }
 
 beforeAll(async () => {
-  server = await MongoMemoryServer.create();
+  server = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   client = new MongoClient(server.getUri());
   await client.connect();
   db = client.db();
@@ -481,6 +531,12 @@ describe("lists never leak other tenants", () => {
     const text = JSON.stringify(result);
     expect(text).toContain("Formula Alpha A");
     expect(text).not.toContain("Formula Beta B");
+    expect(result[0]).toMatchObject({
+      formulaCode: "RD-legacy-101",
+      formulaName: "Formula Alpha A",
+      status: "draft",
+      ingredients: [{ rm_code: "RM-A", inci_name: "Aqua", amount: 100 }],
+    });
   });
 
   it("products.list returns tenant A records and no tenant B records", async () => {
@@ -495,6 +551,131 @@ describe("lists never leak other tenants", () => {
     const text = JSON.stringify(result);
     expect(text).toContain("Order Alpha A");
     expect(text).not.toContain("Order Beta B");
+  });
+
+  it("exposes client orders to a tenant manager without exposing them to other members", async () => {
+    await db.collection("orders").insertOne({
+      tenantId: TENANT_A,
+      organizationId: TENANT_A,
+      productName: "Client Order Alpha A",
+      status: "pending",
+      quantity: 1,
+      price: 10,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const member_orders = await a_user_caller().orders.list();
+    expect(JSON.stringify(member_orders)).not.toContain("Client Order Alpha A");
+    await expect(a_user_caller().orders.listTenant()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+
+    const manager_orders = await a_manager_caller().orders.listTenant();
+    const manager_text = JSON.stringify(manager_orders);
+    expect(manager_text).toContain("Client Order Alpha A");
+    expect(manager_text).not.toContain("Order Beta B");
+  });
+});
+
+describe("public client orders", () => {
+  it("uses catalog pricing and atomically prevents concurrent overselling", async () => {
+    await db.collection("products").updateOne(
+      { _id: new ObjectId(PRODUCT_A_ID) },
+      { $set: { stockQuantity: 1, isActive: true, price: 75 } },
+    );
+    const input = {
+      organizationId: TENANT_A,
+      productId: PRODUCT_A_ID,
+      productName: "Forged client name",
+      price: 1,
+      quantity: 1,
+      channel: "line" as const,
+      customerName: "Client",
+      customerContact: "client@example.com",
+      shippingAddress: "1 Example Road",
+      orderDate: "2026-07-31",
+      idempotencyKey: "ef1b9db5-f7ed-4ad1-9741-caf3b7b4e878",
+    };
+
+    const results = await Promise.allSettled([
+      public_caller().orders.submitClientOrder(input),
+      public_caller().orders.submitClientOrder({
+        ...input,
+        idempotencyKey: "2bf6538c-1650-4dc5-a20e-6c8f2b855c15",
+      }),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const rejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(rejected?.reason).toMatchObject({ code: "PRECONDITION_FAILED" });
+
+    const product = await db.collection("products").findOne({ _id: new ObjectId(PRODUCT_A_ID) });
+    expect(product?.stockQuantity).toBe(0);
+    const order = await db.collection("orders").findOne({ productId: PRODUCT_A_ID });
+    expect(order).toMatchObject({
+      tenantId: TENANT_A,
+      productName: "Product Alpha A",
+      price: 75,
+    });
+  });
+
+  it("replays the same submission without duplicating the order or decrementing stock", async () => {
+    await db.collection("products").updateOne(
+      { _id: new ObjectId(PRODUCT_A_ID) },
+      { $set: { stockQuantity: 1, isActive: true, price: 75 } },
+    );
+    const input = {
+      organizationId: TENANT_A,
+      productId: PRODUCT_A_ID,
+      productName: "Forged client name",
+      price: 1,
+      quantity: 1,
+      channel: "line" as const,
+      customerName: "Client",
+      customerContact: "client@example.com",
+      shippingAddress: "1 Example Road",
+      orderDate: "2026-07-31",
+      idempotencyKey: "0d0bb91d-2973-4d18-8e2a-84037685088a",
+    };
+
+    const [first, replay] = await Promise.all([
+      public_caller().orders.submitClientOrder(input),
+      public_caller().orders.submitClientOrder(input),
+    ]);
+    expect(replay.id).toBe(first.id);
+
+    const product = await db.collection("products").findOne({ _id: new ObjectId(PRODUCT_A_ID) });
+    expect(product?.stockQuantity).toBe(0);
+    await expect(db.collection("orders").countDocuments({ idempotencyKey: input.idempotencyKey })).resolves.toBe(1);
+  });
+});
+
+describe("formula confirmation recovery", () => {
+  it("confirms a legacy draft once and safely replays the full activity trail", async () => {
+    const idempotencyKey = "c68fc1c8-9590-45d1-8b7c-ac4f1b8f6e8b";
+    const input = { id: FORMULA_A_ID, idempotencyKey, remarks: "Ready for production" };
+
+    const first = await a_manager_caller().formulas.confirm(input);
+    const replay = await a_manager_caller().formulas.confirm(input);
+
+    expect(first).toMatchObject({ success: true, version: 1, alreadyConfirmed: false });
+    expect(replay).toMatchObject({ success: true, version: 1, alreadyConfirmed: true });
+    await expect(db.collection("formula_version_logs").countDocuments({
+      formulaId: FORMULA_A_ID,
+      action: "confirm",
+      idempotencyKey,
+    })).resolves.toBe(1);
+    await expect(db.collection("formula_comments").countDocuments({
+      formulaId: FORMULA_A_ID,
+      idempotencyKey: `formula-confirm-comment:${idempotencyKey}`,
+    })).resolves.toBe(1);
+    await expect(db.collection("tenant_audit_events").countDocuments({
+      resourceId: FORMULA_A_ID,
+      idempotencyKey: `formula-confirm-audit:${idempotencyKey}`,
+    })).resolves.toBe(1);
   });
 });
 
@@ -582,7 +763,10 @@ describe("forged tenant identifiers in input are ignored", () => {
 describe("fine-grained permission gates", () => {
   it("formulas.confirm as a tenant user rejects FORBIDDEN (needs formula:confirm)", async () => {
     await expect(
-      a_user_caller().formulas.confirm({ id: FORMULA_A_ID }),
+      a_user_caller().formulas.confirm({
+        id: FORMULA_A_ID,
+        idempotencyKey: "4de5b308-4b2e-4c58-a921-7b7b74f529c0",
+      }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -613,6 +797,43 @@ describe("fine-grained permission gates", () => {
 });
 
 describe("positive controls: legitimate tenant access works", () => {
+  it("manages credits through Clerk-era profiles, memberships, and tenant balances", async () => {
+    const caller = a_manager_caller();
+    const users = await caller.users.list();
+    expect(users).toEqual([
+      expect.objectContaining({
+        _id: PROFILE_A_MANAGER,
+        name: "Manager A",
+        email: "manager-a@example.com",
+        credits: 25,
+      }),
+    ]);
+    await caller.users.addCredits({
+      userId: PROFILE_A_MANAGER,
+      amount: 10,
+      description: "Top up",
+    });
+    await caller.users.deductCredits({
+      userId: PROFILE_A_MANAGER,
+      amount: 7,
+      description: "Governed run",
+      orderId: "run_1",
+    });
+    expect(await db.collection("tenants").findOne({
+      _id: new ObjectId(TENANT_A),
+    })).toMatchObject({ creditBalance: 28 });
+    const transactions = await caller.users.getAllTransactions();
+    expect(transactions).toHaveLength(2);
+    expect(transactions).toEqual(expect.arrayContaining([expect.objectContaining({
+      organizationId: TENANT_A,
+      userId: PROFILE_A_MANAGER,
+      type: "deduct",
+      balanceBefore: 35,
+      balanceAfter: 28,
+      orderId: "run_1",
+    })]));
+  });
+
   it("tenant A user reads their own seeded formula by id", async () => {
     const formula = await a_user_caller().formulas.getById({
       id: FORMULA_A_ID,
@@ -621,7 +842,7 @@ describe("positive controls: legitimate tenant access works", () => {
   });
 
   it("tenant A manager creates a product that lands with tenantId TENANT_A (string)", async () => {
-    await a_manager_caller().products.create({
+    const created = await a_manager_caller().products.create({
       productName: "Managed Product",
     });
     const doc = await db.collection("products").findOne({
@@ -629,5 +850,15 @@ describe("positive controls: legitimate tenant access works", () => {
     });
     expect(doc).toBeTruthy();
     expect(doc?.tenantId).toBe(TENANT_A);
+    await expect(db.collection("material_index_outbox").findOne({
+      tenantId: TENANT_A,
+      productId: created._id,
+      operation: "upsert",
+    })).resolves.toMatchObject({ status: "pending" });
+    await expect(db.collection("user_logs").findOne({
+      organizationId: TENANT_A,
+      refId: created._id,
+      activity: "create material",
+    })).resolves.toBeTruthy();
   });
 });

@@ -97,6 +97,6 @@ export async function resume_run(
       "A pinned orchestrator/policy/deployment/prompt/context-pack version is no longer available.",
     );
   }
-  const thread_config = build_thread_config(run.tenant_id, run.thread_id);
+  const thread_config = build_thread_config(run.tenant_id, run.run_id);
   return deps.invoke_resume(thread_config, new Command({ resume: args.resume_value }));
 }

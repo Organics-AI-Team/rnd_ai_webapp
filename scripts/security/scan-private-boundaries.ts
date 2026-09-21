@@ -303,6 +303,10 @@ function find_unguarded_route_handlers(
   // The exact public liveness probe returns only a constant status and lets
   // Docker Compose and the droplet reverse proxy verify the web container.
   if (path.endsWith("/app/api/health/route.ts")) return [];
+  // Clerk organization synchronization must inspect the provider session
+  // before an internal tenant principal can be resolved. It exposes only the
+  // authenticated session's organization identifier.
+  if (path.endsWith("/app/api/auth/session-organization/route.ts")) return [];
   // Webhook ingress authenticates by signature verification (svix), not by
   // a session principal; handle_clerk_webhook rejects unsigned requests.
   if (path.includes("/api/webhooks/")) return [];

@@ -4,6 +4,7 @@ import React from 'react';
 import { FileText } from 'lucide-react';
 import type { RunObservationView } from '../../lib/agent_run_view';
 import type { CitationV1 } from '@rnd-ai/shared-types/src/ai/contracts';
+import { Surface } from '@/components/ui/surface';
 
 /**
  * Props for {@link AiEvidenceList}.
@@ -29,16 +30,16 @@ export function AiEvidenceList({ observations, citations = [] }: AiEvidenceListP
   );
   if (evidence.length === 0 && citations.length === 0) return null;
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4" data-testid="ai-evidence-list">
-      <div className="flex items-center gap-2 text-gray-700">
-        <FileText className="h-4 w-4" />
-        <span className="font-medium">Evidence</span>
+    <Surface variant="default" className="p-4" data-testid="ai-evidence-list">
+      <div className="flex items-center gap-2 text-ink">
+        <FileText className="h-4 w-4 text-brand" />
+        <span className="font-semibold">Evidence</span>
       </div>
-      <ul className="mt-2 space-y-1 text-sm text-gray-600">
+      <ul className="mt-3 space-y-1 text-sm text-ink">
         {evidence.map((observation) => (
           <li key={observation.observation_id} className="flex items-center justify-between">
             <span>{observation.tool_name ?? observation.source_kind}</span>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs font-medium text-muted">
               {observation.observation_type} · {observation.trust}
             </span>
           </li>
@@ -47,15 +48,15 @@ export function AiEvidenceList({ observations, citations = [] }: AiEvidenceListP
           <li key={`${citation.source_type}-${citation.source_id}`} className="flex items-center justify-between gap-3">
             <span>{citation.source_type}: {citation.source_id}</span>
             {citation.reference.startsWith('http://') || citation.reference.startsWith('https://') || citation.reference.startsWith('/') ? (
-              <a className="truncate text-xs text-blue-600 hover:underline" href={citation.reference}>
+              <a className="truncate text-xs font-medium text-brand hover:underline" href={citation.reference}>
                 {citation.reference}
               </a>
             ) : (
-              <span className="truncate text-xs text-gray-400">{citation.reference}</span>
+              <span className="truncate text-xs text-muted">{citation.reference}</span>
             )}
           </li>
         ))}
       </ul>
-    </div>
+    </Surface>
   );
 }

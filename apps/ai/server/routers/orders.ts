@@ -3,10 +3,11 @@ import { TRPCError } from "@trpc/server";
 import { router, publicClientOrderProcedure, tenantProcedure, throw_from_repository_error } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { OrderSchema, OrderStatus } from "@/lib/types";
-import { ObjectId, type Document, type WithId } from "mongodb";
-import { logActivity } from "@/lib/userLog";
-import { logProductActivity } from "@/lib/productLog";
+import { ObjectId, type ClientSession, type Document, type MongoClient, type WithId } from "mongodb";
+import { logActivity } from "../../lib/userLog";
+import { logProductActivity } from "../../lib/productLog";
 import { ResourceNotFoundError } from "../repositories/tenant-repository-base";
+import { InsufficientCreditsError, mutate_credit_balance } from "../services/credit-ledger";
 
 /**
  * G2.5 conversion note: authenticated order and product access now goes
@@ -25,10 +26,52 @@ import { ResourceNotFoundError } from "../repositories/tenant-repository-base";
  * @param profile_id - Actor profile ID stamped on the order (may be absent).
  * @returns The user's name, or null when unresolvable.
  */
-async function resolve_creator_name(db: any, profile_id: unknown): Promise<string | null> {
-  if (typeof profile_id !== "string" || !ObjectId.isValid(profile_id)) return null;
-  const user = await db.collection("users").findOne({ _id: new ObjectId(profile_id) });
-  return user?.name ?? null;
+async function resolve_creator_names(
+  db: any,
+  orders: readonly Document[],
+): Promise<Map<string, string>> {
+  const profile_ids = [...new Set(
+    orders
+      .map((order) => String(order.actorProfileId ?? order.createdBy ?? ""))
+      .filter(ObjectId.isValid),
+  )].map((id) => new ObjectId(id));
+  if (profile_ids.length === 0) return new Map();
+  const [users, profiles] = await Promise.all([
+    db.collection("users").find({ _id: { $in: profile_ids } }).toArray(),
+    db.collection("user_profiles").find({ _id: { $in: profile_ids } }).toArray(),
+  ]);
+  const names = new Map<string, string>();
+  for (const user of users) {
+    if (typeof user.name === "string" && user.name.trim()) {
+      names.set(String(user._id), user.name);
+    }
+  }
+  for (const profile of profiles) {
+    const name = profile.displayName ?? profile.name;
+    if (typeof name === "string" && name.trim()) {
+      names.set(String(profile._id), name);
+    }
+  }
+  return names;
+}
+
+/** Commit order rows, stock changes, and their activity records together. */
+async function in_order_transaction<T>(
+  client: MongoClient,
+  operation: (session: ClientSession) => Promise<T>,
+): Promise<T> {
+  const session = client.startSession();
+  try {
+    return await session.withTransaction(() => operation(session));
+  } finally {
+    await session.endSession();
+  }
+}
+
+/** Return true only for a duplicate order-idempotency index collision. */
+function is_duplicate_client_order_submission(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error
+    && (error as { code?: unknown }).code === 11_000;
 }
 
 export const ordersRouter = router({
@@ -47,75 +90,68 @@ export const ordersRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      // If productId is provided, reduce stock from the tenant's inventory.
-      if (input.productId) {
-        let product: WithId<Document>;
-        try {
-          product = await ctx.repositories.products.get_product(
+      let created: WithId<Document>;
+      try {
+        created = await in_order_transaction(client, async (session) => {
+          if (input.productId) {
+            const product = await ctx.repositories.products.get_product(
+              ctx.tenant_context,
+              input.productId,
+              session,
+            );
+            const updated_product = await ctx.repositories.products.decrement_stock_if_available(
+              ctx.tenant_context,
+              input.productId,
+              input.quantity,
+              session,
+            );
+            if (!updated_product) {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "The selected product is unavailable or no longer has sufficient stock.",
+              });
+            }
+
+            input.productCode = input.productCode || (product as any).productCode;
+            input.productName = input.productName || (product as any).productName;
+            input.price = input.price || (product as any).price;
+            await logProductActivity({
+              db,
+              productId: input.productId,
+              productCode: (updated_product as any).productCode,
+              productName: (updated_product as any).productName,
+              action: "reduce_stock",
+              previousStock: (updated_product as any).stockQuantity + input.quantity,
+              newStock: (updated_product as any).stockQuantity,
+              quantityChange: -input.quantity,
+              userId: ctx.userId,
+              userName: ctx.user.name || "System",
+              organizationId: ctx.tenant_context.tenant_id,
+              refId: "",
+              notes: `Stock reduced by order for customer: ${input.customerName}`,
+              session,
+            });
+          }
+
+          const order = await ctx.repositories.orders.create_order(
             ctx.tenant_context,
-            input.productId,
+            { ...input },
+            session,
           );
-        } catch (error) {
-          throw_from_repository_error(error);
-        }
-
-        if (!(product as any).isActive) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Product is not active" });
-        }
-
-        if ((product as any).stockQuantity < input.quantity) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Insufficient stock. Available: ${(product as any).stockQuantity}, Requested: ${input.quantity}`,
+          await logActivity({
+            db,
+            userId: ctx.userId,
+            userName: ctx.user.name,
+            activity: "create order",
+            refId: order._id.toString(),
+            organizationId: ctx.tenant_context.tenant_id,
+            session,
           });
-        }
-
-        // Reduce stock atomically within the tenant scope.
-        await ctx.repositories.products.adjust_stock_quantity(
-          ctx.tenant_context,
-          input.productId,
-          -input.quantity,
-        );
-
-        // Use product data if not overridden
-        input.productCode = input.productCode || (product as any).productCode;
-        input.productName = input.productName || (product as any).productName;
-        input.price = input.price || (product as any).price;
-
-        // Log product stock reduction (display-only identity fields).
-        await logProductActivity({
-          db,
-          productId: input.productId,
-          productCode: (product as any).productCode,
-          productName: (product as any).productName,
-          action: "reduce_stock",
-          previousStock: (product as any).stockQuantity,
-          newStock: (product as any).stockQuantity - input.quantity,
-          quantityChange: -input.quantity,
-          userId: ctx.userId,
-          userName: ctx.user.name || "System",
-          organizationId: ctx.tenant_context.tenant_id,
-          refId: "", // Will be updated after order is created
-          notes: `Stock reduced by order for customer: ${input.customerName}`,
+          return order;
         });
+      } catch (error) {
+        throw_from_repository_error(error);
       }
-
-      // tenantId/actorProfileId/createdAt/updatedAt are stamped by the
-      // repository from the execution context — never from the input.
-      const created = await ctx.repositories.orders.create_order(
-        ctx.tenant_context,
-        { ...input },
-      );
-
-      // Log create order activity (display-only identity fields).
-      await logActivity({
-        db,
-        userId: ctx.userId,
-        userName: ctx.user.name,
-        activity: "create order",
-        refId: created._id.toString(),
-        organizationId: ctx.tenant_context.tenant_id,
-      });
 
       return { id: created._id.toString() };
     }),
@@ -124,76 +160,118 @@ export const ordersRouter = router({
   submitClientOrder: publicClientOrderProcedure
     .input(
       z.object({
-        organizationId: z.string(),
-        productId: z.string().optional(),
-        productCode: z.string().optional(),
-        productName: z.string().min(1, "Product name is required"),
-        price: z.number().positive("Price must be positive"),
-        quantity: z.number().int().positive("Quantity must be positive"),
+        organizationId: z.string().regex(/^[a-f\d]{24}$/i),
+        productId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
+        productCode: z.string().trim().min(1).max(64).optional(),
+        productName: z.string().trim().min(1, "Product name is required").max(200),
+        price: z.number().finite().positive("Price must be positive").max(1_000_000_000),
+        quantity: z.number().int().positive("Quantity must be positive").max(100_000),
         channel: z.enum(["line", "shopee", "lazada", "other"]),
-        customerName: z.string().min(1, "Customer name is required"),
-        customerContact: z.string().min(1, "Customer contact is required"),
-        shippingAddress: z.string().min(1, "Shipping address is required"),
-        orderDate: z.string().optional(),
-      })
+        customerName: z.string().trim().min(1, "Customer name is required").max(200),
+        customerContact: z.string().trim().min(1, "Customer contact is required").max(200),
+        shippingAddress: z.string().trim().min(1, "Shipping address is required").max(2_000),
+        orderDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        idempotencyKey: z.string().uuid(),
+      }).strict(),
     )
     .mutation(async ({ input }) => {
       const client = await client_promise;
       const db = client.db();
-
-      // If productId is provided, check stock and reduce
-      if (input.productId) {
-        const product = await db.collection("products").findOne({
-          _id: new ObjectId(input.productId),
-          organizationId: input.organizationId,
-        });
-
-        if (!product) {
-          throw new Error("Product not found");
-        }
-
-        if (!product.isActive) {
-          throw new Error("Product is not available");
-        }
-
-        if (product.stockQuantity < input.quantity) {
-          throw new Error(
-            `Insufficient stock. Available: ${product.stockQuantity}, Requested: ${input.quantity}`
-          );
-        }
-
-        // Reduce stock
-        await db.collection("products").updateOne(
-          { _id: new ObjectId(input.productId) },
-          {
-            $inc: { stockQuantity: -input.quantity },
-            $set: { updatedAt: new Date() },
-          }
-        );
+      const tenant_object_id = new ObjectId(input.organizationId);
+      const [tenant, organization] = await Promise.all([
+        db.collection("tenants").findOne({ _id: tenant_object_id }),
+        db.collection("organizations").findOne({ _id: tenant_object_id }),
+      ]);
+      if (!tenant && !organization) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order destination is unavailable." });
       }
 
-      const result = await db.collection("orders").insertOne({
-        ...input,
-        orderSource: "client",
-        status: "pending",
-        createdBy: "client", // No user authentication required for client orders
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      let order_id: string;
+      try {
+        order_id = await in_order_transaction(client, async (session) => {
+          const existing_order = await db.collection("orders").findOne(
+            {
+              tenantId: input.organizationId,
+              idempotencyKey: input.idempotencyKey,
+              orderSource: "client",
+            },
+            { session },
+          );
+          if (existing_order) return existing_order._id.toString();
 
-      // Log client order activity (without user ID since it's public)
-      await logActivity({
-        db,
-        userId: "client",
-        userName: input.customerName,
-        activity: "submit client order",
-        refId: result.insertedId.toString(),
-        organizationId: input.organizationId,
-      });
+          let product_details: Record<string, unknown> | null = null;
+          if (input.productId) {
+            const product = await db.collection("products").findOneAndUpdate(
+              {
+                _id: new ObjectId(input.productId),
+                $or: [
+                  { tenantId: input.organizationId },
+                  { organizationId: { $in: [input.organizationId, tenant_object_id] } },
+                ],
+                isActive: { $ne: false },
+                stockQuantity: { $gte: input.quantity },
+              },
+              {
+                $inc: { stockQuantity: -input.quantity },
+                $set: { updatedAt: new Date() },
+              },
+              { returnDocument: "after", session },
+            );
+            if (!product) {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "The selected product is unavailable or no longer has sufficient stock.",
+              });
+            }
+            product_details = product;
+          }
+
+          const product_name = String(
+            product_details?.productName ?? product_details?.name ?? input.productName,
+          );
+          const product_code = String(
+            product_details?.productCode ?? product_details?.rm_code ?? input.productCode ?? "",
+          );
+          const price = typeof product_details?.price === "number"
+            ? product_details.price
+            : input.price;
+          const created_order = await db.collection("orders").insertOne({
+            ...input,
+            tenantId: input.organizationId,
+            productName: product_name,
+            productCode: product_code,
+            price,
+            orderSource: "client",
+            status: "pending",
+            createdBy: "client",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }, { session });
+          await logActivity({
+            db,
+            userId: "client",
+            userName: input.customerName,
+            activity: "submit client order",
+            refId: created_order.insertedId.toString(),
+            organizationId: input.organizationId,
+            session,
+          });
+          return created_order.insertedId.toString();
+        });
+      } catch (error) {
+        if (!is_duplicate_client_order_submission(error)) throw error;
+        const existing_order = await db.collection("orders").findOne({
+          tenantId: input.organizationId,
+          idempotencyKey: input.idempotencyKey,
+          orderSource: "client",
+        });
+        if (!existing_order) throw error;
+        order_id = existing_order._id.toString();
+      }
 
       return {
         success: true,
-        id: result.insertedId.toString(),
+        id: order_id,
         message: "Order submitted successfully"
       };
     }),
@@ -215,24 +293,37 @@ export const ordersRouter = router({
             _id: new ObjectId(ctx.tenant_context.tenant_id),
           })
         : null;
+      const creator_names = await resolve_creator_names(db, orders);
 
-      // Enrich orders with creator display names.
-      const enrichedOrders = await Promise.all(
-        orders.map(async (order: any) => {
-          const creator_name = await resolve_creator_name(
-            db,
-            order.actorProfileId ?? order.createdBy,
-          );
-          return {
-            ...order,
-            _id: order._id.toString(),
-            creatorName: creator_name || "Unknown",
-            organizationName: org?.name || "Unknown",
-          };
-        })
-      );
+      const enrichedOrders = orders.map((order: any) => ({
+        ...order,
+        _id: order._id.toString(),
+        creatorName: creator_names.get(String(order.actorProfileId ?? order.createdBy)) || "Unknown",
+        organizationName: org?.name || "Unknown",
+      }));
 
       return enrichedOrders;
+    }),
+
+  listTenant: tenantProcedure("tenant:knowledge:manage")
+    .query(async ({ ctx }) => {
+      const client = await client_promise;
+      const db = client.db();
+      const orders = await ctx.repositories.orders.list_orders(ctx.tenant_context);
+      const org = ObjectId.isValid(ctx.tenant_context.tenant_id)
+        ? await db.collection("organizations").findOne({
+            _id: new ObjectId(ctx.tenant_context.tenant_id),
+          })
+        : null;
+      const creator_names = await resolve_creator_names(db, orders);
+      const enriched_orders = orders.map((order: any) => ({
+        ...order,
+        _id: order._id.toString(),
+        creatorName:
+          creator_names.get(String(order.actorProfileId ?? order.createdBy)) || "Client",
+        organizationName: org?.name || "Unknown",
+      }));
+      return enriched_orders;
     }),
 
   updateStatus: tenantProcedure("tenant:knowledge:manage")
@@ -246,98 +337,103 @@ export const ordersRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      // Get the current order within the tenant scope.
-      let order: WithId<Document>;
       try {
-        order = await ctx.repositories.orders.get_order(ctx.tenant_context, input.id);
-      } catch (error) {
-        throw_from_repository_error(error);
-      }
+        await in_order_transaction(client, async (session) => {
+          const order = await ctx.repositories.orders.get_order(
+            ctx.tenant_context,
+            input.id,
+            session,
+          );
+          if (input.status === "cancelled" && (order as any).status !== "cancelled") {
+            if ((order as any).productId) {
+              let restored: WithId<Document>;
+              try {
+                restored = await ctx.repositories.products.adjust_stock_quantity(
+                  ctx.tenant_context,
+                  (order as any).productId,
+                  (order as any).quantity,
+                  session,
+                );
+              } catch (error) {
+                if (error instanceof ResourceNotFoundError) {
+                  throw new TRPCError({
+                    code: "PRECONDITION_FAILED",
+                    message: "Order cancellation requires manual review because its product no longer exists.",
+                  });
+                }
+                throw error;
+              }
+              await logProductActivity({
+                db,
+                productId: (order as any).productId,
+                productCode: (restored as any).productCode,
+                productName: (restored as any).productName,
+                action: "add_stock",
+                previousStock: (restored as any).stockQuantity - (order as any).quantity,
+                newStock: (restored as any).stockQuantity,
+                quantityChange: (order as any).quantity,
+                userId: ctx.userId,
+                userName: ctx.user.name || "System",
+                organizationId: ctx.tenant_context.tenant_id,
+                refId: input.id,
+                notes: `Stock restored from cancelled order for customer: ${(order as any).customerName}`,
+                session,
+              });
+            }
 
-      // If changing to cancelled and order has a productId, restore stock and deduct credits
-      if (input.status === "cancelled" && (order as any).status !== "cancelled") {
-        // Restore stock if productId exists (skip silently when the product
-        // no longer exists, matching legacy behavior).
-        if ((order as any).productId) {
-          try {
-            const restored = await ctx.repositories.products.adjust_stock_quantity(
-              ctx.tenant_context,
-              (order as any).productId,
-              (order as any).quantity,
-            );
-
-            // Log product stock restoration (display-only identity fields).
-            await logProductActivity({
-              db,
-              productId: (order as any).productId,
-              productCode: (restored as any).productCode,
-              productName: (restored as any).productName,
-              action: "add_stock",
-              previousStock: (restored as any).stockQuantity - (order as any).quantity,
-              newStock: (restored as any).stockQuantity,
-              quantityChange: (order as any).quantity,
-              userId: ctx.userId,
-              userName: ctx.user.name || "System",
-              organizationId: ctx.tenant_context.tenant_id,
-              refId: input.id,
-              notes: `Stock restored from cancelled order for customer: ${(order as any).customerName}`,
-            });
-          } catch (error) {
-            if (!(error instanceof ResourceNotFoundError)) throw error;
+            const cancellation_fee = (order as any).quantity * 10;
+            await mutate_credit_balance(client, {
+              tenant_id: ctx.tenant_context.tenant_id,
+              type: "deduct",
+              amount: cancellation_fee,
+              transaction: {
+                description: `Cancellation fee for order ${(order as any).productName}`,
+                orderId: input.id,
+                performedBy: ctx.tenant_context.actor_profile_id,
+              },
+            }, session);
           }
-        }
 
-        // Deduct cancellation fee: 10 THB per piece — billed to the caller's
-        // verified tenant only.
-        // TODO(G2.6): move into a tenant repository (credit ledger).
-        const cancellationFee = (order as any).quantity * 10;
-        await db.collection("organizations").updateOne(
-          { _id: new ObjectId(ctx.tenant_context.tenant_id) },
-          {
-            $inc: { credits: -cancellationFee },
-          }
-        );
-      }
-
-      // Update order status within the tenant scope.
-      try {
-        await ctx.repositories.orders.update_order(ctx.tenant_context, input.id, {
-          status: input.status,
+          await ctx.repositories.orders.update_order(
+            ctx.tenant_context,
+            input.id,
+            { status: input.status },
+            session,
+          );
+          await logActivity({
+            db,
+            userId: ctx.userId,
+            userName: ctx.user.name,
+            activity: `update order status to ${input.status}`,
+            refId: input.id,
+            organizationId: ctx.tenant_context.tenant_id,
+            session,
+          });
         });
       } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Insufficient credits for the cancellation fee.",
+          });
+        }
         throw_from_repository_error(error);
       }
-
-      // Log update order status activity (display-only identity fields).
-      await logActivity({
-        db,
-        userId: ctx.userId,
-        userName: ctx.user.name,
-        activity: `update order status to ${input.status}`,
-        refId: input.id,
-        organizationId: ctx.tenant_context.tenant_id,
-      });
 
       return { success: true };
     }),
 
   getStats: tenantProcedure("tenant:analytics:read").query(async ({ ctx }) => {
-    // Tenant scope plus own-actor filter both derive from the context.
-    const orders = await ctx.repositories.orders.list_actor_orders(
+    const stats = await ctx.repositories.orders.summarize_orders(
       ctx.tenant_context,
+      ctx.tenant_context.actor_profile_id,
     );
+    return { ...stats, totalRevenue: stats.total_revenue };
+  }),
 
-    const stats = {
-      total: orders.length,
-      pending: orders.filter((o: any) => o.status === "pending").length,
-      processing: orders.filter((o: any) => o.status === "processing").length,
-      sent_to_logistic: orders.filter((o: any) => o.status === "sent_to_logistic").length,
-      delivered: orders.filter((o: any) => o.status === "delivered").length,
-      cancelled: orders.filter((o: any) => o.status === "cancelled").length,
-      totalRevenue: orders.reduce((sum: number, o: any) => sum + (o.price * o.quantity), 0),
-    };
-
-    return stats;
+  getTenantStats: tenantProcedure("tenant:knowledge:manage").query(async ({ ctx }) => {
+    const stats = await ctx.repositories.orders.summarize_orders(ctx.tenant_context);
+    return { ...stats, totalRevenue: stats.total_revenue };
   }),
 
   // Managers hold tenant:knowledge:manage, so the manager-tier privilege of
@@ -359,25 +455,6 @@ export const ordersRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      // Get the order within the tenant scope to calculate the total.
-      let order: WithId<Document>;
-      try {
-        order = await ctx.repositories.orders.get_order(ctx.tenant_context, input.id);
-      } catch (error) {
-        throw_from_repository_error(error);
-      }
-
-      // The billed organization always derives from the verified tenant.
-      // TODO(G2.6): move into a tenant repository (credit ledger).
-      const org = await db.collection("organizations").findOne({
-        _id: new ObjectId(ctx.tenant_context.tenant_id),
-      });
-      if (!org) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
-      }
-
-      const quantity = (order as any).quantity || 1;
-
       // Use the costs sent from frontend (already calculated)
       const pickPackCost = input.pickPackCost ?? 0;
       const bubbleCost = input.bubbleCost ?? 0;
@@ -396,55 +473,44 @@ export const ordersRouter = router({
         boxCost +
         deliveryFeeCost;
 
-      // Check if organization has enough credits
-      const currentCredits = org.credits || 0;
-      if (currentCredits < totalShippingCost) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Insufficient credits. Required: ฿${totalShippingCost.toFixed(2)}, Available: ฿${currentCredits.toFixed(2)}`,
-        });
-      }
-
-      // Deduct credits from the caller's verified tenant organization.
-      // TODO(G2.6): move into a tenant repository (credit ledger).
-      const newBalance = currentCredits - totalShippingCost;
-      await db.collection("organizations").updateOne(
-        { _id: new ObjectId(ctx.tenant_context.tenant_id) },
-        {
-          $set: {
-            credits: newBalance,
-            updatedAt: new Date(),
-          },
-        }
-      );
-
-      // Log the credit transaction against the verified tenant.
-      // TODO(G2.6): move into a tenant repository (credit ledger).
-      await db.collection("credit_transactions").insertOne({
-        organizationId: ctx.tenant_context.tenant_id,
-        organizationName: org.name,
-        type: "deduct",
-        amount: totalShippingCost,
-        balanceBefore: currentCredits,
-        balanceAfter: newBalance,
-        description: `Shipping cost for order ${(order as any).productName} (${quantity} items)`,
-        orderId: input.id,
-        createdAt: new Date(),
-      });
-
-      // Update order with shipping costs within the tenant scope.
+      let newBalance: number;
       try {
-        await ctx.repositories.orders.update_order(ctx.tenant_context, input.id, {
-          pickPackCost,
-          bubbleCost,
-          paperInsideCost,
-          cancelOrderCost,
-          codCost,
-          boxCost,
-          deliveryFeeCost,
-          totalShippingCost,
+        newBalance = await in_order_transaction(client, async (session) => {
+          const order = await ctx.repositories.orders.get_order(
+            ctx.tenant_context,
+            input.id,
+            session,
+          );
+          const quantity = (order as any).quantity || 1;
+          const credit_result = await mutate_credit_balance(client, {
+            tenant_id: ctx.tenant_context.tenant_id,
+            type: "deduct",
+            amount: totalShippingCost,
+            transaction: {
+              description: `Shipping cost for order ${(order as any).productName} (${quantity} items)`,
+              orderId: input.id,
+              performedBy: ctx.tenant_context.actor_profile_id,
+            },
+          }, session);
+          await ctx.repositories.orders.update_order(ctx.tenant_context, input.id, {
+            pickPackCost,
+            bubbleCost,
+            paperInsideCost,
+            cancelOrderCost,
+            codCost,
+            boxCost,
+            deliveryFeeCost,
+            totalShippingCost,
+          }, session);
+          return credit_result.balance_after;
         });
       } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Insufficient credits. Required: ฿${totalShippingCost.toFixed(2)}`,
+          });
+        }
         throw_from_repository_error(error);
       }
 

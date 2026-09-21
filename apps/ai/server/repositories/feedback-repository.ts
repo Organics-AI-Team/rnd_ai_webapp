@@ -77,6 +77,13 @@ export interface FeedbackRepository {
   ): Promise<WithId<Document>>;
   delete_feedback(context: TenantExecutionContext, feedback_id: string): Promise<void>;
 
+  /** Create a feedback row, response rollup, and analytics event atomically. */
+  submit_feedback(
+    context: TenantExecutionContext,
+    input: Record<string, unknown>,
+    event: Record<string, unknown>,
+  ): Promise<WithId<Document>>;
+
   /** Feedback rows of one AI response, scoped by tenant AND responseId. */
   list_feedback_for_response(
     context: TenantExecutionContext,
@@ -187,6 +194,41 @@ export function create_feedback_repository(db: Db): FeedbackRepository {
     },
     async delete_feedback(context, feedback_id) {
       return delete_scoped_document(feedback, context, feedback_id, NOT_FOUND);
+    },
+
+    async submit_feedback(context, input, event) {
+      let created: WithId<Document> | null = null;
+      const session = db.client.startSession();
+      try {
+        await session.withTransaction(async () => {
+          created = await insert_scoped_document(feedback, context, input, "actor", session);
+          const response_id = String(input.responseId);
+          const score_rollup = await feedback
+            .aggregate([
+              { $match: { ...tenant_scope(context), responseId: response_id } },
+              { $group: { _id: null, averageScore: { $avg: "$score" } } },
+            ], { session })
+            .toArray();
+          await ai_responses.updateOne(
+            { id: response_id, ...tenant_scope(context) },
+            {
+              $push: { feedback: created },
+              $inc: { totalFeedback: 1 },
+              $set: {
+                lastFeedbackAt: new Date(),
+                averageScore: (score_rollup[0]?.averageScore as number | undefined) ?? 0,
+              },
+            } as unknown as Parameters<typeof ai_responses.updateOne>[1],
+            { upsert: true, session },
+          );
+          await insert_scoped_document(feedback_analytics, context, event, "actor", session);
+        });
+      } finally {
+        await session.endSession();
+      }
+
+      if (!created) throw new Error("Feedback transaction completed without a feedback row.");
+      return created;
     },
 
     async list_feedback_for_response(context, response_id) {

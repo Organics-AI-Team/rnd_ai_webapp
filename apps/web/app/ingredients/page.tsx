@@ -49,6 +49,7 @@ export default function IngredientsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<string>("productCode");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [action_error, set_action_error] = useState<string | null>(null);
   const itemsPerPage = 50;
 
   /**
@@ -124,8 +125,12 @@ export default function IngredientsPage() {
    */
   const handleDelete = async (id: string, name: string) => {
     if (confirm(`Delete "${name}"?`)) {
+      set_action_error(null);
       try { await deleteProduct.mutateAsync({ id }); }
-      catch (error: any) { console.error("[ingredients] handleDelete — error", error); }
+      catch (error: any) {
+        console.error("[ingredients] handleDelete — error", error);
+        set_action_error(error.message || "The ingredient could not be deleted. Please retry.");
+      }
     }
   };
 
@@ -137,8 +142,12 @@ export default function IngredientsPage() {
    */
   const handleToggleFavorite = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    set_action_error(null);
     try { await toggleFavorite.mutateAsync({ ingredientId: id }); }
-    catch (error: any) { console.error("[ingredients] handleToggleFavorite — error", error); }
+    catch (error: any) {
+      console.error("[ingredients] handleToggleFavorite — error", error);
+      set_action_error(error.message || "The favorite status could not be updated. Please retry.");
+    }
   };
 
   /**
@@ -147,14 +156,18 @@ export default function IngredientsPage() {
    * @param id - Ingredient ID to duplicate
    */
   const handleDuplicate = async (id: string) => {
+    set_action_error(null);
     try {
       setDuplicatingId(id);
       const result = await fetchDuplicate();
-      if (result.data) {
-        const params = new URLSearchParams({ duplicate: "true", data: JSON.stringify(result.data) });
-        router.push(`/products?${params.toString()}`);
-      }
-    } catch (error: any) { console.error("[ingredients] handleDuplicate — error", error); }
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error("The ingredient could not be prepared for duplication.");
+      const params = new URLSearchParams({ duplicate: "true", data: JSON.stringify(result.data) });
+      router.push(`/products?${params.toString()}`);
+    } catch (error: any) {
+      console.error("[ingredients] handleDuplicate — error", error);
+      set_action_error(error.message || "The ingredient could not be duplicated. Please retry.");
+    }
   };
 
   return (
@@ -165,6 +178,11 @@ export default function IngredientsPage() {
       on_action={() => router.push("/products")}
       show_action={user.role === "admin"}
     >
+      {action_error && (
+        <p role="alert" className="px-4 pt-3 text-sm text-red-600 dark:text-red-400">
+          {action_error}
+        </p>
+      )}
       {/* Search + Sort toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-50 bg-[#fafafa]">
         <div className="flex-1 relative">

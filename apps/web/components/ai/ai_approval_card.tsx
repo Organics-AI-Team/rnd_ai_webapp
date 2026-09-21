@@ -3,6 +3,8 @@
 import React from 'react';
 import { ShieldCheck, Check, X } from 'lucide-react';
 import type { RunApprovalView } from '../../lib/agent_run_view';
+import { Button } from '@/components/ui/button';
+import { Surface } from '@/components/ui/surface';
 
 /**
  * Props for {@link AiApprovalCard}.
@@ -33,37 +35,38 @@ export function AiApprovalCard({
   is_manager = false,
 }: AiApprovalCardProps): React.ReactElement {
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4" data-testid="ai-approval-card">
+    <Surface variant="quiet" className="border-amber-200 bg-amber-50 p-5" data-testid="ai-approval-card">
       <div className="flex items-center gap-2 text-amber-800">
         <ShieldCheck className="h-4 w-4" />
         <span className="font-medium">Approval required</span>
       </div>
-      <p className="mt-2 text-sm text-gray-700">{approval.summary}</p>
-      <p className="mt-1 text-xs text-gray-500">Tool: {approval.tool_name}</p>
+      <p className="mt-2 text-sm text-ink">{approval.summary}</p>
+      <p className="mt-1 text-xs font-medium text-muted">Tool: {approval.tool_name}</p>
       {is_manager ? (
         <div className="mt-3 flex gap-2">
-          <button
+          <Button
             type="button"
             disabled={disabled}
             onClick={() => onDecision?.('approve')}
-            className="inline-flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            className="h-10 px-4"
           >
             <Check className="h-4 w-4" /> Approve
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={disabled}
             onClick={() => onDecision?.('deny')}
-            className="inline-flex items-center gap-1 rounded-md bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-800 disabled:opacity-50"
+            variant="outline"
+            className="h-10 px-4"
           >
             <X className="h-4 w-4" /> Deny
-          </button>
+          </Button>
         </div>
       ) : (
         <p className="mt-3 text-xs font-medium text-amber-800">
           A workspace manager must decide this approval.
         </p>
       )}
-    </div>
+    </Surface>
   );
 }

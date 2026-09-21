@@ -4,8 +4,9 @@
  * Creates a REAL run through the production gateway (admission, policy,
  * rollout, budget, context pack) as a synthetic manager principal, then
  * tails `ai_run_events` until the run completes or fails — exercising the
- * live worker, model provider, tools, and knowledge corpus end to end
- * without a browser session. Run ON the droplet (DBs are firewalled).
+ * live worker, model provider, tools, knowledge corpus, and durable chat
+ * persistence end to end without a browser session. Run ON the droplet (DBs
+ * are firewalled). Its temporary archived chat thread is removed by default.
  *
  * Usage:
  *   SMOKE_AGENT_KEY=sales_rnd SMOKE_MESSAGE="..." \
@@ -36,6 +37,9 @@ async function run_cli(): Promise<void> {
   const { create_production_run_gateway } = await import(
     "../server/services/ai-gateway/run-api-runtime"
   );
+  const { create_conversation_repository } = await import(
+    "../server/repositories/conversation-repository"
+  );
 
   const tenant_id = required_env("IMPORT_TENANT_ID");
   const actor_profile_id = required_env("IMPORT_ACTOR_PROFILE_ID");
@@ -46,6 +50,7 @@ async function run_cli(): Promise<void> {
 
   const client = await client_promise;
   const db = client.db();
+  let smoke_thread_id: string | null = null;
   try {
     const profile = await db
       .collection("user_profiles")
@@ -75,11 +80,24 @@ async function run_cli(): Promise<void> {
       now: () => new Date(),
       correlation_id: () => `smoke-${randomUUID()}`,
     });
+    const conversations = create_conversation_repository(db);
+    const thread = await conversations.create_thread(tenant, {
+      title: `[Smoke QA] ${agent_key}`,
+      agentType: "smoke_qa",
+      isArchived: true,
+      messageCount: 1,
+    });
+    smoke_thread_id = String(thread._id);
+    await conversations.add_chat_message(tenant, smoke_thread_id, {
+      role: "user",
+      content: message,
+      metadata: { smoke: true },
+    });
 
     console.log(`[smoke:run] creating run { agent_key: ${agent_key} }`);
     const accepted = await gateway.create_run(tenant, {
       schema_version: "1",
-      thread_id: `smoke-${randomUUID().slice(0, 8)}`,
+      thread_id: smoke_thread_id,
       agent_key,
       message,
       attachment_source_ids: [],
@@ -98,19 +116,28 @@ async function run_cli(): Promise<void> {
         .toArray();
       for (const event of batch) {
         last_seq = Number(event.sequence);
-        const payload = event.payload ?? {};
+        const stored_event = event.event as { type?: unknown; payload?: unknown } | undefined;
+        const type = typeof stored_event?.type === "string" ? stored_event.type : String(event.type);
+        const payload = stored_event?.payload ?? event.payload ?? {};
         const brief =
-          event.type === "run.failed"
+          type === "run.failed"
             ? JSON.stringify(payload)
-            : event.type === "action.started" || event.type === "action.completed"
+            : type === "action.started" || type === "action.completed"
               ? String((payload as { tool_name?: string }).tool_name ?? "")
               : "";
-        console.log(`[smoke:run] #${event.sequence} ${event.type} ${brief}`);
-        if (event.type === "run.completed") {
+        console.log(`[smoke:run] #${event.sequence} ${type} ${brief}`);
+        if (type === "run.completed") {
+          const assistant = await db.collection("chat_messages").findOne({
+            tenantId: tenant_id,
+            runId: accepted.run_id,
+            role: "assistant",
+          });
+          if (!assistant) throw new Error("Completed run did not persist an assistant message.");
+          console.log("[smoke:run] assistant message persisted");
           console.log("[smoke:run] SUCCESS");
           return;
         }
-        if (event.type === "run.failed") {
+        if (type === "run.failed") {
           console.error("[smoke:run] FAILED", JSON.stringify(payload));
           process.exitCode = 1;
           return;
@@ -124,7 +151,26 @@ async function run_cli(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }
   } finally {
-    await client.close();
+    try {
+      if (smoke_thread_id && process.env.SMOKE_KEEP_DATA !== "true") {
+        await Promise.all([
+          db.collection("chat_messages").deleteMany({
+            tenantId: tenant_id,
+            actorProfileId: actor_profile_id,
+            threadId: smoke_thread_id,
+          }),
+          db.collection("chat_threads").deleteOne({
+            _id: new ObjectId(smoke_thread_id),
+            tenantId: tenant_id,
+            ownerProfileId: actor_profile_id,
+            agentType: "smoke_qa",
+          }),
+        ]);
+        console.log("[smoke:run] temporary chat data removed");
+      }
+    } finally {
+      await client.close();
+    }
   }
 }
 

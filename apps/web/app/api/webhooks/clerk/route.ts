@@ -114,6 +114,8 @@ function production_deps(db: Db): ClerkWebhookDependencies {
           });
           return "applied";
         }
+        const app_status_is_authoritative =
+          existing.manualStatusOverride === true && existing.status === "suspended";
         return monotonic_update(
           db,
           "user_profiles",
@@ -172,6 +174,8 @@ function production_deps(db: Db): ClerkWebhookDependencies {
           });
           return "applied";
         }
+        const app_status_is_authoritative =
+          existing.manualStatusOverride === true && existing.status === "suspended";
         return monotonic_update(
           db,
           "tenant_membership_projections",
@@ -182,7 +186,9 @@ function production_deps(db: Db): ClerkWebhookDependencies {
           {
             clerkMembershipId: membership.clerk_membership_id,
             tenantRole: membership.tenant_role,
-            status: membership.status,
+            status: app_status_is_authoritative
+              ? "suspended"
+              : membership.status,
           },
           occurred_at,
         );

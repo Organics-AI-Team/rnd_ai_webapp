@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Plus, MessageSquare, Trash2, Loader2 } from 'lucide-react';
 import { cn } from '@rnd-ai/shared-utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
 import type { ChatThread } from '@/hooks/use_chat_threads';
 
 /**
@@ -26,7 +27,7 @@ interface AIChatSidebarProps {
   loading: boolean;
   on_select: (thread_id: string) => void;
   on_new_chat: () => void;
-  on_archive: (thread_id: string) => void;
+  on_archive: (thread_id: string) => Promise<void>;
   is_new_chat: boolean;
   theme_color?: string;
 }
@@ -83,32 +84,51 @@ export function AIChatSidebar({
   on_new_chat,
   on_archive,
 }: AIChatSidebarProps) {
+  const [archiving_thread_id, set_archiving_thread_id] = useState<string | null>(null);
+  const [archive_error, set_archive_error] = useState<string | null>(null);
   const grouped = group_threads_by_date(threads);
   const group_order = ['Today', 'Yesterday', 'Previous 7 days', 'Older'];
 
+  const archive = async (thread_id: string): Promise<void> => {
+    if (archiving_thread_id) return;
+    set_archiving_thread_id(thread_id);
+    set_archive_error(null);
+    try {
+      await on_archive(thread_id);
+    } catch {
+      console.error('[AIChatSidebar] archive failed');
+      set_archive_error('The conversation could not be deleted. Please retry.');
+    } finally {
+      set_archiving_thread_id(null);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-[#fafafa]">
+    <div className="flex h-full flex-col bg-surface">
       {/* New Chat */}
-      <div className="h-11 flex items-center px-3 border-b border-gray-100/80">
-        <button
+      <div className="flex h-16 items-center border-b border-border px-4">
+        <Button
           onClick={on_new_chat}
-          className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-gray-800 transition-colors"
+          className="h-10 w-full justify-start px-4 text-sm"
         >
-          <Plus size={14} strokeWidth={1.5} />
+          <span className="rounded-full bg-white/20 p-1"><Plus size={13} strokeWidth={2} /></span>
           <span>New chat</span>
-        </button>
+        </Button>
       </div>
 
       {/* Thread List */}
       <ScrollArea className="flex-1">
-        <div className="py-2 px-1.5">
+        <div className="px-2 py-3">
           {loading ? (
-            <div className="flex items-center justify-center py-12 text-gray-300">
+            <div className="flex items-center justify-center py-12 text-muted">
               <Loader2 size={14} className="animate-spin" />
             </div>
           ) : threads.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-[11px] text-gray-300">No conversations yet</p>
+              <div className="flex flex-col items-center gap-2 py-3 text-muted">
+                <MessageSquare size={18} strokeWidth={1.5} />
+                <p className="text-xs font-medium">No conversations yet</p>
+              </div>
             </div>
           ) : (
             group_order.map((group_name) => {
@@ -117,7 +137,7 @@ export function AIChatSidebar({
 
               return (
                 <div key={group_name} className="mb-3">
-                  <p className="text-[10px] font-medium text-gray-400/80 uppercase tracking-wider px-2 py-1">
+                  <p className="px-2 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted">
                     {group_name}
                   </p>
                   {items.map((thread) => {
@@ -126,10 +146,10 @@ export function AIChatSidebar({
                       <div
                         key={thread.id}
                         className={cn(
-                          'group flex items-center gap-1 px-2 py-[6px] rounded-lg cursor-pointer transition-all',
+                          'group flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2.5 transition-colors',
                           is_active
-                            ? 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] text-gray-900'
-                            : 'text-gray-500 hover:bg-white/70 hover:text-gray-700',
+                            ? 'bg-brand-soft text-ink'
+                            : 'text-muted hover:bg-subtle hover:text-ink',
                         )}
                         onClick={() => on_select(thread.id)}
                         role="button"
@@ -137,18 +157,19 @@ export function AIChatSidebar({
                         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && on_select(thread.id)}
                       >
                         <p className={cn(
-                          'flex-1 min-w-0 text-[11.5px] truncate leading-tight',
+                          'min-w-0 flex-1 truncate text-sm leading-tight',
                           is_active && 'font-medium',
                         )}>
                           {thread.title}
                         </p>
-                        <span className="text-[10px] text-gray-300 flex-shrink-0 tabular-nums mr-0.5">
+                        <span className="mr-0.5 shrink-0 text-xs tabular-nums text-muted">
                           {format_time(thread.lastMessageAt)}
                         </span>
                         <button
-                          onClick={(e) => { e.stopPropagation(); on_archive(thread.id); }}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-50 hover:text-red-400 text-gray-200 transition-all flex-shrink-0"
+                          onClick={(e) => { e.stopPropagation(); void archive(thread.id); }}
+                          className="shrink-0 rounded-full p-1 text-muted opacity-0 transition-all hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
                           aria-label="Delete conversation"
+                          disabled={archiving_thread_id === thread.id}
                         >
                           <Trash2 size={11} />
                         </button>
@@ -158,6 +179,11 @@ export function AIChatSidebar({
                 </div>
               );
             })
+          )}
+          {archive_error && (
+            <p role="alert" className="mx-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              {archive_error}
+            </p>
           )}
         </div>
       </ScrollArea>

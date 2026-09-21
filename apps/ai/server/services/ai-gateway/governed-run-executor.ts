@@ -152,14 +152,24 @@ function initial_state(
   }) as AgentLoopStateType;
 }
 
-/** Validate and reduce a materialized graph state into a worker result. */
-function execution_result(raw: unknown): RunExecutionResult {
+/**
+ * Validate and reduce a materialized graph state into a worker result.
+ *
+ * @param raw - Materialized graph state.
+ * @param run_id - Trusted run identifier from the claimed job.
+ */
+function execution_result(
+  raw: unknown,
+  run_id: string,
+): RunExecutionResult {
   if (!raw || typeof raw !== "object") throw new RunExecutionStateInvalidError();
   const state = raw as Record<string, unknown>;
   if (!Array.isArray(state.events)) throw new RunExecutionStateInvalidError();
   const events = state.events.map((event) => {
     const parsed = agent_run_event_v1_schema.safeParse(event);
-    if (!parsed.success) throw new RunExecutionStateInvalidError();
+    if (!parsed.success || parsed.data.run_id !== run_id) {
+      throw new RunExecutionStateInvalidError();
+    }
     return parsed.data;
   });
 
@@ -189,6 +199,9 @@ function execution_result(raw: unknown): RunExecutionResult {
 
   const pending = state.pending_action as { kind?: unknown } | null | undefined;
   if (pending?.kind === "clarification") {
+    if (!events.some((event) => event.type === "clarification.required")) {
+      throw new RunExecutionStateInvalidError();
+    }
     return {
       status: "waiting_clarification",
       events,
@@ -196,6 +209,9 @@ function execution_result(raw: unknown): RunExecutionResult {
     };
   }
   if (pending?.kind === "tool") {
+    if (!events.some((event) => event.type === "approval.required")) {
+      throw new RunExecutionStateInvalidError();
+    }
     return {
       status: "waiting_approval",
       events,
@@ -204,6 +220,7 @@ function execution_result(raw: unknown): RunExecutionResult {
   }
   throw new RunExecutionStateInvalidError();
 }
+
 
 /** Create the durable agentic executor consumed by `process_one_job`. */
 export function create_agentic_run_executor(deps: AgenticRunExecutorDeps): RunExecutor {
@@ -233,7 +250,7 @@ export function create_agentic_run_executor(deps: AgenticRunExecutorDeps): RunEx
 
       const checkpointer = await deps.create_checkpointer(run);
       const graph = compile(runtime, checkpointer) as CompiledRunGraph;
-      const config = build_thread_config(job.tenant_id, required_string(run.threadId));
+      const config = build_thread_config(job.tenant_id, job.run_id);
       const graph_input =
         job.command === "start"
           ? initial_state(run, validated_pack, deps.now(), deps.run_timeout_ms)
@@ -241,7 +258,10 @@ export function create_agentic_run_executor(deps: AgenticRunExecutorDeps): RunEx
       if (job.command === "resume" && job.resume_payload === undefined) {
         throw new RunExecutionStateInvalidError();
       }
-      return execution_result(await graph.invoke(graph_input, config));
+      return execution_result(
+        await graph.invoke(graph_input, config),
+        job.run_id,
+      );
     },
   };
 }

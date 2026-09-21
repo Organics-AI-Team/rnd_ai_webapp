@@ -26,7 +26,7 @@ import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 // Input Schemas
 // ---------------------------------------------------------------------------
 
-const agent_type_enum = z.enum(['raw_materials_ai', 'sales_rnd_ai']);
+const agent_type_enum = z.enum(['raw_materials_ai', 'sales_rnd_ai', 'formulation']);
 
 const list_input = z.object({
   agentType: agent_type_enum,
@@ -40,24 +40,24 @@ const create_input = z.object({
 });
 
 const get_messages_input = z.object({
-  threadId: z.string(),
+  threadId: z.string().max(128),
   limit: z.number().min(1).max(100).default(50),
-  before: z.string().optional(),
+  before: z.string().max(128).optional(),
 });
 
 const add_message_input = z.object({
-  threadId: z.string(),
+  threadId: z.string().max(128),
   role: z.enum(['user', 'assistant']),
-  content: z.string(),
-  metadata: z.any().optional(),
+  content: z.string().trim().min(1).max(32_000),
+  metadata: z.record(z.unknown()).optional(),
 });
 
 const archive_input = z.object({
-  threadId: z.string(),
+  threadId: z.string().max(128),
 });
 
 const update_title_input = z.object({
-  threadId: z.string(),
+  threadId: z.string().max(128),
   title: z.string().min(1).max(200),
 });
 

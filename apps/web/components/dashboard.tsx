@@ -36,13 +36,22 @@ type TabType = "active" | "delivered" | "cancelled" | "all";
 
 export function Dashboard() {
   const { user, organization } = useAuth();
-  const { data: orders = [], isLoading, error } = trpc.orders.list.useQuery();
-  const { data: stats, error: statsError } = trpc.orders.getStats.useQuery();
+  const {
+    data: orders = [],
+    isLoading,
+    error,
+    refetch: refetch_orders,
+  } = trpc.orders.listTenant.useQuery();
+  const {
+    data: stats,
+    error: statsError,
+    refetch: refetch_stats,
+  } = trpc.orders.getTenantStats.useQuery();
   const utils = trpc.useUtils();
   const updateStatus = trpc.orders.updateStatus.useMutation({
     onSuccess: () => {
-      utils.orders.list.invalidate();
-      utils.orders.getStats.invalidate();
+      utils.orders.listTenant.invalidate();
+      utils.orders.getTenantStats.invalidate();
       utils.products.list.invalidate();
       utils.organizations.list.invalidate();
     },
@@ -186,18 +195,21 @@ export function Dashboard() {
     return (
       <Card className="border-red-500 rounded-xl overflow-hidden">
         <CardHeader className="bg-red-500 text-white rounded-t-xl">
-          <CardTitle>Database Connection Error</CardTitle>
+          <CardTitle>Dashboard Unavailable</CardTitle>
         </CardHeader>
         <CardContent className="mt-6">
           <p className="text-red-600">
-            Unable to connect to MongoDB. Please ensure MongoDB is running.
+            Dashboard data could not be loaded. Please try again.
           </p>
-          <p className="mt-2 text-sm text-gray-600">
-            Connection string: {process.env.MONGODB_URI || 'mongodb://localhost:27017/rnd_ai'}
-          </p>
-          <p className="mt-2 text-sm text-gray-600">
-            Error: {error?.message || statsError?.message}
-          </p>
+          <Button
+            className="mt-4"
+            onClick={() => {
+              void refetch_orders();
+              void refetch_stats();
+            }}
+          >
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );

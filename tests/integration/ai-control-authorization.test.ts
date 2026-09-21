@@ -169,7 +169,9 @@ describe("tenant AI settings authorization", () => {
 });
 
 describe("knowledge sources authorization", () => {
-  it("lets a user list but not upload; a manager can upload", async () => {
+  it("lets a user list, denies user uploads, and fails closed until ingestion is enabled", async () => {
+    const previous = process.env.KNOWLEDGE_UPLOAD_PIPELINE_ENABLED;
+    delete process.env.KNOWLEDGE_UPLOAD_PIPELINE_ENABLED;
     await expect(as_user().knowledgeSources.list()).resolves.toEqual([]);
     await expect(
       as_user().knowledgeSources.requestUpload({
@@ -178,12 +180,50 @@ describe("knowledge sources authorization", () => {
         content_hash: "abc",
       }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    const created = await as_manager().knowledgeSources.requestUpload({
+    await expect(as_manager().knowledgeSources.requestUpload({
       name: "doc",
       source_type: "document",
       content_hash: "abc",
+    })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    try {
+      process.env.KNOWLEDGE_UPLOAD_PIPELINE_ENABLED = "true";
+      await expect(as_manager().knowledgeSources.requestUpload({
+        name: "doc",
+        source_type: "document",
+        content_hash: "abc",
+      })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    } finally {
+      if (previous === undefined) delete process.env.KNOWLEDGE_UPLOAD_PIPELINE_ENABLED;
+      else process.env.KNOWLEDGE_UPLOAD_PIPELINE_ENABLED = previous;
+    }
+  });
+});
+
+describe("global RAG operations authorization", () => {
+  it("does not let a tenant member trigger global indexing or inspect global index state", async () => {
+    await expect(as_manager().rag.indexRawMaterials({})).rejects.toMatchObject({
+      code: "FORBIDDEN",
     });
-    expect(created.status).toBe("pending");
+    await expect(as_manager().rag.getIndexStats()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await expect(as_manager().rag.getIndexedCount()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
+});
+
+describe("bounded operational inputs", () => {
+  it("rejects unbounded activity-log and raw-material search inputs before querying storage", async () => {
+    await expect(as_manager().userLogs.list({
+      activity: "a".repeat(101),
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(as_manager().userLogs.summary({
+      startDate: "31/02/2026",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(as_manager().stock.getMaterials({
+      searchTerm: "a".repeat(257),
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });
 

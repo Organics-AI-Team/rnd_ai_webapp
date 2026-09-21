@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { get_order_organization_id } from "@/lib/order-query";
@@ -37,6 +37,7 @@ function ClientOrderContent() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const submission_key = useRef<string | null>(null);
 
   const submitOrder = trpc.orders.submitClientOrder.useMutation();
 
@@ -52,6 +53,8 @@ function ClientOrderContent() {
     setSubmitSuccess(false);
 
     try {
+      const idempotencyKey = submission_key.current ?? crypto.randomUUID();
+      submission_key.current = idempotencyKey;
       await submitOrder.mutateAsync({
         organizationId,
         productName: formData.productName,
@@ -62,8 +65,10 @@ function ClientOrderContent() {
         customerContact: formData.customerContact,
         shippingAddress: formData.shippingAddress,
         orderDate: new Date().toISOString().split('T')[0],
+        idempotencyKey,
       });
 
+      submission_key.current = null;
       setSubmitSuccess(true);
 
       // Reset form

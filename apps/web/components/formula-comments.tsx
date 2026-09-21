@@ -93,6 +93,7 @@ export function FormulaComments({ formula_id, version, user_name }: FormulaComme
   const [new_comment, set_new_comment] = useState("");
   const [comment_type, set_comment_type] = useState<string>("feedback");
   const [is_submitting, set_is_submitting] = useState(false);
+  const [comment_error, set_comment_error] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -107,6 +108,7 @@ export function FormulaComments({ formula_id, version, user_name }: FormulaComme
   const create_comment = trpc.formulaComments.create.useMutation({
     onSuccess: () => {
       console.log("[FormulaComments] create_comment — success");
+      set_comment_error(null);
       set_new_comment("");
       set_comment_type("feedback");
       utils.formulaComments.list.invalidate({ formulaId: formula_id, version });
@@ -114,14 +116,20 @@ export function FormulaComments({ formula_id, version, user_name }: FormulaComme
     },
     onError: (error) => {
       console.error("[FormulaComments] create_comment — error", error.message);
+      set_comment_error(error.message || "Your comment could not be saved. Please retry.");
     },
   });
 
   const delete_comment = trpc.formulaComments.delete.useMutation({
     onSuccess: () => {
       console.log("[FormulaComments] delete_comment — success");
+      set_comment_error(null);
       utils.formulaComments.list.invalidate({ formulaId: formula_id, version });
       utils.formulaComments.count.invalidate({ formulaId: formula_id, version });
+    },
+    onError: (error) => {
+      console.error("[FormulaComments] delete_comment — error", error.message);
+      set_comment_error(error.message || "The comment could not be deleted. Please retry.");
     },
   });
 
@@ -133,6 +141,7 @@ export function FormulaComments({ formula_id, version, user_name }: FormulaComme
     console.log("[FormulaComments] handle_submit — start", { formula_id, comment_type });
 
     set_is_submitting(true);
+    set_comment_error(null);
     try {
       await create_comment.mutateAsync({
         formulaId: formula_id,
@@ -140,6 +149,8 @@ export function FormulaComments({ formula_id, version, user_name }: FormulaComme
         content: new_comment.trim(),
         commentType: comment_type as any,
       });
+    } catch (error) {
+      console.error("[FormulaComments] handle_submit — error", error);
     } finally {
       set_is_submitting(false);
     }
@@ -153,7 +164,12 @@ export function FormulaComments({ formula_id, version, user_name }: FormulaComme
   const handle_delete = async (comment_id: string) => {
     if (!confirm("Delete this comment?")) return;
     console.log("[FormulaComments] handle_delete — start", { comment_id });
-    await delete_comment.mutateAsync({ commentId: comment_id });
+    set_comment_error(null);
+    try {
+      await delete_comment.mutateAsync({ commentId: comment_id });
+    } catch (error) {
+      console.error("[FormulaComments] handle_delete — error", error);
+    }
   };
 
   /**
@@ -249,6 +265,12 @@ export function FormulaComments({ formula_id, version, user_name }: FormulaComme
           <MessageSquare className="h-5 w-5 text-gray-300 mx-auto mb-1" />
           <p className="text-2xs text-gray-400">No comments yet</p>
         </div>
+      )}
+
+      {comment_error && (
+        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+          {comment_error}
+        </p>
       )}
 
       {/* New Comment Form */}

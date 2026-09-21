@@ -499,9 +499,13 @@ export function create_ingestion_service(
         if (claimed) {
           try {
             await deps.vector_port.delete_tenant_source(context, source.source_id);
-          } catch {
-            // The source remains failed/quarantined and therefore unsearchable;
-            // cleanup can be retried by reconciliation without leaking details.
+          } catch (cleanup_error) {
+            console.error({
+              boundary: "knowledge-ingestion",
+              event: "vector_cleanup_failed",
+              source_id: source.source_id,
+              error_name: cleanup_error instanceof Error ? cleanup_error.name : "unknown",
+            });
           }
           try {
             await deps.source_port.mark_failed(
@@ -509,8 +513,14 @@ export function create_ingestion_service(
               source.source_id,
               failure.code,
             );
-          } catch {
-            // Preserve the original safe failure code if persistence is degraded.
+          } catch (persistence_error) {
+            console.error({
+              boundary: "knowledge-ingestion",
+              event: "failure_status_persist_failed",
+              source_id: source.source_id,
+              original_error_code: failure.code,
+              error_name: persistence_error instanceof Error ? persistence_error.name : "unknown",
+            });
           }
         }
         throw failure;

@@ -10,18 +10,23 @@
  */
 
 import { z } from "zod";
-import { router, tenantProcedure } from "../trpc";
+import { TRPCError } from "@trpc/server";
+import { platformAdminProcedure, router, tenantProcedure } from "../trpc";
 import { raw_materials_client_promise } from "@rnd-ai/shared-database";
 import { QdrantRAGService, RawMaterialDocument } from "../../services/rag/qdrant-rag-service";
 import { ObjectId } from "mongodb";
 import { getRAGConfig, RAGServicesConfig } from "@/ai/config/rag-config";
+
+function escape_regex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 export const ragRouter = router({
   // Search raw materials using vector similarity
   searchRawMaterials: tenantProcedure("ai:run")
     .input(
       z.object({
-        query: z.string().min(1),
+        query: z.string().trim().min(1).max(256),
         topK: z.number().min(1).max(20).default(5),
         serviceName: z.enum(['rawMaterialsAllAI', 'rawMaterialsAI']).default('rawMaterialsAllAI')
       })
@@ -49,25 +54,22 @@ export const ragRouter = router({
         };
       } catch (error) {
         console.error('[ragRouter] searchRawMaterials — error', error);
-        return {
-          success: false,
-          error: 'Failed to search raw materials',
-          matches: [],
-          query: input.query,
-          totalResults: 0
-        };
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Raw-material search failed; no fallback result was returned.",
+        });
       }
     }),
 
   // Index raw materials data into Qdrant
-  indexRawMaterials: tenantProcedure("ai:run")
+  indexRawMaterials: platformAdminProcedure
     .input(
       z.object({
         batchSize: z.number().min(1).max(100).default(50),
         startIndex: z.number().min(0).default(0)
       })
     )
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       console.log('[ragRouter] indexRawMaterials — start', { batchSize: input.batchSize, startIndex: input.startIndex });
 
       try {
@@ -110,18 +112,16 @@ export const ragRouter = router({
         };
       } catch (error) {
         console.error('[ragRouter] indexRawMaterials — error', error);
-        return {
-          success: false,
-          indexed: 0,
-          error: 'Failed to index raw materials',
-          startIndex: input.startIndex
-        };
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Raw-material indexing failed.",
+        });
       }
     }),
 
   // Get indexing statistics
-  getIndexStats: tenantProcedure("ai:run")
-    .query(async ({ ctx }) => {
+  getIndexStats: platformAdminProcedure
+    .query(async () => {
       console.log('[ragRouter] getIndexStats — start');
 
       try {
@@ -144,16 +144,16 @@ export const ragRouter = router({
         };
       } catch (error) {
         console.error('[ragRouter] getIndexStats — error', error);
-        return {
-          success: false,
-          error: 'Failed to get index statistics'
-        };
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Index statistics are unavailable.",
+        });
       }
     }),
 
   // Get indexed documents count
-  getIndexedCount: tenantProcedure("ai:run")
-    .query(async ({ ctx }) => {
+  getIndexedCount: platformAdminProcedure
+    .query(async () => {
       console.log('[ragRouter] getIndexedCount — start');
 
       try {
@@ -167,11 +167,10 @@ export const ragRouter = router({
         };
       } catch (error) {
         console.error('[ragRouter] getIndexedCount — error', error);
-        return {
-          success: false,
-          count: 0,
-          error: 'Failed to get indexed count'
-        };
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Indexed count is unavailable.",
+        });
       }
     }),
 
@@ -179,7 +178,7 @@ export const ragRouter = router({
   hybridSearch: tenantProcedure("ai:run")
     .input(
       z.object({
-        query: z.string().min(1),
+        query: z.string().trim().min(1).max(256),
         topK: z.number().min(1).max(20).default(5),
         includeKeywordSearch: z.boolean().default(true)
       })
@@ -205,9 +204,9 @@ export const ragRouter = router({
           const rawKeywordMatches = await db.collection("raw_materials_real_stock")
             .find({
               $or: [
-                { rm_code: { $regex: input.query, $options: 'i' } },
-                { trade_name: { $regex: input.query, $options: 'i' } },
-                { inci_name: { $regex: input.query, $options: 'i' } }
+                { rm_code: { $regex: escape_regex(input.query), $options: 'i' } },
+                { trade_name: { $regex: escape_regex(input.query), $options: 'i' } },
+                { inci_name: { $regex: escape_regex(input.query), $options: 'i' } }
               ]
             })
             .limit(input.topK)
@@ -249,15 +248,10 @@ export const ragRouter = router({
         };
       } catch (error) {
         console.error('[ragRouter] hybridSearch — error', error);
-        return {
-          success: false,
-          error: 'Failed to search raw materials',
-          matches: [],
-          query: input.query,
-          vectorResults: 0,
-          keywordResults: 0,
-          totalResults: 0
-        };
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Hybrid raw-material search failed; no empty fallback was returned.",
+        });
       }
     })
 });

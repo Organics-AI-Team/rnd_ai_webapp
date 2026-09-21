@@ -20,11 +20,11 @@ import { useAuth } from "@/lib/app-auth";
 
 export default function ShippingPage() {
   const { organization } = useAuth();
-  const { data: orders = [], isLoading, error } = trpc.orders.list.useQuery();
+  const { data: orders = [], isLoading, error } = trpc.orders.listTenant.useQuery();
   const utils = trpc.useUtils();
   const updateStatus = trpc.orders.updateStatus.useMutation({
     onSuccess: () => {
-      utils.orders.list.invalidate();
+      utils.orders.listTenant.invalidate();
     },
   });
 
@@ -37,7 +37,7 @@ export default function ShippingPage() {
           status: "sent_to_logistic",
         });
       }
-      utils.orders.list.invalidate();
+      utils.orders.listTenant.invalidate();
       // Refresh tenant credits in real-time
       await utils.organizations.list.invalidate();
       setEditingOrderId(null);

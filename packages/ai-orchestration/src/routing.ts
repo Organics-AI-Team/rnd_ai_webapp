@@ -23,6 +23,7 @@ export const LOOP_NODE = Object.freeze({
   act: "act",
   request_clarification: "request_clarification",
   request_approval: "request_approval",
+  await_approval: "await_approval",
   finalize: "finalize",
   fail: "fail",
 });

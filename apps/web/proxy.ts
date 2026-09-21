@@ -84,6 +84,16 @@ async function legacy_guidance(request: NextRequest): Promise<NextResponse> {
 const PUBLIC_API_ROUTES = ["/api/webhooks/clerk", "/api/health"];
 
 /**
+ * Streaming run events authenticate inside their route guard instead of
+ * `auth.protect()`. Clerk's redirect response is fatal to native EventSource;
+ * the route guard returns a typed 401, allowing the client to retry after Clerk
+ * refreshes a stale browser session.
+ */
+export function is_route_guarded_event_stream(pathname: string): boolean {
+  return /^\/api\/ai\/runs\/[^/]+\/events$/.test(pathname);
+}
+
+/**
  * Decide whether a request targets a public route under the Clerk surface.
  * Plain path matching replaces Clerk's deprecated route-matcher helper; this
  * is traffic guidance only — every protected operation is authorized at the
@@ -106,6 +116,10 @@ function is_public(pathname: string): boolean {
  */
 const clerk_proxy = clerkMiddleware(
   async (auth, request) => {
+    if (is_route_guarded_event_stream(request.nextUrl.pathname)) {
+      log_proxy_event("decision", "allow", "protected");
+      return;
+    }
     if (is_public(request.nextUrl.pathname)) {
       log_proxy_event("decision", "allow", "public");
       return;
@@ -143,11 +157,10 @@ export async function proxy(
   request: NextRequest,
   event?: NextFetchEvent,
 ): Promise<Response> {
-  if (is_public_path(request.nextUrl.pathname)) {
-    log_proxy_event("decision", "allow", "public");
-    return NextResponse.next();
-  }
   if (is_clerk_enabled()) {
+    // Public Clerk-aware server components (notably /onboarding) still need
+    // clerkMiddleware to establish request auth context. The callback above
+    // skips auth.protect() for public paths, so this does not make them private.
     const response = await clerk_proxy(request, event as NextFetchEvent);
     return response instanceof Response ? response : NextResponse.next();
   }

@@ -29,6 +29,7 @@ import { create_conversation_repository } from "../../repositories/conversation-
 import { create_formula_repository } from "../../repositories/formula-repository";
 import { create_product_repository } from "../../repositories/product-repository";
 import { create_material_evidence_provider } from "../../repositories/material-evidence-provider";
+import { ResourceNotFoundError } from "../../repositories/tenant-repository-base";
 import { GeminiEmbeddingService } from "../../../services/embeddings/gemini-embedding-service";
 import {
   create_knowledge_qdrant_driver,
@@ -582,8 +583,16 @@ export function create_production_agentic_runtime_loader(
                 return `${role}: ${content}`;
               }).filter((line) => !line.endsWith(": "));
               return compact.length > 0 ? compact.join("\n").slice(0, 8_000) : null;
-            } catch {
-              return null;
+            } catch (error) {
+              if (error instanceof ResourceNotFoundError) return null;
+              console.error({
+                boundary: "production-run-runtime",
+                event: "conversation_history_load_failed",
+                run_id: trusted_context.run_id,
+                thread_id,
+                error_name: error instanceof Error ? error.name : "unknown",
+              });
+              throw new ProductionRunRuntimeError();
             }
           },
         },

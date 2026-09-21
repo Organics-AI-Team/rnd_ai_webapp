@@ -2,10 +2,12 @@ import type { Db, Document, WithId } from "mongodb";
 import type { TenantExecutionContext } from "@rnd-ai/shared-types";
 
 import {
+  ResourceNotFoundError,
   delete_scoped_document,
   get_scoped_document,
   insert_scoped_document,
   list_scoped_documents,
+  scoped_id_filter,
   update_scoped_document,
 } from "./tenant-repository-base";
 
@@ -52,10 +54,16 @@ export function create_calculation_repository(db: Db): CalculationRepository {
       return list_scoped_documents(price_calculations, context);
     },
     async update_calculation(context, calculation_id, patch) {
-      return update_scoped_document(price_calculations, context, calculation_id, NOT_FOUND, patch);
+      return update_scoped_document(price_calculations, context, calculation_id, NOT_FOUND, patch, {
+        actorProfileId: context.actor_profile_id,
+      });
     },
     async delete_calculation(context, calculation_id) {
-      return delete_scoped_document(price_calculations, context, calculation_id, NOT_FOUND);
+      const result = await price_calculations.deleteOne({
+        ...scoped_id_filter(context, calculation_id, NOT_FOUND),
+        actorProfileId: context.actor_profile_id,
+      });
+      if (result.deletedCount === 0) throw new ResourceNotFoundError(NOT_FOUND);
     },
   };
 }

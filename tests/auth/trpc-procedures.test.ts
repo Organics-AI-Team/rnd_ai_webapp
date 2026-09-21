@@ -190,11 +190,30 @@ describe("forbidden principal resolution", () => {
   });
 });
 
+describe("principal resolution outage", () => {
+  it("does not disguise an authentication dependency outage as a missing session", async () => {
+    const unavailable = create_caller(
+      build_ctx(
+        null,
+        "SERVICE_UNAVAILABLE",
+        "Authentication could not be verified. Please retry.",
+      ),
+    );
+    await expect(unavailable.users.list()).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Authentication could not be verified. Please retry.",
+    });
+  });
+});
+
 describe("permission gates", () => {
   it("denies formula confirmation to a tenant user without formula:confirm", async () => {
     const student = create_caller(build_ctx(tenant_principal("user"), null));
     await expect(
-      student.formulas.confirm({ id: "507f1f77bcf86cd799439099" }),
+      student.formulas.confirm({
+        id: "507f1f77bcf86cd799439099",
+        idempotencyKey: "5c4392b1-90f5-4f95-90f5-f68192230373",
+      }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 

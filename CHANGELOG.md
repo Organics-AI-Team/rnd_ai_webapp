@@ -1,5 +1,130 @@
 # Changelog
 
+## [2026-07-30] fix: close the 20-flow architecture drill-down
+
+- Repaired imported formula/product compatibility, full-catalog ingredient
+  search, Clerk-era member and tenant-credit joins, and unified credit debits
+  with the tenant ledger.
+- Made restricted-mode invitations allowlist-first, webhook dependency gaps
+  retryable, application suspensions authoritative, organization switching
+  server-confirmed, and reconciliation available as a tested worker-image CLI.
+- Added safe read-only tool batching, per-run checkpoint isolation, production
+  rollback-executor coverage, and fail-closed retirement of residual legacy AI
+  HTTP endpoints.
+- Disabled the incomplete knowledge-upload entry points by default so they can
+  no longer advertise success without an object-storage ingestion consumer.
+- Archived the macro/micro architecture views and per-flow disposition at
+  `docs/audit/2026-07-30-architecture-drilldown-closure.md`.
+- During the production-shaped rollback test, found and fixed a terminal schema
+  failure (`contradiction_state: "unknown"` was not a valid public value).
+
+---
+
+## [2026-07-30] fix: AI run transport, context growth, and latency drill-down
+
+### Deeper architecture findings and fixes
+
+- Native EventSource reconnects now resume from the last validated sequence
+  with bounded backoff. The exact resource-guarded event route avoids Clerk's
+  fatal HTML redirect while its handler still performs resource authorization.
+- Formula approval authority now comes from the authenticated application role
+  instead of a hard-coded manager flag.
+- Dynamic loop context is bounded per observation and per turn, retains the
+  latest user instruction and newest evidence, and records deterministic
+  compaction provenance. Repeated retrievals can no longer grow every later
+  provider request without limit.
+- Typed usage and structured boundary logs expose model, tool, queue,
+  execution, persistence, total-worker, and browser delivery latency.
+- Commercial synthetic load tests use an explicit 15-second harness timeout;
+  their product latency thresholds remain unchanged.
+
+### Verification
+
+- Focused transport, auth, orchestration, worker, contracts, view, and load
+  tests: passed.
+- Web + orchestration typecheck and private-worker bundle: passed.
+
+---
+
+## [2026-07-30] fix: Production clarification and approval interrupts reach the browser
+
+### Deeper architecture finding
+
+The governed graph correctly paused at `waiting_clarification` and
+`waiting_approval`, but neither production branch checkpointed the corresponding
+public SSE event. Only the credential-free test adapter synthesized
+`clarification.required` and `approval.required`. Production browsers therefore
+received heartbeats forever and could never render the clarification/approval
+cards, making a correct OODA decision look like poor or hung AI performance.
+
+### Fix
+
+- Clarification decisions now append `clarification.required` in the agent-node
+  update before routing to the interrupt, so the event and decision share the
+  durable checkpoint sequence.
+- Approval handling is split into deterministic preparation and waiting nodes.
+  Preparation idempotently creates the approval, checkpoints
+  `pending_approval`, and appends `approval.required`; the following
+  `await_approval` node interrupts only after those durable updates exist.
+- The production executor now refuses to classify an interrupt as waiting unless
+  its required typed event is present. This fails closed instead of creating an
+  invisible, indefinitely heartbeating run.
+- Added the `pending_approval` state channel and explicit
+  `request_approval -> await_approval -> gate` topology.
+- Updated the macro and micro architecture views to expose queue, sequential
+  model/tool amplification, missing-event, reconnect, and telemetry bottlenecks.
+
+### Verification
+
+- Interrupt, graph-shape, executor, worker, web reducer, and security boundary
+  tests: 74/74 passed.
+- Expanded web/orchestration/integration regression set: 224/224 passed.
+- Web + orchestration typecheck and private-worker bundle: passed.
+
+---
+
+## [2026-07-30] fix: Agent answers become durable chat turns; OODA triage and decision telemetry repaired
+
+### Root cause
+
+- Governed `run.completed` output lived only in `AiRunView`. The private worker
+  persisted the run and events but never appended the answer to
+  `chat_messages`; the next `start_run()` reset the transient panel, making the
+  prior assistant response disappear while user messages remained.
+- Gemini commonly emits a function call without companion text. The decision
+  audit copied that nullable text verbatim, producing a blank `Decision 1:` row.
+- The orchestrator required evidence for factual claims but did not explicitly
+  distinguish conversational/meta responses or missing-input clarification
+  from retrieval, biasing simple turns toward `knowledge.search`.
+- Action events carried latency and cost, but the web reducer discarded both,
+  hiding the tool-level bottleneck from the live activity trail.
+
+### Fix
+
+- Added an idempotent, transactional completed-answer sink to the private
+  worker. It inserts one assistant message keyed by governed `runId` and bumps
+  the parent thread exactly once before terminal events/status are committed and
+  the job is acknowledged. Retries cannot duplicate the assistant turn.
+- Chat mutation now awaits thread/message refetches, ensuring the durable prior
+  answer is loaded before a new run replaces transient run UI state.
+- Decision records now use a bounded deterministic public summary when provider
+  rationale text is absent; hidden chain-of-thought is never exposed.
+- Capability-card guidance now performs Observe/Orient triage before acting:
+  direct finalize for supported conversational turns, clarification before
+  broad retrieval, narrow tools only when they resolve real uncertainty, and
+  re-orientation after every observation.
+- The run reducer/UI now retains and displays per-tool latency (and retains
+  cost), making slow retrieval/action steps directly visible.
+
+### Verification
+
+- Focused orchestration, worker, and run-view tests: 43/43 passed.
+- Web + orchestration typecheck: passed.
+- Private worker bundle: passed.
+- Web/orchestration/worker regression set: 202/202 passed.
+
+---
+
 ## [2026-07-30] audit: 20 confirmed prod E2E gaps archived; model-routing + tool-mode experiments concluded
 
 ### Adversarial sweep (find-more session)

@@ -2,13 +2,13 @@ import { z } from "zod";
 import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
 
 const FeedbackSchema = z.object({
-  responseId: z.string(),
+  responseId: z.string().min(1).max(128),
   type: z.enum(["excellent", "helpful", "okay", "unclear", "too_long", "too_short", "irrelevant"]),
   score: z.number().min(1).max(5),
-  comment: z.string().optional(),
-  prompt: z.string(),
-  aiResponse: z.string(),
-  aiModel: z.string(),
+  comment: z.string().max(4_000).optional(),
+  prompt: z.string().min(1).max(32_000),
+  aiResponse: z.string().min(1).max(64_000),
+  aiModel: z.string().min(1).max(200),
 });
 
 export const rawMaterialsFeedbackRouter = router({

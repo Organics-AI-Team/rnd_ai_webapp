@@ -1,4 +1,4 @@
-import { Db } from "mongodb";
+import type { ClientSession, Db } from "mongodb";
 
 interface LogActivityParams {
   db: Db;
@@ -7,6 +7,7 @@ interface LogActivityParams {
   activity: string;
   refId?: string;
   organizationId?: string;
+  session?: ClientSession;
 }
 
 export async function logActivity({
@@ -16,6 +17,7 @@ export async function logActivity({
   activity,
   refId,
   organizationId,
+  session,
 }: LogActivityParams) {
   const now = new Date();
 
@@ -30,14 +32,17 @@ export async function logActivity({
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const time = `${hours}:${minutes}`;
 
-  await db.collection("user_logs").insertOne({
-    date,
-    time,
-    userId,
-    userName,
-    activity,
-    refId: refId || "",
-    organizationId,
-    createdAt: now,
-  });
+  await db.collection("user_logs").insertOne(
+    {
+      date,
+      time,
+      userId,
+      userName,
+      activity,
+      refId: refId || "",
+      organizationId,
+      createdAt: now,
+    },
+    { session },
+  );
 }

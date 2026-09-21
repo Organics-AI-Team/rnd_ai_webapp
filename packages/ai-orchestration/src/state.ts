@@ -8,6 +8,7 @@
  */
 import { Annotation } from "@langchain/langgraph";
 import type {
+  ApprovalRequestV1,
   ActionResultV1,
   AgentRunEventV1,
   AgentRunInputV1,
@@ -75,6 +76,7 @@ export const AgentLoopState = Annotation.Root({
   warnings: appending<string>(),
   pending_action: replaceable<ProposedActionV1>(),
   approval_result: replaceable<ApprovalResultV1>(),
+  pending_approval: replaceable<ApprovalRequestV1>(),
   output: replaceable<AgentRunOutputV1>(),
   error: replaceable<RunErrorV1>(),
 });

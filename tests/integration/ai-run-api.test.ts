@@ -291,12 +291,32 @@ describe("handle_run_events", () => {
     const events = [event(0, "stage.changed", { stage: "thinking" })];
     const deps = collaborators({
       events: fake_event_store(events),
-      // Deterministic tail: abort the request on the first heartbeat wait.
-      sleep: async () => { controller.abort(); },
+      heartbeat_ms: 1,
+      event_poll_ms: 1,
+      sleep: async () => {
+        if (controller.signal.aborted) return;
+        if ((deps as { calls?: number }).calls) controller.abort();
+        (deps as { calls?: number }).calls = ((deps as { calls?: number }).calls ?? 0) + 1;
+      },
     });
     const response = await handle_run_events(tenant, "run_1", null, deps, controller.signal);
     const body = await read_stream(response);
     expect(body).toContain("id: 0");
     expect(body).toContain(SSE_HEARTBEAT.trim());
+  });
+
+  it("emits a terminal failure instead of leaving a completed run without events open forever", async () => {
+    const response = await handle_run_events(
+      tenant,
+      "run_1",
+      null,
+      collaborators({
+        get_run_status: async () => "completed",
+        sleep: async () => undefined,
+      }),
+    );
+    const body = await read_stream(response);
+    expect(body).toContain("event: run.failed");
+    expect(body).toContain("ORCHESTRATOR_INVARIANT_VIOLATION");
   });
 });

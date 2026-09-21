@@ -1,67 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { with_request_principal } from '@/lib/server/with-request-principal';
-import { PineconeRAGService } from '@/ai/services/rag/qdrant-rag-service';
+import { NextResponse, type NextRequest } from "next/server";
+import { with_request_principal } from "@/lib/server/with-request-principal";
 
-export async function POST(request: NextRequest) {
-  return with_request_principal(request, 'tenant:read', async (_principal, guarded_body) => {
-  try {
-    const body = (guarded_body ?? {}) as any;
-    const { query, topK = 5, similarityThreshold = 0.7 } = body;
+const retired = () => NextResponse.json(
+  { error: "LEGACY_RAG_ROUTE_RETIRED", message: "Use the governed raw-material tools." },
+  { status: 410 },
+);
 
-    if (!query || typeof query !== 'string') {
-      return NextResponse.json(
-        { error: 'Query is required and must be a string' },
-        { status: 400 }
-      );
-    }
-
-    // Check if Qdrant is available (required for vector/RAG search)
-    if (!process.env.QDRANT_URL) {
-      console.warn('[searchRawMaterials-api] QDRANT_URL not configured. RAG search unavailable.');
-      return NextResponse.json({
-        success: true,
-        matches: [],
-        query,
-        totalResults: 0,
-        warning: 'Vector search is not configured. Please set QDRANT_URL environment variable.'
-      });
-    }
-
-    // Initialize RAG service (PineconeRAGService is an alias for QdrantRAGService)
-    const ragService = new PineconeRAGService();
-
-    // Search for similar materials using snake_case method per QdrantRAGService convention
-    const matches = await ragService.search_similar(query, {
-      topK,
-      similarityThreshold
-    });
-
-    return NextResponse.json({
-      success: true,
-      matches,
-      query,
-      totalResults: matches.length
-    });
-
-  } catch (error) {
-    console.error('Error in RAG search API:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to search raw materials',
-        matches: [],
-        details: error.message
-      },
-      { status: 500 }
-    );
-  }
-  });
+export async function POST(request: NextRequest): Promise<Response> {
+  return with_request_principal(request, "ai:run", async () => retired());
 }
 
-export async function GET(request: NextRequest) {
-  return with_request_principal(request, 'tenant:read', async () => {
-    return NextResponse.json(
-      { error: 'GET method not supported. Please use POST.' },
-      { status: 405 }
-    );
-  });
+export async function GET(request: NextRequest): Promise<Response> {
+  return with_request_principal(request, "ai:run", async () => retired());
 }

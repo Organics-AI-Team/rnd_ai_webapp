@@ -25,7 +25,7 @@ import { fail } from "./nodes/fail";
 import { finalize } from "./nodes/finalize";
 import { gate } from "./nodes/gate";
 import { ingress } from "./nodes/ingress";
-import { request_approval } from "./nodes/request-approval";
+import { await_approval, request_approval } from "./nodes/request-approval";
 import { request_clarification } from "./nodes/request-clarification";
 import type { AgentLoopRuntime } from "./ports";
 import { log_loop_event } from "./ports";
@@ -63,6 +63,9 @@ export function build_agent_loop_graph(runtime: AgentLoopRuntime) {
     .addNode(LOOP_NODE.request_approval, (state: AgentLoopStateType) =>
       request_approval(state, runtime),
     )
+    .addNode(LOOP_NODE.await_approval, (state: AgentLoopStateType) =>
+      await_approval(state, runtime),
+    )
     .addNode(
       LOOP_NODE.finalize,
       (state: AgentLoopStateType) => finalize(state, runtime),
@@ -75,7 +78,8 @@ export function build_agent_loop_graph(runtime: AgentLoopRuntime) {
     .addEdge(LOOP_NODE.ingress, LOOP_NODE.agent)
     .addEdge(LOOP_NODE.act, LOOP_NODE.agent)
     .addEdge(LOOP_NODE.request_clarification, LOOP_NODE.agent)
-    .addEdge(LOOP_NODE.request_approval, LOOP_NODE.gate)
+    .addEdge(LOOP_NODE.request_approval, LOOP_NODE.await_approval)
+    .addEdge(LOOP_NODE.await_approval, LOOP_NODE.gate)
     .addEdge(LOOP_NODE.finalize, END)
     .addEdge(LOOP_NODE.fail, END);
   log_loop_event(runtime, "debug", "graph.build.finish");

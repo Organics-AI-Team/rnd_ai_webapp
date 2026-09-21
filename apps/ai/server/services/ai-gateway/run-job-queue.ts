@@ -29,6 +29,8 @@ export interface ClaimedRunJob {
   /** Trusted graph resume value, present only for resume commands. */
   readonly resume_payload?: unknown;
   readonly attempts: number;
+  /** Durable enqueue timestamp used for queue-wait telemetry. */
+  readonly created_at?: Date;
 }
 
 /** Arguments for enqueuing a run job. */
@@ -90,6 +92,9 @@ function to_claimed_job(document: WithId<Document>): ClaimedRunJob {
     command: document.command as RunJobCommand,
     ...(document.resumePayload !== undefined ? { resume_payload: document.resumePayload } : {}),
     attempts: Number(document.attempts ?? 0),
+    created_at: document.createdAt instanceof Date
+      ? document.createdAt
+      : new Date(String(document.createdAt)),
   };
 }
 

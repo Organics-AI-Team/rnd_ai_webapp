@@ -164,17 +164,44 @@ describe("governed agentic run executor", () => {
     });
     expect(result.events).toHaveLength(1);
     expect(invoke.mock.calls[0]?.[1]).toEqual({
-      configurable: { thread_id: `tenant:${TENANT}::thread:507f1f77bcf86cd7994390c1` },
+      configurable: { thread_id: `tenant:${TENANT}::run:${RUN_ID}` },
+      recursionLimit: 250,
     });
   });
 
-  it("resumes only with the trusted job payload and classifies an approval interrupt", async () => {
+  it("resumes only with the trusted job payload and emits an approval interrupt event", async () => {
     const pack = make_context_pack();
     const invoke = vi.fn(async () => ({
       output: null,
       error: null,
       pending_action: { kind: "tool", tool_name: "formula.confirm" },
-      events: [],
+      pending_approval: {
+        schema_version: "1",
+        approval_id: "approval-1",
+        run_id: RUN_ID,
+        summary: "Approve formula.confirm (12345678).",
+      },
+      __interrupt__: [{
+        value: {
+          schema_version: "1",
+          approval_id: "approval-1",
+          run_id: RUN_ID,
+          summary: "Approve formula.confirm (12345678).",
+        },
+      }],
+      events: [{
+        schema_version: "1",
+        event_id: "approval-required",
+        run_id: RUN_ID,
+        sequence: 0,
+        occurred_at: "2026-07-16T00:00:00.000Z",
+        type: "approval.required",
+        payload: {
+          approval_id: "approval-1",
+          summary: "Approve formula.confirm (12345678).",
+          tool_name: "formula.confirm",
+        },
+      }],
       usage: { model_calls: 1, tool_calls: 0, input_tokens: 1, output_tokens: 1, tokens_used: 2, cost_usd_used: "0" },
     }));
     const executor = create_agentic_run_executor({
@@ -189,7 +216,79 @@ describe("governed agentic run executor", () => {
     const result = await executor.execute(job("resume", resume), run_document(pack));
 
     expect(result).toMatchObject({ status: "waiting_approval", current_stage: "waiting_user" });
+    expect(result.events).toContainEqual(expect.objectContaining({
+      type: "approval.required",
+      payload: {
+        approval_id: "approval-1",
+        summary: "Approve formula.confirm (12345678).",
+        tool_name: "formula.confirm",
+      },
+    }));
     expect(invoke.mock.calls[0]?.[0]).toMatchObject({ resume });
+  });
+
+  it("emits clarification.required with the model's bounded questions", async () => {
+    const pack = make_context_pack();
+    const invoke = vi.fn(async () => ({
+      output: null,
+      error: null,
+      pending_action: {
+        kind: "clarification",
+        request: {
+          schema_version: "1",
+          questions: ["Which product format should I formulate?"],
+        },
+      },
+      events: [{
+        schema_version: "1",
+        event_id: "clarification-required",
+        run_id: RUN_ID,
+        sequence: 0,
+        occurred_at: "2026-07-16T00:00:00.000Z",
+        type: "clarification.required",
+        payload: { questions: ["Which product format should I formulate?"] },
+      }],
+      usage: { model_calls: 1, tool_calls: 0, input_tokens: 1, output_tokens: 1, tokens_used: 2, cost_usd_used: "0" },
+    }));
+    const executor = create_agentic_run_executor({
+      load_runtime: async () => ({ runtime: fake_runtime(), context_pack: pack }),
+      create_checkpointer: async () => ({}),
+      compile_graph: () => ({ invoke }),
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
+      run_timeout_ms: 120_000,
+    });
+
+    const result = await executor.execute(job("start"), run_document(pack));
+
+    expect(result).toMatchObject({
+      status: "waiting_clarification",
+      current_stage: "waiting_user",
+    });
+    expect(result.events).toContainEqual(expect.objectContaining({
+      type: "clarification.required",
+      payload: { questions: ["Which product format should I formulate?"] },
+    }));
+  });
+
+  it("fails closed instead of wedging when an approval interrupt envelope is missing", async () => {
+    const pack = make_context_pack();
+    const executor = create_agentic_run_executor({
+      load_runtime: async () => ({ runtime: fake_runtime(), context_pack: pack }),
+      create_checkpointer: async () => ({}),
+      compile_graph: () => ({
+        invoke: async () => ({
+          output: null,
+          error: null,
+          pending_action: { kind: "tool", tool_name: "formula.confirm" },
+          events: [],
+        }),
+      }),
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
+      run_timeout_ms: 120_000,
+    });
+
+    await expect(executor.execute(job("start"), run_document(pack)))
+      .rejects.toBeInstanceOf(RunExecutionStateInvalidError);
   });
 
   it("fails closed before graph invocation when the rebuilt context pack drifts", async () => {

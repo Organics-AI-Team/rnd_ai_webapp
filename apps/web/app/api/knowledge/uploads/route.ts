@@ -143,32 +143,13 @@ export async function POST(request: NextRequest): Promise<Response> {
   return with_request_principal(
     request,
     "tenant:knowledge:manage",
-    async (principal, body) => {
-      const scope = resolve_tenant_context(principal);
-      if (scope.status === "error") return scope.response;
-      try {
-        const secret = process.env.KNOWLEDGE_UPLOAD_AUTH_SECRET ?? "";
-        const db = (await client_promise).db();
-        const authorization = await issue_upload_authorization(
-          {
-            tenant_id: scope.tenant.tenant_id,
-            actor_profile_id: scope.tenant.actor_profile_id,
-          },
-          parse_upload_authorization_request(body),
-          {
-            source_port: create_knowledge_source_repository(db),
-            policy_port: upload_policy_port(db),
-            signer: create_hmac_upload_authorization_signer({ secret }),
-            authorization_ttl_ms: positive_env(
-              "KNOWLEDGE_UPLOAD_AUTH_TTL_MS",
-              DEFAULT_AUTHORIZATION_TTL_MS,
-            ),
-          },
-        );
-        return NextResponse.json(authorization, { status: 201 });
-      } catch (error) {
-        return upload_error_response(error);
-      }
-    },
+    async () =>
+      NextResponse.json(
+        {
+          error: "KNOWLEDGE_UPLOAD_PIPELINE_DISABLED",
+          message: "Knowledge uploads require a deployed, healthy ingestion consumer.",
+        },
+        { status: 503 },
+      ),
   );
 }

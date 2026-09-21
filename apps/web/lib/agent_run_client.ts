@@ -158,6 +158,9 @@ export function create_agent_run_client(browser: AgentRunBrowserPrimitives): Age
   let source: AgentRunEventSource | null = null;
   let source_listeners: ReadonlyMap<string, EventListener> = new Map();
   let generation = 0;
+  let reconnect_timer: ReturnType<typeof setTimeout> | null = null;
+  let reconnect_attempt = 0;
+  let last_sequence = -1;
   const resume_keys = new Map<string, string>();
 
   /** Convert browser/network rejection into the same typed error surface as HTTP failures. */
@@ -182,6 +185,12 @@ export function create_agent_run_client(browser: AgentRunBrowserPrimitives): Age
   /** Close the current client-side stream without cancelling the server run. */
   function cancel_stream(): void {
     generation += 1;
+    if (reconnect_timer !== null) {
+      clearTimeout(reconnect_timer);
+      reconnect_timer = null;
+    }
+    reconnect_attempt = 0;
+    last_sequence = -1;
     if (!source) return;
     for (const [type, listener] of source_listeners) source.removeEventListener(type, listener);
     source.close();
@@ -192,7 +201,12 @@ export function create_agent_run_client(browser: AgentRunBrowserPrimitives): Age
 
   /** Open and validate all named events for one accepted run. */
   function open_stream(accepted: AcceptedAgentRun, callbacks: AgentRunCallbacks): void {
-    const next_source = browser.create_event_source(accepted.events_url, { withCredentials: true });
+    const stream_generation = generation;
+    const separator = accepted.events_url.includes("?") ? "&" : "?";
+    const events_url = last_sequence >= 0
+      ? `${accepted.events_url}${separator}last_event_id=${last_sequence}`
+      : accepted.events_url;
+    const next_source = browser.create_event_source(events_url, { withCredentials: true });
     const listeners = new Map<string, EventListener>();
 
     for (const type of AGENT_RUN_EVENT_TYPES) {
@@ -210,6 +224,17 @@ export function create_agent_run_client(browser: AgentRunBrowserPrimitives): Age
             ));
             return;
           }
+          last_sequence = Math.max(last_sequence, parsed.data.sequence);
+          reconnect_attempt = 0;
+          console.info("[agent_run_client] event received", {
+            run_id: parsed.data.run_id,
+            type: parsed.data.type,
+            sequence: parsed.data.sequence,
+            delivery_lag_ms: Math.max(
+              0,
+              Date.now() - Date.parse(parsed.data.occurred_at),
+            ),
+          });
           callbacks.on_event(parsed.data);
           if (parsed.data.type === "run.completed" || parsed.data.type === "run.failed") {
             cancel_stream();
@@ -229,13 +254,26 @@ export function create_agent_run_client(browser: AgentRunBrowserPrimitives): Age
     }
 
     const error_listener: EventListener = (): void => {
+      if (stream_generation !== generation || source !== next_source) return;
       callbacks.on_error?.(new AgentRunClientError(
         "RUN_STREAM_DISCONNECTED",
-        "The live update stream was interrupted and is reconnecting.",
+        "The live update stream was interrupted. Reconnecting from the last event.",
         "stream",
         null,
         true,
       ));
+      for (const [type, listener] of listeners) next_source.removeEventListener(type, listener);
+      next_source.close();
+      source = null;
+      source_listeners = new Map();
+      reconnect_attempt += 1;
+      const delay_ms = Math.min(10_000, 500 * (2 ** Math.min(reconnect_attempt - 1, 5)));
+      reconnect_timer = setTimeout(() => {
+        reconnect_timer = null;
+        if (stream_generation === generation && current_run_id === accepted.run_id) {
+          open_stream(accepted, callbacks);
+        }
+      }, delay_ms);
     };
     listeners.set("error", error_listener);
     next_source.addEventListener("error", error_listener);
@@ -296,6 +334,8 @@ export function create_agent_run_client(browser: AgentRunBrowserPrimitives): Age
         );
       }
       current_run_id = accepted.run_id;
+      last_sequence = -1;
+      reconnect_attempt = 0;
       if (start_generation === generation) open_stream(accepted, callbacks);
       console.info("[agent_run_client] run accepted", { run_id: accepted.run_id });
       return accepted;

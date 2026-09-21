@@ -94,4 +94,20 @@ describe("handle_get_artifact", () => {
     expect(body.error).toBe("AI_ARTIFACT_CONTENT_INVALID");
     expect(JSON.stringify(body)).not.toContain("junk");
   });
+
+  it("returns 503 rather than a false 404 when artifact storage fails", async () => {
+    const response = await handle_get_artifact(
+      context_for(TENANT_A),
+      "507f1f77bcf86cd799439099",
+      {
+      artifacts: {
+        async get_artifact() {
+          throw new Error("database unavailable");
+        },
+      } as any,
+    },
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: "AI_ARTIFACT_UNAVAILABLE" });
+  });
 });

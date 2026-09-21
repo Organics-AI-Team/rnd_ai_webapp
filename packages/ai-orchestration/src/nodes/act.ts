@@ -13,7 +13,12 @@
  * errors; unexpected executor exceptions propagate.
  */
 import Decimal from "decimal.js";
-import type { ActionResultV1, ProposedActionV1 } from "../contracts";
+import type {
+  ActionResultV1,
+  AgentRunEventV1,
+  ProposedActionV1,
+  RunErrorV1,
+} from "../contracts";
 import { build_run_event } from "../events";
 import { sha256_hex } from "../hash";
 import type {
@@ -174,7 +179,7 @@ export async function act(
   });
 
   const action = state.pending_action;
-  if (!action || action.kind !== "tool") {
+  if (!action || (action.kind !== "tool" && action.kind !== "tool_batch")) {
     log_loop_event(runtime, "error", "act.missing_pending_action");
     return {
       error: build_run_error(
@@ -182,6 +187,70 @@ export async function act(
         "ORCHESTRATOR_INVARIANT_VIOLATION",
         "The act node received no pending tool action.",
       ),
+    };
+  }
+
+  if (action.kind === "tool_batch") {
+    const definitions = action.actions.map((item) =>
+      runtime.ports.tools.describe(item.tool_name, runtime.context));
+    if (definitions.some((definition) => !definition || definition.side_effect !== "read")) {
+      return {
+        error: build_run_error(
+          runtime,
+          "ORCHESTRATOR_INVARIANT_VIOLATION",
+          "The act node received a parallel action that was not read-only.",
+        ),
+        pending_action: null,
+      };
+    }
+    const branch_updates = await Promise.all(
+      action.actions.map((item) =>
+        act({ ...state, pending_action: item }, runtime)),
+    ) as Array<{
+      readonly observations?: ObservationV1[];
+      readonly warnings?: string[];
+      readonly action_results?: ActionResultV1[];
+      readonly events?: AgentRunEventV1[];
+      readonly error?: RunErrorV1 | null;
+    }>;
+    const branch_error = branch_updates.find((update) => update.error)?.error;
+    if (branch_error) {
+      return { error: branch_error, pending_action: null };
+    }
+    const observations = branch_updates.flatMap((update) => update.observations ?? []);
+    const warnings = branch_updates.flatMap((update) => update.warnings ?? []);
+    const action_results = branch_updates.flatMap((update) => update.action_results ?? []);
+    const events = branch_updates
+      .flatMap((update) => update.events ?? [])
+      .map((event, index) => ({
+        ...event,
+        sequence: state.events.length + index,
+      }));
+    const batch_cost = action_results.reduce(
+      (total, result) => total.plus(new Decimal(result.cost_usd)),
+      new Decimal(0),
+    );
+    log_loop_event(runtime, "info", "act.parallel_read_batch_finish", {
+      tool_count: action.actions.length,
+      latency_ms: Math.max(0, ...action_results.map((result) => result.latency_ms)),
+      serial_latency_ms: action_results.reduce(
+        (total, result) => total + result.latency_ms,
+        0,
+      ),
+    });
+    return {
+      pending_action: null,
+      observations,
+      warnings,
+      action_results,
+      events,
+      usage: {
+        ...state.usage,
+        tool_calls: state.usage.tool_calls + action.actions.length,
+        cost_usd_used: new Decimal(state.usage.cost_usd_used)
+          .plus(batch_cost)
+          .toString(),
+      },
     };
   }
 

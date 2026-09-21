@@ -114,6 +114,25 @@ describe("with_request_principal", () => {
       { message: "hi" },
     );
   });
+
+  it("rejects malformed JSON instead of passing a null fallback body", async () => {
+    const handler = vi.fn();
+    const response = await with_request_principal(
+      new NextRequest("http://localhost/api/test", {
+        method: "POST",
+        headers: {
+          cookie: "auth_token=valid-token",
+          "content-type": "application/json",
+        },
+        body: "{",
+      }),
+      "ai:run",
+      handler,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "INVALID_JSON_BODY" });
+    expect(handler).not.toHaveBeenCalled();
+  });
 });
 
 interface RouteCase {

@@ -17,7 +17,8 @@ export interface ReconciliationFinding {
     | "missing_projection_repaired"
     | "contradictory_role_marked"
     | "orphaned_projection"
-    | "missing_profile";
+    | "missing_profile"
+    | "suspended_projection_preserved";
   readonly clerk_membership_id?: string;
   readonly clerk_user_id?: string;
   readonly detail: string;
@@ -56,6 +57,9 @@ export async function reconcile_tenant(
   tenant_id: string,
   ports: ReconcileClerkPorts,
 ): Promise<ReconciliationReport> {
+  if (!ObjectId.isValid(tenant_id)) {
+    throw new Error("A valid tenant id is required.");
+  }
   const findings: ReconciliationFinding[] = [];
   const tenant = await db
     .collection("tenants")
@@ -73,6 +77,9 @@ export async function reconcile_tenant(
     .toArray();
   const projection_by_clerk_id = new Map(
     projections.map((p) => [String(p.clerkMembershipId), p]),
+  );
+  const projection_by_profile_id = new Map(
+    projections.map((p) => [String(p.userProfileId), p]),
   );
 
   for (const membership of clerk_memberships) {
@@ -92,6 +99,19 @@ export async function reconcile_tenant(
       : "user";
     const projection = projection_by_clerk_id.get(membership.id);
     if (!projection) {
+      const existing_profile_projection = projection_by_profile_id.get(profile._id.toString());
+      if (existing_profile_projection?.status === "suspended") {
+        await db.collection("tenant_membership_projections").updateOne(
+          { _id: existing_profile_projection._id, status: "suspended" },
+          { $set: { reconciliationRequired: true, updatedAt: new Date() } },
+        );
+        findings.push({
+          kind: "suspended_projection_preserved",
+          clerk_membership_id: membership.id,
+          detail: "Preserved the app-suspended projection for manual review.",
+        });
+        continue;
+      }
       // Safe repair: Clerk is authoritative for membership existence. Keyed
       // by (tenantId, userProfileId) with revive semantics — a revoked
       // projection for the same pair is revived under the new Clerk
@@ -149,10 +169,20 @@ export async function reconcile_tenant(
       !clerk_ids.has(String(projection.clerkMembershipId)) &&
       projection.status === "active"
     ) {
+      await db.collection("tenant_membership_projections").updateOne(
+        { _id: projection._id, status: "active" },
+        {
+          $set: {
+            status: "revoked",
+            reconciliationRequired: false,
+            updatedAt: new Date(),
+          },
+        },
+      );
       findings.push({
         kind: "orphaned_projection",
         clerk_membership_id: String(projection.clerkMembershipId),
-        detail: "Active projection has no Clerk membership; review for revocation.",
+        detail: "Revoked an active projection with no Clerk membership.",
       });
     }
   }
@@ -196,15 +226,22 @@ async function run_cli(): Promise<void> {
   try {
     const report = await reconcile_tenant(client.db(), tenant_id, {
       async list_clerk_memberships(clerk_organization_id) {
-        const response = await clerk.organizations.getOrganizationMembershipList({
-          organizationId: clerk_organization_id,
-          limit: 500,
-        });
-        return response.data.map((membership) => ({
-          id: membership.id,
-          clerk_user_id: membership.publicUserData?.userId ?? "",
-          role: membership.role,
-        }));
+        const memberships: ClerkMembershipView[] = [];
+        const limit = 500;
+        for (let offset = 0; ; offset += limit) {
+          const response = await clerk.organizations.getOrganizationMembershipList({
+            organizationId: clerk_organization_id,
+            limit,
+            offset,
+          });
+          memberships.push(...response.data.map((membership) => ({
+            id: membership.id,
+            clerk_user_id: membership.publicUserData?.userId ?? "",
+            role: membership.role,
+          })));
+          if (response.data.length < limit || memberships.length >= response.totalCount) break;
+        }
+        return memberships;
       },
     });
     console.log(JSON.stringify(report, null, 2));
@@ -213,7 +250,7 @@ async function run_cli(): Promise<void> {
   }
 }
 
-const invoked_directly = process.argv[1]?.endsWith("reconcile-clerk.ts") ?? false;
+const invoked_directly = /reconcile-clerk\.(?:ts|js)$/.test(process.argv[1] ?? "");
 
 if (invoked_directly) {
   run_cli().catch((error) => {

@@ -9,11 +9,26 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        canvas: "var(--ui-canvas)",
+        surface: "var(--ui-surface)",
+        subtle: "var(--ui-surface-subtle)",
+        ink: "var(--ui-ink)",
+        muted: "var(--ui-muted)",
+        border: "var(--ui-border)",
+        "border-strong": "var(--ui-border-strong)",
+        brand: "var(--ui-brand)",
+        "brand-hover": "var(--ui-brand-hover)",
+        "brand-soft": "var(--ui-brand-soft)",
+        overlay: "var(--ui-overlay)",
         line: {
-          DEFAULT: "#06C755",
-          dark: "#00B900",
-          light: "#52D681",
+          DEFAULT: "var(--ui-brand)",
+          dark: "var(--ui-brand-hover)",
+          light: "var(--ui-brand-soft)",
         },
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       fontSize: {
         "2xs": ["0.625rem", { lineHeight: "0.875rem" }],
@@ -30,9 +45,11 @@ const config: Config = {
         sm: "0.25rem",
       },
       boxShadow: {
-        sm: "0 1px 2px 0 rgb(0 0 0 / 0.04)",
-        DEFAULT: "0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)",
-        md: "0 2px 6px -1px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.06)",
+        sm: "0 1px 2px rgb(25 31 35 / 0.04)",
+        DEFAULT: "0 2px 6px rgb(25 31 35 / 0.05)",
+        md: "0 6px 16px rgb(25 31 35 / 0.07)",
+        panel: "0 12px 30px rgb(25 31 35 / 0.08)",
+        modal: "0 24px 64px rgb(25 31 35 / 0.18)",
       },
     },
   },

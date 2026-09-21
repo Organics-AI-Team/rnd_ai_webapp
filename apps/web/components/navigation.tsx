@@ -6,6 +6,7 @@ import { Package, LogOut, Menu, X, ChevronLeft, ChevronRight, BoxIcon, Beaker, C
 import { cn } from "@rnd-ai/shared-utils";
 import { useAuth } from "@/lib/app-auth";
 import { Button } from "@/components/ui/button";
+import { IconTile } from "@/components/ui/surface";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { OrgSwitcherPanel } from "@/components/org_switcher_panel";
@@ -117,15 +118,15 @@ export function Navigation({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen">
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200">
-        <div className="flex items-center justify-between px-4 py-2.5">
+      <div className="fixed left-0 right-0 top-0 z-50 border-b border-border bg-surface lg:hidden">
+        <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <Package size={16} className="text-gray-900" />
-            <h1 className="text-sm font-semibold text-gray-900">R&D AI</h1>
+            <IconTile tone="brand" className="size-8 rounded-xl"><Package size={14} /></IconTile>
+            <h1 className="text-sm font-semibold text-ink">R&D AI</h1>
           </div>
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-1.5 hover:bg-gray-100 rounded transition-colors text-gray-600"
+            className="rounded-full p-2 text-muted transition-colors hover:bg-subtle hover:text-ink"
             aria-label="Toggle menu"
           >
             {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
@@ -141,25 +142,25 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed lg:static inset-y-0 left-0 z-40 bg-white border-r border-gray-200 flex flex-col transition-all duration-200 lg:translate-x-0",
+          "fixed lg:static inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-surface transition-all duration-200 lg:translate-x-0",
           isMobileMenuOpen ? "translate-x-0 w-52" : "-translate-x-full lg:translate-x-0",
           isSidebarCollapsed ? "lg:w-14" : "lg:w-52"
         )}
       >
         {/* Header */}
         <div className={cn(
-          "hidden lg:flex items-center border-b border-gray-200",
-          isSidebarCollapsed ? "px-2 py-3 justify-center" : "px-3 py-3 justify-between"
+          "hidden items-center border-b border-border lg:flex",
+          isSidebarCollapsed ? "justify-center px-2 py-4" : "justify-between px-4 py-4"
         )}>
           <div className={cn("flex items-center gap-2 overflow-hidden", isSidebarCollapsed && "justify-center")}>
-            <Package size={16} className="text-gray-900 flex-shrink-0" />
+            <IconTile tone="brand" className="size-8 rounded-xl"><Package size={14} className="shrink-0" /></IconTile>
             {!isSidebarCollapsed && (
-              <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">R&D AI</span>
+              <span className="whitespace-nowrap text-sm font-semibold text-ink">R&D AI</span>
             )}
           </div>
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className="p-1 hover:bg-gray-100 rounded transition-colors flex-shrink-0 text-gray-400 hover:text-gray-600"
+            className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-subtle hover:text-ink"
             aria-label="Toggle sidebar"
           >
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -168,7 +169,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
 
         {/* Nav Links */}
         <nav className={cn("flex-1 overflow-y-auto mt-12 lg:mt-0", isSidebarCollapsed ? "px-1 py-2" : "px-2 py-2")}>
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {navigationItems.map((item: any, index: number) => {
               if (item.adminOnly && user?.role !== "admin") return null;
 
@@ -176,7 +177,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                 if (isSidebarCollapsed) return null;
                 return (
                   <div key={`section-${index}`} className={`px-2 pb-1 ${index > 0 ? 'pt-3' : 'pt-1'}`}>
-                    <h3 className="text-2xs font-medium text-gray-400 uppercase tracking-widest">{item.label}</h3>
+                    <h3 className="text-2xs font-semibold uppercase tracking-[0.1em] text-muted">{item.label}</h3>
                   </div>
                 );
               }
@@ -185,7 +186,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                 if (isSidebarCollapsed) return null;
                 return (
                   <div key={`separator-${index}`} className="my-1.5 mx-2">
-                    <div className="border-t border-gray-100" />
+                    <div className="border-t border-border" />
                   </div>
                 );
               }
@@ -205,11 +206,11 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                         onClick={closeMobileMenu}
                         title={isSidebarCollapsed ? item.label : undefined}
                         className={cn(
-                          "flex-1 flex items-center gap-2 rounded-md text-xs font-medium transition-colors",
-                          isSidebarCollapsed ? "px-2 py-2 justify-center" : "px-2 py-1.5",
+                          "flex flex-1 items-center gap-2 rounded-xl text-sm font-medium transition-colors",
+                          isSidebarCollapsed ? "justify-center px-2 py-2" : "px-3 py-2.5",
                           isActive
-                            ? "bg-gray-100 text-gray-900"
-                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                            ? "bg-brand-soft text-ink"
+                            : "text-muted hover:bg-subtle hover:text-ink"
                         )}
                       >
                         <Icon size={15} className="flex-shrink-0" />
@@ -219,7 +220,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                       {is_ai_link && !isSidebarCollapsed && threads.length > 0 && (
                         <button
                           onClick={() => toggleDropdown(`threads-${item.href}`)}
-                          className="p-1 rounded hover:bg-gray-100 text-gray-300 hover:text-gray-500 transition-colors"
+                          className="rounded-full p-1.5 text-muted transition-colors hover:bg-subtle hover:text-ink"
                           aria-label="Toggle chat history"
                         >
                           <ChevronDown size={11} className={cn("transition-transform", is_thread_section_open && "rotate-180")} />
@@ -235,11 +236,11 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                             href={`${item.href}?thread=${thread.id}`}
                             onClick={closeMobileMenu}
                             title={thread.title}
-                            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors group"
+                            className="group flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs text-muted transition-colors hover:bg-subtle hover:text-ink"
                           >
                             <MessageSquare size={11} className="flex-shrink-0 opacity-40 group-hover:opacity-70" />
                             <span className="flex-1 min-w-0 truncate">{thread.title}</span>
-                            <span className="text-[9px] text-gray-300 flex-shrink-0 tabular-nums">
+                            <span className="shrink-0 text-2xs tabular-nums text-muted">
                               {format_thread_time(thread.lastMessageAt)}
                             </span>
                           </Link>
@@ -260,9 +261,9 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                       onClick={() => toggleDropdown(item.id)}
                       title={isSidebarCollapsed ? item.label : undefined}
                       className={cn(
-                        "w-full flex items-center gap-2 rounded-md text-xs font-medium transition-colors",
-                        isSidebarCollapsed ? "px-2 py-2 justify-center" : "px-2 py-1.5",
-                        hasActiveChild ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                        "flex w-full items-center gap-2 rounded-xl text-sm font-medium transition-colors",
+                        isSidebarCollapsed ? "justify-center px-2 py-2" : "px-3 py-2.5",
+                        hasActiveChild ? "bg-brand-soft text-ink" : "text-muted hover:bg-subtle hover:text-ink"
                       )}
                     >
                       <Icon size={15} className="flex-shrink-0" />
@@ -284,8 +285,8 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                               href={child.href}
                               onClick={closeMobileMenu}
                               className={cn(
-                                "flex items-center gap-2 px-2 py-1.5 rounded-md text-2xs font-medium transition-colors",
-                                isActive ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                                "flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-colors",
+                                isActive ? "bg-brand-soft text-ink" : "text-muted hover:bg-subtle hover:text-ink"
                               )}
                             >
                               <ChildIcon size={13} className="flex-shrink-0" />
@@ -308,30 +309,30 @@ export function Navigation({ children }: { children: React.ReactNode }) {
             legacy flow where Clerk components would throw. Collapsed sidebar
             hides it (the popover needs horizontal room). */}
         {clerk_enabled && !isSidebarCollapsed && (
-          <div className="px-2 py-2 border-t border-gray-200">
+          <div className="border-t border-border px-3 py-3">
             <OrgSwitcherPanel />
           </div>
         )}
 
         {/* User */}
         {user && organization && (
-          <div className="px-2 py-3 border-t border-gray-200">
+          <div className="border-t border-border px-3 py-4">
             {!isSidebarCollapsed ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 px-2">
-                  <div className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-2xs font-medium">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-brand-soft text-2xs font-semibold text-brand">
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-900 truncate">{user.name}</p>
-                    <p className="text-2xs text-gray-400 truncate">{user.email}</p>
+                    <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
+                    <p className="truncate text-xs text-muted">{user.email}</p>
                   </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={logout}
-                  className="w-full flex items-center justify-center gap-1.5 text-2xs text-gray-400 hover:text-red-600 hover:bg-red-50 h-6"
+                  className="h-8 w-full text-xs hover:text-red-700 hover:bg-red-50"
                 >
                   <LogOut size={12} />
                   Sign out
@@ -339,7 +340,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
               </div>
             ) : (
               <div className="flex flex-col items-center gap-1.5">
-                <div className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-2xs font-medium">
+                <div className="flex size-8 items-center justify-center rounded-full bg-brand-soft text-2xs font-semibold text-brand">
                   {user.name.charAt(0).toUpperCase()}
                 </div>
                 <Button
@@ -347,7 +348,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
                   size="sm"
                   onClick={logout}
                   title="Sign out"
-                  className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 h-auto"
+                  className="h-auto p-1 text-muted hover:text-red-700 hover:bg-red-50"
                 >
                   <LogOut size={12} />
                 </Button>
@@ -358,7 +359,7 @@ export function Navigation({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto bg-[#f8f9fa] pt-12 lg:pt-0">
+      <div className="flex-1 overflow-auto bg-transparent pt-12 lg:pt-0">
         {children}
       </div>
     </div>

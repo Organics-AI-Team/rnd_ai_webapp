@@ -185,7 +185,11 @@ export async function with_request_principal(
       return error_response(401, "UNAUTHENTICATED", "Authentication is required.");
     }
     console.error("[route-guard] principal resolution failed:", error);
-    return error_response(401, "UNAUTHENTICATED", "Authentication is required.");
+    return error_response(
+      503,
+      "AUTH_SERVICE_UNAVAILABLE",
+      "Authentication could not be verified. Please retry.",
+    );
   }
 
   try {
@@ -203,7 +207,11 @@ export async function with_request_principal(
     try {
       body = await request.json();
     } catch {
-      body = null;
+      return error_response(
+        400,
+        "INVALID_JSON_BODY",
+        "The request body must contain valid JSON.",
+      );
     }
     const identity_field = find_identity_field(body);
     if (identity_field) {

@@ -1,7 +1,34 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, tenantProcedure, managerProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { legacy_organization_filter } from "./users";
+
+function escape_regex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parse_log_date(value: string, end_of_day: boolean): Date {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  if (!match) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Activity-log date is invalid." });
+  }
+  const [, day_text, month_text, year_text] = match;
+  const day = Number(day_text);
+  const month = Number(month_text);
+  const year = Number(year_text);
+  const date = new Date(
+    Date.UTC(year, month - 1, day, end_of_day ? 23 : 0, end_of_day ? 59 : 0, end_of_day ? 59 : 0, end_of_day ? 999 : 0),
+  );
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Activity-log date is invalid." });
+  }
+  return date;
+}
 
 /**
  * User activity log router. Log reads are analytics surfaces gated by
@@ -16,12 +43,12 @@ export const userLogsRouter = router({
   list: tenantProcedure("tenant:analytics:read")
     .input(
       z.object({
-        limit: z.number().int().positive().optional().default(100),
+        limit: z.number().int().min(1).max(200).optional().default(100),
         offset: z.number().int().min(0).optional().default(0),
-        userId: z.string().optional(), // Filter by specific user
-        activity: z.string().optional(), // Filter by activity type
-        startDate: z.string().optional(), // Filter by date range (DD/MM/YYYY)
-        endDate: z.string().optional(), // Filter by date range (DD/MM/YYYY)
+        userId: z.string().max(128).optional(), // Filter by specific user
+        activity: z.string().trim().min(1).max(100).optional(), // Filter by activity type
+        startDate: z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/).optional(),
+        endDate: z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/).optional(),
       }).optional()
     )
     .query(async ({ ctx, input }) => {
@@ -38,16 +65,16 @@ export const userLogsRouter = router({
       }
 
       if (input?.activity) {
-        filter.activity = { $regex: input.activity, $options: "i" };
+        filter.activity = { $regex: escape_regex(input.activity), $options: "i" };
       }
 
       if (input?.startDate || input?.endDate) {
-        filter.date = {};
+        filter.createdAt = {};
         if (input.startDate) {
-          filter.date.$gte = input.startDate;
+          filter.createdAt.$gte = parse_log_date(input.startDate, false);
         }
         if (input.endDate) {
-          filter.date.$lte = input.endDate;
+          filter.createdAt.$lte = parse_log_date(input.endDate, true);
         }
       }
 
@@ -80,7 +107,7 @@ export const userLogsRouter = router({
   myLogs: tenantProcedure("tenant:analytics:read")
     .input(
       z.object({
-        limit: z.number().int().positive().optional().default(50),
+        limit: z.number().int().min(1).max(200).optional().default(50),
       }).optional()
     )
     .query(async ({ ctx, input }) => {
@@ -111,8 +138,8 @@ export const userLogsRouter = router({
   summary: tenantProcedure("tenant:analytics:read")
     .input(
       z.object({
-        startDate: z.string().optional(), // DD/MM/YYYY
-        endDate: z.string().optional(), // DD/MM/YYYY
+        startDate: z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/).optional(),
+        endDate: z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/).optional(),
       }).optional()
     )
     .query(async ({ ctx, input }) => {
@@ -124,30 +151,34 @@ export const userLogsRouter = router({
       };
 
       if (input?.startDate || input?.endDate) {
-        filter.date = {};
+        filter.createdAt = {};
         if (input.startDate) {
-          filter.date.$gte = input.startDate;
+          filter.createdAt.$gte = parse_log_date(input.startDate, false);
         }
         if (input.endDate) {
-          filter.date.$lte = input.endDate;
+          filter.createdAt.$lte = parse_log_date(input.endDate, true);
         }
       }
 
-      // TODO(G2.6): move into a tenant repository
-      const logs = await db.collection("user_logs").find(filter).toArray();
-
-      // Group by activity
-      const activityCounts: Record<string, number> = {};
-      const userActivity: Record<string, number> = {};
-
-      logs.forEach((log) => {
-        activityCounts[log.activity] = (activityCounts[log.activity] || 0) + 1;
-        userActivity[log.userName || log.userId] =
-          (userActivity[log.userName || log.userId] || 0) + 1;
-      });
+      const [summary] = await db.collection("user_logs").aggregate([
+        { $match: filter },
+        {
+          $facet: {
+            total: [{ $count: "count" }],
+            activities: [{ $group: { _id: "$activity", count: { $sum: 1 } } }],
+            users: [{ $group: { _id: { $ifNull: ["$userName", "$userId"] }, count: { $sum: 1 } } }],
+          },
+        },
+      ]).toArray();
+      const activityCounts = Object.fromEntries(
+        (summary?.activities ?? []).map((entry) => [String(entry._id ?? ""), Number(entry.count)]),
+      );
+      const userActivity = Object.fromEntries(
+        (summary?.users ?? []).map((entry) => [String(entry._id ?? ""), Number(entry.count)]),
+      );
 
       return {
-        totalLogs: logs.length,
+        totalLogs: Number(summary?.total?.[0]?.count ?? 0),
         activityCounts,
         userActivity,
         mostActiveUser: Object.keys(userActivity).reduce((a, b) =>

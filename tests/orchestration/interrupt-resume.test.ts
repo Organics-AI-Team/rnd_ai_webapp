@@ -39,6 +39,15 @@ const THREAD_CONFIG = {
   configurable: { thread_id: build_checkpoint_thread_id("tenant_alpha", "thread_0001") },
 };
 
+describe("checkpoint identity", () => {
+  it("isolates concurrent runs even when they belong to the same conversation", () => {
+    const first = build_checkpoint_thread_id("tenant_alpha", "run_0001");
+    const second = build_checkpoint_thread_id("tenant_alpha", "run_0002");
+    expect(first).not.toBe(second);
+    expect(first).toBe(build_checkpoint_thread_id("tenant_alpha", "run_0001"));
+  });
+});
+
 /** A model that returns queued turns, then always finalizes. */
 class QueueModel implements ModelGateway {
   constructor(private readonly queue: ModelTurnV1[]) {}

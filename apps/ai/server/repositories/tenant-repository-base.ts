@@ -1,4 +1,10 @@
-import { ObjectId, type Collection, type Document, type WithId } from "mongodb";
+import {
+  ObjectId,
+  type ClientSession,
+  type Collection,
+  type Document,
+  type WithId,
+} from "mongodb";
 import type { Permission, TenantExecutionContext } from "@rnd-ai/shared-types";
 
 /**
@@ -151,8 +157,12 @@ export async function get_scoped_document(
   context: TenantExecutionContext,
   id: string,
   not_found_code: string,
+  session?: ClientSession,
 ): Promise<WithId<Document>> {
-  const document = await collection.findOne(scoped_id_filter(context, id, not_found_code));
+  const document = await collection.findOne(
+    scoped_id_filter(context, id, not_found_code),
+    { session },
+  );
   if (!document) throw new ResourceNotFoundError(not_found_code);
   return document;
 }
@@ -195,12 +205,13 @@ export async function update_scoped_document(
   not_found_code: string,
   patch: Record<string, unknown>,
   extra_filter: Document = {},
+  session?: ClientSession,
 ): Promise<WithId<Document>> {
   assert_no_security_fields(patch);
   const updated = await collection.findOneAndUpdate(
     { ...scoped_id_filter(context, id, not_found_code), ...extra_filter },
     { $set: { ...patch, updatedAt: new Date() } },
-    { returnDocument: "after" },
+    { returnDocument: "after", session },
   );
   if (!updated) throw new ResourceNotFoundError(not_found_code);
   return updated;
@@ -220,8 +231,9 @@ export async function delete_scoped_document(
   context: TenantExecutionContext,
   id: string,
   not_found_code: string,
+  session?: ClientSession,
 ): Promise<void> {
-  const result = await collection.deleteOne(scoped_id_filter(context, id, not_found_code));
+  const result = await collection.deleteOne(scoped_id_filter(context, id, not_found_code), { session });
   if (result.deletedCount === 0) throw new ResourceNotFoundError(not_found_code);
 }
 
@@ -248,6 +260,7 @@ export async function insert_scoped_document(
   context: TenantExecutionContext,
   input: Record<string, unknown>,
   ownership: OwnershipStamp = "actor",
+  session?: ClientSession,
 ): Promise<WithId<Document>> {
   assert_no_security_fields(input);
   const now = new Date();
@@ -263,6 +276,6 @@ export async function insert_scoped_document(
   if (ownership === "owner" || ownership === "both") {
     document.ownerProfileId = context.actor_profile_id;
   }
-  const result = await collection.insertOne(document);
+  const result = await collection.insertOne(document, { session });
   return { _id: result.insertedId, ...document } as WithId<Document>;
 }

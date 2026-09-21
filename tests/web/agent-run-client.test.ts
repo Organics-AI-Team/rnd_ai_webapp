@@ -330,5 +330,78 @@ describe("create_agent_run_client", () => {
       operation: "stream",
       retryable: true,
     }));
+    stream_client.cancel_stream();
+  });
+
+  it("reconnects from the last validated sequence and stops after a terminal event", async () => {
+    vi.useFakeTimers();
+    try {
+      const first_source = new FakeEventSource();
+      const second_source = new FakeEventSource();
+      const sources = [first_source, second_source];
+      const create_event_source = vi.fn(() => sources.shift()!);
+      const on_event = vi.fn();
+      const client = create_agent_run_client({
+        fetch: vi.fn(async () => accepted()),
+        create_event_source,
+        create_idempotency_key: () => "create-key-123456",
+      });
+
+      await client.start_run(
+        {
+          thread_id: "thread_1",
+          agent_key: "raw_material_research",
+          message: "Find a gentle surfactant.",
+          attachment_source_ids: [],
+          response_preferences: { language: "en", detail: "standard" },
+        },
+        { on_event },
+      );
+      first_source.emit("stage.changed", event(4, "stage.changed"));
+      first_source.emit("error", {});
+      expect(first_source.close).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(create_event_source).toHaveBeenLastCalledWith(
+        "/api/ai/runs/run_1/events?last_event_id=4",
+        { withCredentials: true },
+      );
+
+      second_source.emit("run.completed", event(5, "run.completed"));
+      expect(on_event.mock.calls.map(([value]) => value.sequence)).toEqual([4, 5]);
+      expect(second_source.close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not reopen a disconnected stream after explicit cancellation", async () => {
+    vi.useFakeTimers();
+    try {
+      const source = new FakeEventSource();
+      const create_event_source = vi.fn(() => source);
+      const client = create_agent_run_client({
+        fetch: vi.fn(async () => accepted()),
+        create_event_source,
+        create_idempotency_key: () => "create-key-123456",
+      });
+      await client.start_run(
+        {
+          thread_id: "thread_1",
+          agent_key: "sales_rnd",
+          message: "Analyze this market.",
+          attachment_source_ids: [],
+          response_preferences: { language: "en", detail: "standard" },
+        },
+        { on_event: vi.fn() },
+      );
+
+      source.emit("error", {});
+      client.cancel_stream();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(create_event_source).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -34,6 +34,12 @@ function to_number(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+/** Convert a formula artifact mass/volume into the editor's base g/ml value. */
+function to_editor_amount(value: unknown, unit: unknown, fallback: number): number {
+  const amount = to_number(value, fallback);
+  return unit === "kg" || unit === "L" ? amount * 1_000 : amount;
+}
+
 /**
  * Map a formula artifact payload into the FormulaForm state shape.
  *
@@ -61,9 +67,15 @@ export function formula_artifact_to_form_state(content: unknown): FormulaFormSta
         // picker — rm_code is the honest placeholder.
         productName: rm_code,
         inci_name: "",
-        amount: to_number(ingredient.amount, 0),
+        // The formula editor stores masses in g and liquid volumes in ml.
+        // Artifacts can legitimately use kg/L, so keeping the literal decimal
+        // here would make a 1 kg batch appear as 1 g in the editable draft.
+        amount: to_editor_amount(ingredient.amount, ingredient.unit, 0),
         percentage: to_number(ingredient.percentage, 0),
-        notes: typeof ingredient.rationale === "string" ? ingredient.rationale : "",
+        notes: [
+          typeof ingredient.phase === "string" ? `Phase ${ingredient.phase}` : "",
+          typeof ingredient.rationale === "string" ? ingredient.rationale : "",
+        ].filter(Boolean).join(" — "),
       },
     ];
   });
@@ -78,7 +90,7 @@ export function formula_artifact_to_form_state(content: unknown): FormulaFormSta
         ? [(claim as { text: string }).text]
         : [],
     ),
-    totalAmount: to_number(artifact.batch_size, 100) || 100,
+    totalAmount: to_editor_amount(artifact.batch_size, artifact.batch_unit, 100) || 100,
     remarks: warnings.join("\n"),
     ingredients,
   };

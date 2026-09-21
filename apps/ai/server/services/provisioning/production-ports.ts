@@ -167,9 +167,17 @@ export function create_production_provisioning_ports(
           return { id: tenant.clerk_organization_id };
         }
         try {
-          const existing = await clerk.organizations
-            .getOrganization({ slug: tenant.slug })
-            .catch(() => null);
+          let existing;
+          try {
+            existing = await clerk.organizations.getOrganization({ slug: tenant.slug });
+          } catch (error) {
+            if ((error as { status?: number }).status !== 404) {
+              throw new ClerkStateUnprovableError(
+                error instanceof Error ? error.message : "clerk organization lookup failed",
+              );
+            }
+            existing = null;
+          }
           if (existing) return { id: existing.id };
           const created = await clerk.organizations.createOrganization({
             name: tenant.name,

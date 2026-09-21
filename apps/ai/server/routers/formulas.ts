@@ -11,6 +11,8 @@ import { TRPCError } from "@trpc/server";
 import type { Document, WithId } from "mongodb";
 import type { Formula } from "@/lib/types";
 import { router, tenantProcedure, throw_from_repository_error } from "../trpc";
+import client_promise from "@rnd-ai/shared-database";
+import { allocate_tenant_sequence } from "../services/tenant-sequence";
 
 /** Legacy response shape for one formula: full document, string _id. */
 type SerializedFormula = Omit<Formula, "_id"> & { _id: string };
@@ -21,7 +23,9 @@ const ingredient_schema = z.object({
   rm_code: z.string(),
   productName: z.string(),
   inci_name: z.string().optional(),
-  amount: z.number().positive(),
+  // Draft artifacts may intentionally carry a 0% placeholder pending human
+  // resolution; confirmation validation remains the authoritative quality gate.
+  amount: z.number().nonnegative(),
   percentage: z.number().min(0).max(100).optional(),
   notes: z.string().optional(),
 });
@@ -64,7 +68,46 @@ function format_version_label(version: number): string {
  * @returns The same document with _id stringified.
  */
 function serialize_formula(formula: WithId<Document>): SerializedFormula {
-  return { ...formula, _id: formula._id.toString() } as SerializedFormula;
+  const source = formula as Record<string, unknown>;
+  const imported_lines = Array.isArray(source.lines) ? source.lines : [];
+  const status_aliases: Record<string, string> = {
+    "0": "draft",
+    "1": "approved",
+  };
+  return {
+    ...formula,
+    _id: formula._id.toString(),
+    formulaCode:
+      source.formulaCode
+      ?? (source.rd_formula_id ? `RD-${String(source.rd_formula_id)}` : ""),
+    formulaName: source.formulaName ?? source.name ?? "Untitled formula",
+    client: source.client ?? "",
+    targetBenefits: Array.isArray(source.targetBenefits) ? source.targetBenefits : [],
+    ingredients: Array.isArray(source.ingredients)
+      ? source.ingredients
+      : imported_lines.map((line) => {
+          const item = line as Record<string, unknown>;
+          return {
+            materialId: "",
+            rm_code: String(item.rm_code ?? ""),
+            productName: String(item.rm_code ?? item.inci_name ?? ""),
+            inci_name: String(item.inci_name ?? ""),
+            amount: Number(item.amount ?? 0),
+            percentage: Number(item.percentage ?? 0),
+            notes: "",
+          };
+        }),
+    totalAmount: Number(
+      source.totalAmount
+      ?? imported_lines.reduce(
+        (sum, line) => sum + Number((line as Record<string, unknown>).amount ?? 0),
+        0,
+      )
+      ?? 0,
+    ),
+    remarks: source.remarks ?? "",
+    status: status_aliases[String(source.status ?? "")] ?? source.status ?? "draft",
+  } as SerializedFormula;
 }
 
 /**
@@ -158,7 +201,14 @@ export const formulasRouter = router({
       const maxNumber = await ctx.repositories.formulas.get_max_formula_code_number(
         ctx.tenant_context,
       );
-      const formulaCode = format_next_formula_code(maxNumber);
+      const client = await client_promise;
+      const allocated_number = await allocate_tenant_sequence(
+        client.db(),
+        ctx.tenant_context.tenant_id,
+        "formula_code",
+        maxNumber,
+      );
+      const formulaCode = `F${String(allocated_number).padStart(6, "0")}`;
 
       const created = await ctx.repositories.formulas.create_formula(
         ctx.tenant_context,
@@ -281,8 +331,9 @@ export const formulasRouter = router({
   confirm: tenantProcedure("formula:confirm")
     .input(
       z.object({
-        id: z.string(),
-        remarks: z.string().optional(),
+        id: z.string().regex(/^[a-f\d]{24}$/i),
+        remarks: z.string().trim().max(2_000).optional(),
+        idempotencyKey: z.string().uuid(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -302,16 +353,33 @@ export const formulasRouter = router({
         throw_from_repository_error(error);
       }
 
-      if (formula.status !== "draft") {
+      const is_legacy_draft = formula.status === "0";
+      const is_replay = formula.status === "confirmed";
+      if (formula.status !== "draft" && !is_legacy_draft && !is_replay) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Cannot confirm — formula is currently "${formula.status}", must be "draft"`,
         });
       }
 
-      // Calculate next version: current confirmed version + 1.
-      const previous_version = formula.version || 0;
-      const next_version = previous_version + 1;
+      if (is_replay) {
+        const confirmation_log = await ctx.repositories.formulas.get_confirmation_log(
+          ctx.tenant_context,
+          input.id,
+          input.idempotencyKey,
+        );
+        if (!confirmation_log) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This formula has already been confirmed.",
+          });
+        }
+      }
+
+      // Replays use the version already written by the original request;
+      // first attempts advance from the current draft version.
+      const next_version = is_replay ? Number(formula.version || 1) : Number(formula.version || 0) + 1;
+      const previous_version = is_replay ? Math.max(0, next_version - 1) : Number(formula.version || 0);
       const version_label = format_version_label(next_version);
       const actor_name = ctx.user.name || "Unknown";
 
@@ -321,7 +389,7 @@ export const formulasRouter = router({
         await ctx.repositories.formulas.confirm_formula(
           ctx.tenant_context,
           input.id,
-          `confirm:${input.id}:${version_label}`,
+          input.idempotencyKey,
           {
             confirmed_version: next_version,
             log_fields: {
@@ -350,6 +418,7 @@ export const formulasRouter = router({
             commentType: "version_update",
             parentCommentId: null,
             metadata: { version: next_version, changeType: "confirmed" },
+            idempotencyKey: `formula-confirm-comment:${input.idempotencyKey}`,
           },
         );
       } catch (error) {
@@ -361,6 +430,7 @@ export const formulasRouter = router({
         resource_type: "formula",
         resource_id: input.id,
         metadata: { actor_name, version: next_version },
+        idempotency_key: `formula-confirm-audit:${input.idempotencyKey}`,
       });
 
       console.log("[formulas] confirm — done", {
@@ -372,6 +442,7 @@ export const formulasRouter = router({
         success: true,
         version: next_version,
         versionLabel: version_label,
+        alreadyConfirmed: is_replay,
       };
     }),
 });

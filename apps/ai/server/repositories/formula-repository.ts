@@ -20,6 +20,11 @@ const COMMENT_NOT_FOUND = "FORMULA_COMMENT_NOT_FOUND";
 /** Statuses a manager review queue surfaces (plan: "testing"/review). */
 const REVIEW_STATUSES = ["testing", "review"] as const;
 
+function is_duplicate_key_error(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error
+    && (error as { code?: unknown }).code === 11_000;
+}
+
 /**
  * Optional enrichment applied atomically during confirm_formula. Lets the
  * router record the legacy display fields (version, changeType, snapshot,
@@ -94,6 +99,11 @@ export interface FormulaRepository {
     formula_id: string,
   ): Promise<WithId<Document>[]>;
   list_review_queue(context: TenantExecutionContext): Promise<WithId<Document>[]>;
+  get_confirmation_log(
+    context: TenantExecutionContext,
+    formula_id: string,
+    idempotency_key: string,
+  ): Promise<WithId<Document> | null>;
   confirm_formula(
     context: TenantExecutionContext,
     formula_id: string,
@@ -152,23 +162,50 @@ export function create_formula_repository(db: Db): FormulaRepository {
 
     async update_own_draft(context, formula_id, patch) {
       return update_scoped_document(formulas, context, formula_id, NOT_FOUND, patch, {
-        status: "draft",
+        status: { $in: ["draft", "0"] },
         ownerProfileId: context.actor_profile_id,
       });
     },
 
     async delete_formula(context, formula_id) {
-      return delete_scoped_document(formulas, context, formula_id, NOT_FOUND);
+      const result = await formulas.deleteOne({
+        ...scoped_id_filter(context, formula_id, NOT_FOUND),
+        status: { $in: ["draft", "0"] },
+        ownerProfileId: context.actor_profile_id,
+      });
+      if (result.deletedCount === 0) throw new ResourceNotFoundError(NOT_FOUND);
     },
 
     async add_comment(context, formula_id, input) {
       const parent = await get_scoped_parent(context, formula_id);
-      return insert_scoped_document(
-        formula_comments,
-        context,
-        { ...input, formulaId: String(parent._id) },
-        "actor",
-      );
+      const idempotency_key = typeof input.idempotencyKey === "string"
+        ? input.idempotencyKey
+        : null;
+      const idempotency_filter = idempotency_key
+        ? {
+            ...tenant_scope(context),
+            formulaId: String(parent._id),
+            idempotencyKey: idempotency_key,
+          }
+        : null;
+      if (idempotency_filter) {
+        const existing = await formula_comments.findOne(idempotency_filter);
+        if (existing) return existing;
+      }
+
+      try {
+        return await insert_scoped_document(
+          formula_comments,
+          context,
+          { ...input, formulaId: String(parent._id) },
+          "actor",
+        );
+      } catch (error) {
+        if (!idempotency_filter || !is_duplicate_key_error(error)) throw error;
+        const existing = await formula_comments.findOne(idempotency_filter);
+        if (!existing) throw error;
+        return existing;
+      }
     },
 
     async list_comments(context, formula_id) {
@@ -263,10 +300,13 @@ export function create_formula_repository(db: Db): FormulaRepository {
     async get_max_formula_code_number(context) {
       const scope = tenant_scope(context);
       const total_count = await formulas.countDocuments(scope);
-      const latest = await formulas.find(scope).sort({ _id: -1 }).limit(1).toArray();
       let max_number = total_count;
-      if (latest.length > 0 && latest[0].formulaCode) {
-        const match = String(latest[0].formulaCode).match(/(\d+)/);
+      const coded = await formulas
+        .find({ ...scope, formulaCode: { $type: "string" } })
+        .project({ formulaCode: 1 })
+        .toArray();
+      for (const formula of coded) {
+        const match = String(formula.formulaCode).match(/(\d+)/);
         if (match) {
           max_number = Math.max(max_number, parseInt(match[1], 10));
         }
@@ -298,6 +338,16 @@ export function create_formula_repository(db: Db): FormulaRepository {
       });
     },
 
+    async get_confirmation_log(context, formula_id, idempotency_key) {
+      const parent = await get_scoped_parent(context, formula_id);
+      return formula_version_logs.findOne({
+        ...tenant_scope(context),
+        formulaId: String(parent._id),
+        action: "confirm",
+        idempotencyKey: idempotency_key,
+      });
+    },
+
     async confirm_formula(context, formula_id, idempotency_key, options) {
       require_permission(context, "formula:confirm");
       const filter = scoped_id_filter(context, formula_id, NOT_FOUND);
@@ -317,23 +367,29 @@ export function create_formula_repository(db: Db): FormulaRepository {
         action: "confirm",
         idempotencyKey: idempotency_key,
       };
-      const existing_log = await formula_version_logs.findOne(log_identity);
-      if (existing_log && existing_log.writeState === "complete") {
-        return formula;
-      }
+      let existing_log = await formula_version_logs.findOne(log_identity);
       if (!existing_log) {
         if (options?.log_fields) assert_no_security_fields(options.log_fields);
         // Caller display fields are spread FIRST so the identity/bookkeeping
         // fields below can never be overridden by router-supplied values.
-        await formula_version_logs.insertOne({
-          ...(options?.log_fields ?? {}),
-          ...log_identity,
-          actorProfileId: context.actor_profile_id,
-          previousStatus: formula.status ?? null,
-          writeState: "pending",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
+        try {
+          await formula_version_logs.insertOne({
+            ...(options?.log_fields ?? {}),
+            ...log_identity,
+            actorProfileId: context.actor_profile_id,
+            previousStatus: formula.status ?? null,
+            writeState: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } catch (error) {
+          if (!is_duplicate_key_error(error)) throw error;
+          existing_log = await formula_version_logs.findOne(log_identity);
+          if (!existing_log) throw error;
+        }
+      }
+      if (existing_log?.writeState === "complete") {
+        return formula;
       }
 
       const confirmed = await formulas.findOneAndUpdate(

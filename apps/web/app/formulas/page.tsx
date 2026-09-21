@@ -21,7 +21,7 @@ import {
   Beaker, Search, Eye, Edit, Trash2, Sparkles, GitBranch, CheckCircle,
   X, Plus, Save, Wand2,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAgentRun } from "@/hooks/use_agent_run";
 import { AiRunView } from "@/components/ai";
 import { FormulaComments } from "@/components/formula-comments";
@@ -81,6 +81,8 @@ export default function FormulasPage() {
   const [showAiSuggest, setShowAiSuggest] = useState(false);
   const [aiBrief, setAiBrief] = useState("");
   const [aiRunStarted, setAiRunStarted] = useState(false);
+  const [aiRefreshError, setAiRefreshError] = useState<string | null>(null);
+  const confirmation_keys = useRef(new Map<string, string>());
   const agent_run = useAgentRun();
   const aiLoading = agent_run.is_starting || agent_run.is_streaming;
 
@@ -177,27 +179,34 @@ export default function FormulasPage() {
   const handleSaveEdit = async () => {
     if (!panelFormula) return;
     console.log("[formulas] handleSaveEdit", { id: panelFormula._id });
-    await updateFormula.mutateAsync({
-      id: panelFormula._id,
-      formulaName: editName,
-      client: editClient,
-      targetBenefits: editBenefits,
-      ingredients: editIngredients.map((ing) => ({
-        ...ing,
-        amount: Number(ing.amount),
-        percentage: ing.percentage ? Number(ing.percentage) : undefined,
-      })),
-      totalAmount: editTotalAmount,
-      remarks: editRemarks,
-      status: editStatus as any,
-    });
+    try {
+      await updateFormula.mutateAsync({
+        id: panelFormula._id,
+        formulaName: editName,
+        client: editClient,
+        targetBenefits: editBenefits,
+        ingredients: editIngredients.map((ing) => ({
+          ...ing,
+          amount: Number(ing.amount),
+          percentage: ing.percentage ? Number(ing.percentage) : undefined,
+        })),
+        totalAmount: editTotalAmount,
+        remarks: editRemarks,
+        status: editStatus as any,
+      });
+    } catch (error) {
+      console.error("[formulas] handleSaveEdit — error", error);
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
     if (confirm(`Delete "${name}"?`)) {
-      try { await deleteFormula.mutateAsync({ id }); }
-      catch (e: any) { console.error("[formulas] handleDelete — error", e); }
-      if (panelFormula?._id === id) closePanel();
+      try {
+        await deleteFormula.mutateAsync({ id });
+        if (panelFormula?._id === id) closePanel();
+      } catch (e: any) {
+        console.error("[formulas] handleDelete — error", e);
+      }
     }
   };
 
@@ -205,7 +214,12 @@ export default function FormulasPage() {
     console.log("[formulas] handleConfirm", { id, name });
     const remarks = prompt(`Confirm "${name}" as next version?\n\nOptional remarks:`);
     if (remarks !== null) {
-      try { await confirmFormula.mutateAsync({ id, remarks: remarks || undefined }); }
+      const idempotencyKey = confirmation_keys.current.get(id) ?? crypto.randomUUID();
+      confirmation_keys.current.set(id, idempotencyKey);
+      try {
+        await confirmFormula.mutateAsync({ id, remarks: remarks || undefined, idempotencyKey });
+        confirmation_keys.current.delete(id);
+      }
       catch (e: any) { console.error("[formulas] handleConfirm — error", e); }
     }
   };
@@ -256,18 +270,25 @@ export default function FormulasPage() {
     if (!aiRunStarted || agent_run.state.status !== "completed") return;
     console.log("[formulas] governed run completed — refreshing list");
     let cancelled = false;
-    void utils.formulas.list.fetch().then((refreshed) => {
-      if (cancelled || !refreshed) return;
-      const newest_draft = refreshed.find((f: any) => f.status === "draft" && f.aiGenerated);
-      if (newest_draft) {
-        console.log("[formulas] auto-opening committed draft", { id: newest_draft._id });
-        openPanel(newest_draft, "view");
-        setShowAiSuggest(false);
-        setAiRunStarted(false);
-        setAiBrief("");
-        agent_run.reset_run();
-      }
-    });
+    setAiRefreshError(null);
+    void utils.formulas.list.fetch()
+      .then((refreshed) => {
+        if (cancelled || !refreshed) return;
+        const newest_draft = refreshed.find((f: any) => f.status === "draft" && f.aiGenerated);
+        if (newest_draft) {
+          console.log("[formulas] auto-opening committed draft", { id: newest_draft._id });
+          openPanel(newest_draft, "view");
+          setShowAiSuggest(false);
+          setAiRunStarted(false);
+          setAiBrief("");
+          agent_run.reset_run();
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        console.error("[formulas] completed-run refresh failed");
+        setAiRefreshError("The AI run finished, but the formula list could not be refreshed. Please retry.");
+      });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiRunStarted, agent_run.state.status]);
@@ -762,6 +783,11 @@ export default function FormulasPage() {
                   on_cancel_stream={agent_run.cancel_stream}
                 />
               </div>
+            )}
+            {aiRefreshError && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                {aiRefreshError}
+              </p>
             )}
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={closeAiSuggest} className="h-8 text-[12px]">

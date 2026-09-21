@@ -1,4 +1,4 @@
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { MongoClient, type Db, type WithId, type Document } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -20,7 +20,7 @@ import { create_conversation_repository } from "../../apps/ai/server/repositorie
 import { create_feedback_repository } from "../../apps/ai/server/repositories/feedback-repository";
 import { create_audit_log_repository } from "../../apps/ai/server/repositories/audit-log-repository";
 
-let server: MongoMemoryServer;
+let server: MongoMemoryReplSet;
 let client: MongoClient;
 let db: Db;
 
@@ -213,7 +213,7 @@ const crud_specs: readonly CrudSpec[] = [
 ];
 
 beforeAll(async () => {
-  server = await MongoMemoryServer.create();
+  server = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   client = new MongoClient(server.getUri());
   await client.connect();
   db = client.db("tenant_repositories_test");
@@ -385,6 +385,61 @@ describe("chat threads and messages", () => {
     expect(same_tenant_error).toMatchObject({ code: "THREAD_NOT_FOUND" });
     expect(error_shape(cross_tenant_error)).toEqual(error_shape(same_tenant_error));
   });
+
+  it("atomically appends owned thread messages and increments their counters", async () => {
+    const thread = await conversations.create_thread(a_user(), {
+      title: "Atomic",
+      messageCount: 0,
+      lastMessageAt: new Date(),
+    });
+    const thread_id = String(thread._id);
+
+    await expect(
+      conversations.append_thread_message(a_user_2(), thread_id, { content: "forbidden" }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+    await expect(conversations.append_thread_message(a_user(), thread_id, { content: "saved" }))
+      .resolves.toMatchObject({ content: "saved", tenantId: TENANT_A });
+
+    await expect(conversations.list_thread_messages(a_user(), thread_id, { limit: 10 }))
+      .resolves.toHaveLength(1);
+    await expect(conversations.get_thread(a_user(), thread_id)).resolves.toMatchObject({
+      messageCount: 1,
+    });
+  });
+});
+
+describe("feedback submission", () => {
+  it("commits the feedback row, response rollup, and analytics event together", async () => {
+    const created = await feedback.submit_feedback(
+      a_user(),
+      {
+        responseId: "run-answer-1",
+        score: 5,
+        type: "helpful",
+        timestamp: new Date(),
+        processed: false,
+      },
+      {
+        type: "feedback_submitted",
+        responseId: "run-answer-1",
+        score: 5,
+        timestamp: new Date(),
+      },
+    );
+
+    await expect(db.collection("feedback").findOne({ _id: created._id })).resolves.toMatchObject({
+      tenantId: TENANT_A,
+      actorProfileId: PROFILE_A_USER,
+    });
+    await expect(db.collection("ai_responses").findOne({
+      tenantId: TENANT_A,
+      id: "run-answer-1",
+    })).resolves.toMatchObject({ totalFeedback: 1, averageScore: 5 });
+    await expect(db.collection("feedback_analytics").findOne({
+      tenantId: TENANT_A,
+      responseId: "run-answer-1",
+    })).resolves.toMatchObject({ actorProfileId: PROFILE_A_USER });
+  });
 });
 
 describe("owner-only draft updates", () => {
@@ -406,6 +461,36 @@ describe("owner-only draft updates", () => {
     await expect(
       formulas.update_own_draft(a_user(), id, { name: "Too late" }),
     ).rejects.toMatchObject({ code: "FORMULA_NOT_FOUND" });
+
+    const deletable = await formulas.create_formula(a_user(), { name: "Delete mine" });
+    const deletable_id = String(deletable._id);
+    await expect(formulas.delete_formula(a_user_2(), deletable_id)).rejects.toMatchObject({
+      code: "FORMULA_NOT_FOUND",
+    });
+    await expect(formulas.delete_formula(a_user(), deletable_id)).resolves.toBeUndefined();
+
+    const confirmed = await formulas.create_formula(a_user(), {
+      name: "Keep confirmed",
+      status: "confirmed",
+    });
+    await expect(formulas.delete_formula(a_user(), String(confirmed._id))).rejects.toMatchObject({
+      code: "FORMULA_NOT_FOUND",
+    });
+  });
+});
+
+describe("owner-only calculation writes", () => {
+  it("does not let a tenant peer update or delete another actor's calculation", async () => {
+    const calculation = await calculations.create_calculation(a_user(), { name: "Mine" });
+    const calculation_id = String(calculation._id);
+
+    await expect(
+      calculations.update_calculation(a_user_2(), calculation_id, { name: "Hijack" }),
+    ).rejects.toMatchObject({ code: "CALCULATION_NOT_FOUND" });
+    await expect(calculations.delete_calculation(a_user_2(), calculation_id)).rejects.toMatchObject({
+      code: "CALCULATION_NOT_FOUND",
+    });
+    await expect(calculations.delete_calculation(a_user(), calculation_id)).resolves.toBeUndefined();
   });
 });
 

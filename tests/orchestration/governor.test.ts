@@ -69,6 +69,47 @@ function deny_with(reason_code: string, fatal: boolean) {
 }
 
 describe("gate node", () => {
+  it("authorizes and executes a read-only batch while refusing write tools", async () => {
+    const { runtime, tools } = make_fake_runtime({
+      tools: new FakeToolExecutor([
+        make_tool_definition("knowledge.search"),
+        make_tool_definition("material.search"),
+        make_tool_definition("formula.draft", { side_effect: "draft" }),
+      ]),
+    });
+    const read_actions = [
+      make_pending_tool_action("knowledge.search", { query: "a" }),
+      make_pending_tool_action("material.search", { query: "b" }),
+    ];
+    const read_state = make_loop_state({
+      iteration: 1,
+      pending_action: { kind: "tool_batch", actions: read_actions },
+      decision_log: [],
+    });
+    const allowed = (await gate(read_state, runtime)) as Command;
+    expect(goto_targets(allowed)).toEqual(["act"]);
+    const update = await act(read_state, runtime);
+    expect(tools.executions.map((execution) => execution.tool_name).sort()).toEqual([
+      "knowledge.search",
+      "material.search",
+    ]);
+    expect(update.action_results).toHaveLength(2);
+    expect(update.usage).toMatchObject({ tool_calls: 2 });
+    const sequences = (update.events ?? []).map((event) => event.sequence);
+    expect(sequences).toEqual(sequences.map((_, index) => index));
+
+    const write_item = make_pending_tool_action("formula.draft", { name: "x" });
+    const refused = (await gate(make_loop_state({
+      iteration: 1,
+      pending_action: {
+        kind: "tool_batch",
+        actions: [read_actions[0]!, write_item],
+      },
+      decision_log: [],
+    }), runtime)) as Command;
+    expect(goto_targets(refused)).toEqual(["agent"]);
+  });
+
   it.each([
     ["POLICY_TOOL_NOT_ALLOWED"],
     ["POLICY_PERMISSION_MISSING"],

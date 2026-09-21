@@ -11,6 +11,7 @@ const inter = Inter({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
   display: "swap",
+  variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
@@ -44,7 +45,7 @@ export default function RootLayout({
   );
   return (
     <html lang="th">
-      <body className={inter.className}>
+      <body className={inter.variable}>
         {/* ClerkProvider sits inside body (G1.1) and activates only when the
             deployment configures Clerk; the legacy flow renders otherwise
             until the G1.7 cutover. */}

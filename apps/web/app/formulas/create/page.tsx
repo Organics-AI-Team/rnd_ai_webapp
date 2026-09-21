@@ -40,7 +40,7 @@ function CreateFormulaPageContent() {
           </p>
           <Button
             onClick={() => router.push("/login")}
-            className="bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-[12px] h-8 px-3"
+            className="rounded-lg text-[12px] h-8 px-3"
           >
             ไปหน้าเข้าสู่ระบบ
           </Button>
@@ -60,7 +60,7 @@ function CreateFormulaPageContent() {
           </p>
           <Button
             onClick={() => router.push("/formulas")}
-            className="bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-[12px] h-8 px-3"
+            className="rounded-lg text-[12px] h-8 px-3"
           >
             ไปที่สูตรทั้งหมด
           </Button>

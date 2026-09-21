@@ -46,6 +46,7 @@ export const run_error_code_v1 = z.enum([
   "INPUT_INVALID",
   "ORCHESTRATOR_VERSION_UNSUPPORTED",
   "ORCHESTRATOR_INVARIANT_VIOLATION",
+  "RUNTIME_UNAVAILABLE",
   "PROVIDER_UNAVAILABLE",
 ]);
 export type RunErrorCodeV1 = z.infer<typeof run_error_code_v1>;
@@ -375,6 +376,8 @@ export const agent_run_event_v1_schema = z.discriminatedUnion("type", [
           tool_calls: z.number().int().min(0),
           tokens_used: z.number().int().min(0),
           cost_usd_used: z.string().regex(/^\d+(\.\d+)?$/),
+          /** Wall time spent awaiting provider turns in this reasoning node. */
+          model_latency_ms: z.number().int().min(0).optional(),
         })
         .strict(),
     })

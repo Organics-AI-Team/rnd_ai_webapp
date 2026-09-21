@@ -86,6 +86,35 @@ describe("Gemini model gateway", () => {
     expect(replay.tool_calls[0]?.call_id).toBe(first.tool_calls[0]?.call_id);
   });
 
+  it("preserves multiple provider calls for governed read-only batching", async () => {
+    const gateway = create_gemini_model_gateway({
+      api_key: "test-key",
+      model: "gemini-test",
+      input_price_microusd_per_million_tokens: 1n,
+      output_price_microusd_per_million_tokens: 1n,
+      client: {
+        async generate() {
+          return {
+            text: "Checking both sources.",
+            function_calls: [
+              { name: "tool_knowledge__search", args: { query: "first" } },
+              { name: "tool_knowledge__search", args: { query: "second" } },
+            ],
+            usage: { input_tokens: 2, output_tokens: 1 },
+          };
+        },
+      },
+    });
+
+    const turn = await gateway.complete_turn(request, context);
+    expect(turn.tool_calls).toHaveLength(2);
+    expect(turn.tool_calls.map((call) => call.arguments)).toEqual([
+      { query: "first" },
+      { query: "second" },
+    ]);
+    expect(turn.tool_calls[0]?.call_id).not.toBe(turn.tool_calls[1]?.call_id);
+  });
+
   it("surfaces only a safe provider error", async () => {
     const gateway = create_gemini_model_gateway({
       api_key: "secret-key-that-must-not-leak",

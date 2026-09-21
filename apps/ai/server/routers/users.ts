@@ -4,6 +4,7 @@ import { router, tenantProcedure, managerProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
 import { UserSchema } from "@/lib/types";
 import { ObjectId, type Db, type Document } from "mongodb";
+import { InsufficientCreditsError, mutate_credit_balance } from "../services/credit-ledger";
 
 /**
  * Build the tenant filter value for the legacy `organizationId` field.
@@ -39,7 +40,16 @@ export async function find_tenant_organization(
   tenant_id: string,
 ): Promise<Document | null> {
   if (!ObjectId.isValid(tenant_id)) return null;
-  // TODO(G2.6): move into a tenant repository
+  const tenant = await db.collection("tenants").findOne({
+    _id: new ObjectId(tenant_id),
+  });
+  if (tenant) {
+    return {
+      ...tenant,
+      credits: Number(tenant.creditBalance ?? tenant.credits ?? 0),
+      __creditAccountCollection: "tenants",
+    };
+  }
   return db.collection("organizations").findOne({ _id: new ObjectId(tenant_id) });
 }
 
@@ -80,11 +90,27 @@ async function require_same_tenant_user(
   const not_found = new TRPCError({ code: "NOT_FOUND", message: "User not found" });
   if (!ObjectId.isValid(user_id)) throw not_found;
   // TODO(G2.6): move into a tenant repository
-  const user = await db.collection("users").findOne({ _id: new ObjectId(user_id) });
-  if (!user || String(user.organizationId) !== tenant_id) {
-    throw not_found;
-  }
-  return user;
+  const user = await db.collection("users").findOne({
+    _id: new ObjectId(user_id),
+    organizationId: legacy_organization_filter(tenant_id),
+  });
+  if (user) return user;
+  const membership = await db.collection("tenant_membership_projections").findOne({
+    tenantId: tenant_id,
+    userProfileId: user_id,
+    status: { $ne: "revoked" },
+  });
+  if (!membership) throw not_found;
+  const profile = await db.collection("user_profiles").findOne({
+    _id: new ObjectId(user_id),
+  });
+  if (!profile) throw not_found;
+  return {
+    ...profile,
+    name: profile.displayName ?? profile.name ?? "",
+    email: profile.primaryEmail ?? profile.email ?? "",
+    organizationId: tenant_id,
+  };
 }
 
 /**
@@ -104,12 +130,29 @@ export const usersRouter = router({
     const tenant_id = ctx.tenant_context.tenant_id;
 
     // TODO(G2.6): move into a tenant repository
-    const users = await db
+    const legacy_users = await db
       .collection("users")
       .find({ organizationId: legacy_organization_filter(tenant_id) })
       .sort({ createdAt: -1 })
       .toArray();
 
+    const memberships = await db
+      .collection("tenant_membership_projections")
+      .find({ tenantId: tenant_id, status: { $ne: "revoked" } })
+      .toArray();
+    const profile_ids = memberships
+      .map((membership) => String(membership.userProfileId))
+      .filter(ObjectId.isValid)
+      .map((id) => new ObjectId(id));
+    const profiles = profile_ids.length > 0
+      ? await db.collection("user_profiles").find({ _id: { $in: profile_ids } }).toArray()
+      : [];
+    const modern_users = profiles.map((profile) => ({
+      ...profile,
+      name: profile.displayName ?? profile.name ?? "",
+      email: profile.primaryEmail ?? profile.email ?? "",
+    }));
+    const users = modern_users.length > 0 ? modern_users : legacy_users;
     const organization = await find_tenant_organization(db, tenant_id);
 
     return users.map((user) => ({
@@ -195,44 +238,29 @@ export const usersRouter = router({
       const user = await require_same_tenant_user(db, input.userId, tenant_id);
       const organization = await require_tenant_organization(db, tenant_id);
 
-      const balanceBefore = organization.credits || 0;
-      const balanceAfter = balanceBefore + input.amount;
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("organizations").updateOne(
-        { _id: new ObjectId(tenant_id) },
-        {
-          $set: {
-            credits: balanceAfter,
-            updatedAt: new Date(),
-          },
-        }
-      );
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("credit_transactions").insertOne({
-        organizationId: tenant_id,
+      const result = await mutate_credit_balance(client, {
+        tenant_id,
+        type: "add",
+        amount: input.amount,
+        transaction: {
         organizationName: organization.name,
         userId: input.userId,
         userName: user.name,
         userEmail: user.email,
-        type: "add",
-        amount: input.amount,
-        balanceBefore,
-        balanceAfter,
         description: input.description,
         performedBy: ctx.tenant_context.actor_profile_id,
-        createdAt: new Date(),
+        },
       });
 
       return {
         success: true,
-        newBalance: balanceAfter,
+        newBalance: result.balance_after,
       };
     }),
 
   /**
-   * Deduct credits from a user in the caller's tenant. Manager only.
+   * Deduct credits from the tenant account, attributing the transaction to a
+   * user in that tenant. Manager only.
    */
   deductCredits: managerProcedure
     .input(
@@ -249,47 +277,33 @@ export const usersRouter = router({
       const tenant_id = ctx.tenant_context.tenant_id;
 
       const user = await require_same_tenant_user(db, input.userId, tenant_id);
-
-      const balanceBefore = user.credits || 0;
-      if (balanceBefore < input.amount) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "Insufficient credits",
-        });
-      }
-
-      const balanceAfter = balanceBefore - input.amount;
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("users").updateOne(
-        { _id: new ObjectId(input.userId) },
-        {
-          $set: {
-            credits: balanceAfter,
-            updatedAt: new Date(),
-          },
-        }
-      );
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("credit_transactions").insertOne({
+      const organization = await require_tenant_organization(db, tenant_id);
+      let result;
+      try {
+        result = await mutate_credit_balance(client, {
+          tenant_id,
+          type: "deduct",
+          amount: input.amount,
+          transaction: {
         userId: input.userId,
         userName: user.name,
         userEmail: user.email,
-        organizationId: tenant_id,
-        type: "deduct",
-        amount: input.amount,
-        balanceBefore,
-        balanceAfter,
+        organizationName: organization.name,
         description: input.description,
         orderId: input.orderId,
         performedBy: ctx.tenant_context.actor_profile_id,
-        createdAt: new Date(),
-      });
+          },
+        });
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Insufficient credits" });
+        }
+        throw error;
+      }
 
       return {
         success: true,
-        newBalance: balanceAfter,
+        newBalance: result.balance_after,
       };
     }),
 
@@ -313,40 +327,23 @@ export const usersRouter = router({
       const user = await require_same_tenant_user(db, input.userId, tenant_id);
       const organization = await require_tenant_organization(db, tenant_id);
 
-      const balanceBefore = organization.credits || 0;
-      const balanceAfter = input.newAmount;
-      const amount = balanceAfter - balanceBefore;
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("organizations").updateOne(
-        { _id: new ObjectId(tenant_id) },
-        {
-          $set: {
-            credits: balanceAfter,
-            updatedAt: new Date(),
-          },
-        }
-      );
-
-      // TODO(G2.6): move into a tenant repository
-      await db.collection("credit_transactions").insertOne({
-        organizationId: tenant_id,
+      const result = await mutate_credit_balance(client, {
+        tenant_id,
+        type: "adjust",
+        new_balance: input.newAmount,
+        transaction: {
         organizationName: organization.name,
         userId: input.userId,
         userName: user.name,
         userEmail: user.email,
-        type: "adjust",
-        amount,
-        balanceBefore,
-        balanceAfter,
         description: input.description,
         performedBy: ctx.tenant_context.actor_profile_id,
-        createdAt: new Date(),
+        },
       });
 
       return {
         success: true,
-        newBalance: balanceAfter,
+        newBalance: result.balance_after,
       };
     }),
 
@@ -362,7 +359,10 @@ export const usersRouter = router({
       // TODO(G2.6): move into a tenant repository
       const transactions = await db
         .collection("credit_transactions")
-        .find({ userId: input.userId })
+        .find({
+          userId: input.userId,
+          organizationId: legacy_organization_filter(ctx.tenant_context.tenant_id),
+        })
         .sort({ createdAt: -1 })
         .toArray();
       return transactions.map((transaction) => ({

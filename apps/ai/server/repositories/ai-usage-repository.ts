@@ -41,6 +41,12 @@ export const TERMINAL_RUN_STATUSES: readonly string[] = Object.freeze([
   "expired",
 ]);
 
+const NON_EXECUTING_RUN_STATUSES = new Set([
+  ...TERMINAL_RUN_STATUSES,
+  "waiting_clarification",
+  "waiting_approval",
+]);
+
 /**
  * Trusted per-run execution context for usage accounting. Never sourced from
  * model or client input.
@@ -238,10 +244,30 @@ export function create_ai_usage_repository(db: Db): AIUsageRepository {
       for (const doc of tenant_docs) {
         if (doc.kind === "release") reserved.delete(String(doc.runId));
       }
+      const reserved_run_ids = [...reserved];
+      const run_ids = reserved_run_ids
+        .filter((run_id) => ObjectId.isValid(run_id))
+        .map((run_id) => new ObjectId(run_id));
+      const run_filters: Document[] = [{ correlationId: { $in: reserved_run_ids } }];
+      if (run_ids.length > 0) run_filters.unshift({ _id: { $in: run_ids } });
+      const runs = await db
+        .collection(RUNS_COLLECTION)
+        .find({ $or: run_filters }, { ...opts, projection: { status: 1, correlationId: 1 } })
+        .toArray();
+      const status_by_run_id = new Map<string, string>();
+      for (const run of runs) {
+        const status = String(run.status ?? "");
+        status_by_run_id.set(String(run._id), status);
+        if (typeof run.correlationId === "string") {
+          status_by_run_id.set(run.correlationId, status);
+        }
+      }
       return {
         tenant: sum_effective(tenant_docs),
         actor: sum_effective(actor_docs),
-        active_runs: reserved.size,
+        active_runs: reserved_run_ids.filter(
+          (run_id) => !NON_EXECUTING_RUN_STATUSES.has(status_by_run_id.get(run_id) ?? ""),
+        ).length,
       };
     },
 

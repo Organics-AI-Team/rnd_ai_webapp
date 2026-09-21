@@ -14,14 +14,19 @@ export default function VectorIndexingPage() {
   const [batchSize, setBatchSize] = useState(50);
   const [startIndex, setStartIndex] = useState(0);
   const [isIndexing, setIsIndexing] = useState(false);
+  const [indexError, setIndexError] = useState<string | null>(null);
 
   const indexMutation = trpc.rag.indexRawMaterials.useMutation();
   const statsQuery = trpc.rag.getIndexStats.useQuery();
 
   const handleIndexBatch = async () => {
     setIsIndexing(true);
+    setIndexError(null);
     try {
       await indexMutation.mutateAsync({ batchSize, startIndex });
+    } catch (error) {
+      console.error("[vector-indexing] batch indexing failed", error);
+      setIndexError(error instanceof Error ? error.message : "Indexing could not be started. Please retry.");
     } finally {
       setIsIndexing(false);
     }
@@ -50,6 +55,12 @@ export default function VectorIndexingPage() {
           Index raw materials data into Qdrant vector database for semantic search
         </p>
       </div>
+
+      {(indexError || statsQuery.isError) && (
+        <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {indexError || statsQuery.error.message || "Index status could not be loaded. Please retry."}
+        </div>
+      )}
 
       {/* Indexing Status */}
       <Card className="mb-6">

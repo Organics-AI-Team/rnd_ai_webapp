@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { ObjectId } from "mongodb";
 import client_promise from "@rnd-ai/shared-database";
 import type { Permission } from "@rnd-ai/shared-types";
 
@@ -74,10 +75,12 @@ export const platformSupportAccessRouter = router({
           message: error instanceof Error ? error.message : "invalid duration",
         });
       }
+      if (!ObjectId.isValid(input.grant_id)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid grant id." });
+      }
       const existing = await db
         .collection("support_access_grants")
-        .findOne({ _id: new (await import("mongodb")).ObjectId(input.grant_id ?? "") })
-        .catch(() => null);
+        .findOne({ _id: new ObjectId(input.grant_id) });
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Grant not found." });
       }

@@ -121,13 +121,14 @@ export function create_mongodb_client({
  * Helper function to get MongoDB database name from URI
  *
  * @param uri - MongoDB connection URI
- * @returns Database name or 'test' if not found
+ * @returns Explicit database name from the URI.
+ * @throws Error when the URI is malformed or omits a database.
  */
 export function get_database_name_from_uri(uri: string): string {
-  try {
-    const match = uri.match(/\/([^/?]+)(\?|$)/);
-    return match ? match[1] : 'test';
-  } catch {
-    return 'test';
+  const match = uri.trim().match(/^mongodb(?:\+srv)?:\/\/[^/]+\/([^/?]+)(?:\?|$)/i);
+  const database_name = match?.[1]?.trim();
+  if (!database_name) {
+    throw new Error("MongoDB URI must include an explicit database name.");
   }
+  return decodeURIComponent(database_name);
 }

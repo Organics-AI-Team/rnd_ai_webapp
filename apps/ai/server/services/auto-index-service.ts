@@ -32,38 +32,30 @@ interface MaterialDocument {
  * Auto-index a single material to Qdrant via QdrantRAGService.
  *
  * @param material - Material document from MongoDB
- * @returns Promise<boolean> - Success status
+ * @returns True after the document is indexed.
+ * @throws When indexing cannot be completed.
  */
 export async function auto_index_material(material: MaterialDocument): Promise<boolean> {
   console.log(`[auto-index] auto_index_material: rm_code=${material.rm_code}, start`);
-  try {
-    const ragService = new QdrantRAGService('rawMaterialsAI');
-    const doc = QdrantRAGService.prepare_raw_material_document(material as any);
-    await ragService.upsert_documents([doc]);
-    console.log(`[auto-index] auto_index_material: rm_code=${material.rm_code}, success`);
-    return true;
-  } catch (err) {
-    console.error(`[auto-index] auto_index_material: rm_code=${material.rm_code}, error`, err);
-    return false;
-  }
+  const ragService = new QdrantRAGService('rawMaterialsAI');
+  const doc = QdrantRAGService.prepare_raw_material_document(material as any);
+  await ragService.upsert_documents([doc]);
+  console.log(`[auto-index] auto_index_material: rm_code=${material.rm_code}, success`);
+  return true;
 }
 
 /**
  * Auto-delete a material from Qdrant.
  *
  * @param rm_code - Material code to delete
- * @returns Promise<boolean> - Success status
+ * @returns True after the document is deleted.
+ * @throws When deletion cannot be completed.
  */
 export async function auto_delete_material(rm_code: string): Promise<boolean> {
   console.log(`[auto-index] auto_delete_material: rm_code=${rm_code}, start`);
-  try {
-    const qdrant = get_qdrant_service();
-    await qdrant.ensure_initialised();
-    await qdrant.delete('raw_materials_console', [rm_code]);
-    console.log(`[auto-index] auto_delete_material: rm_code=${rm_code}, success`);
-    return true;
-  } catch (err) {
-    console.error(`[auto-index] auto_delete_material: rm_code=${rm_code}, error`, err);
-    return false;
-  }
+  const qdrant = get_qdrant_service();
+  await qdrant.ensure_initialised();
+  await qdrant.delete('raw_materials_console', [rm_code]);
+  console.log(`[auto-index] auto_delete_material: rm_code=${rm_code}, success`);
+  return true;
 }

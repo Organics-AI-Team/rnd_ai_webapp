@@ -24,14 +24,14 @@ export function AIFeedbackButtons({
   disabled = false
 }: AIFeedbackButtonsProps) {
   return (
-    <div className="px-4 py-1.5 flex items-center gap-1.5">
-      <span className="text-2xs text-gray-400">Helpful?</span>
+    <div className="flex items-center gap-1.5 px-4 py-2">
+      <span className="text-2xs font-medium text-muted">Helpful?</span>
       <Button
         variant="ghost"
         size="sm"
         onClick={() => onFeedback(messageId, true)}
         disabled={disabled}
-        className="h-5 px-1.5 text-2xs text-gray-400 hover:text-emerald-600"
+        className="h-7 px-2 text-2xs"
       >
         <ThumbsUp className="w-2.5 h-2.5 mr-0.5" />
         Yes
@@ -41,7 +41,7 @@ export function AIFeedbackButtons({
         size="sm"
         onClick={() => onFeedback(messageId, false)}
         disabled={disabled}
-        className="h-5 px-1.5 text-2xs text-gray-400 hover:text-red-600"
+        className="h-7 px-2 text-2xs hover:text-red-700 hover:bg-red-50"
       >
         <ThumbsDown className="w-2.5 h-2.5 mr-0.5" />
         No
