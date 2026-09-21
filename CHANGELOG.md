@@ -1,5 +1,52 @@
 # Changelog
 
+## [2026-09-21] ops: confirm dev/droplet is production; remove the orphan worker
+
+### Established
+
+Production runs **`dev/droplet`**, and has since 2026-08-02. Evidence is on the
+droplet itself: `/opt/rnd-ai/.codex-backups/deploy-51688fa-20260802T154853Z` is
+a deploy backup named after droplet commit `51688fa`, and its contents are the
+stack it replaced — `apps/web/lib/app-auth.tsx` importing `@clerk/nextjs`,
+`apps/web/app/sign-in/[[...sign-in]]/`, `/api/ai/runs`, and a `worker` service in
+`docker-compose.yml`. That is `v2/dev`.
+
+The cutover was therefore 2026-08-02, deliberate, and has held across three
+deploys, each with a hand-named backup:
+
+| When (UTC) | Deploy | Backup |
+| --- | --- | --- |
+| 2026-08-02 15:48 | droplet `51688fa` (replaced the Clerk stack) | `.codex-backups/deploy-51688fa-20260802T154853Z` |
+| 2026-09-21 08:13 | droplet `9914023` | `/opt/rnd-ai-backup-20260921081311` |
+| 2026-09-21 08:34 | droplet `1dcf3f6` (UI rework) | `/opt/rnd-ai-backup-ui-20260921083443` |
+
+Branch activity agrees: `v2/dev` took 162 commits in July 2026 and none
+afterwards; every commit since is on `dev/droplet`.
+
+An earlier note in this changelog implied the branch switch happened on the
+morning of 2026-09-21 and might have been accidental. That was wrong — it read
+file mtimes, which that morning's deploys had refreshed. Corrected here.
+
+### Operations
+
+- Removed the orphan `rnd-ai-worker` container and its 434 MB image. It was a
+  leftover of the 2026-08-02 cutover, which dropped `worker` from
+  `docker-compose.yml` without removing the running container — so it kept
+  running July-vintage Clerk-branch code, holding `.env` credentials and a Mongo
+  connection, for seven weeks. Confirmed safe first: `ai_run_jobs` 42 total /
+  0 pending, nothing written since 2026-08-02, and the current deployment cannot
+  enqueue runs at all (`/api/ai/runs` is 404).
+- Droplet disk now 24% (was 80% before today's build-cache prune).
+
+### Planning
+
+- The ~2-day port of the `/ai` rework to `v2/dev` is **dropped** — it assumed
+  `v2/dev` was production. The analysis is preserved in `TODOS.md` on that branch
+  should a return to Clerk ever be decided.
+- Making the session cookie `httpOnly` is promoted to the top security item. It
+  had been deferred partly because Clerk would have superseded it; with `v2/dev`
+  parked, it must be fixed on this branch directly.
+
 ## [2026-09-21] fix(auth): typed error codes, 60s session poll, orphan worker stopped
 
 ### Summary
