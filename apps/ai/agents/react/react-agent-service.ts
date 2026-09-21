@@ -32,6 +32,7 @@ import { handle_search_reference_formulas } from './tool-handlers/search-referen
 import { handle_revise_formula } from './tool-handlers/revise-formula-handler';
 import { handle_get_formula_with_comments } from './tool-handlers/get-formula-with-comments-handler';
 import { handle_confirm_formula } from './tool-handlers/confirm-formula-handler';
+import { get_gemini_model } from '../../config/gemini-models';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,7 +41,7 @@ import { handle_confirm_formula } from './tool-handlers/confirm-formula-handler'
 /**
  * Runtime configuration for the ReactAgentService.
  *
- * @property model          - Gemini model identifier. Default 'gemini-2.0-flash'.
+ * @property model          - Gemini model identifier. Defaults via get_gemini_model().
  * @property temperature    - Sampling temperature (0-2). Default 0.7.
  * @property max_tokens     - Maximum output tokens per generation. Default 9000.
  * @property max_iterations - ReAct loop ceiling to prevent runaway calls. Default 5.
@@ -118,7 +119,7 @@ export interface ReactAgentResponse {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CONFIG: ReactAgentConfig = {
-  model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
+  model: get_gemini_model(),
   temperature: 0.7,
   max_tokens: 9000,
   max_iterations: 8,

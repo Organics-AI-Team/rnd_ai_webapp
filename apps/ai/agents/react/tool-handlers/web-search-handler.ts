@@ -16,12 +16,11 @@
 import { GoogleGenAI } from '@google/genai';
 import { require_server_ai_credentials } from '@rnd-ai/server-config';
 
+import { get_gemini_search_model } from '../../../config/gemini-models';
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/** Gemini model used for search-grounded queries */
-const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,7 +92,7 @@ async function search_with_gemini_grounding(
   const ai = get_genai_client();
 
   const response = await ai.models.generateContent({
-    model: SEARCH_MODEL,
+    model: get_gemini_search_model(),
     contents: `Search the web and provide factual, current information about: ${query}\n\nProvide a concise summary with key facts. Include specific data points, dates, and numbers when available.`,
     config: {
       tools: [{ googleSearch: {} }],

@@ -1,0 +1,28 @@
+# Dedicated backing services for the local AI QA corpus.
+#
+# These ports and volumes are intentionally separate from the application's
+# normal compose stack and from developer MongoDB/Qdrant instances.
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: rnd-ai-qa-mongodb
+    ports:
+      - "127.0.0.1:27027:27017"
+    volumes:
+      - rnd-ai-qa-mongodb-data:/data/db
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    container_name: rnd-ai-qa-qdrant
+    ports:
+      - "127.0.0.1:6335:6333"
+    environment:
+      QDRANT__STORAGE__ON_DISK_PAYLOAD: "true"
+    volumes:
+      - rnd-ai-qa-qdrant-data:/qdrant/storage
+
+volumes:
+  rnd-ai-qa-mongodb-data:
+    name: rnd-ai-qa-mongodb-data
+  rnd-ai-qa-qdrant-data:
+    name: rnd-ai-qa-qdrant-data
