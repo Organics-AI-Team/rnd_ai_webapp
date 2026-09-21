@@ -517,6 +517,7 @@ model ChatThread {
 }
 
 enum AgentType {
+  rnd_ai
   raw_materials_ai
   sales_rnd_ai
 }

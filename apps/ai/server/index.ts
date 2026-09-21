@@ -6,11 +6,7 @@ import { organizationsRouter } from "./routers/organizations";
 import { productsRouter } from "./routers/products";
 import { userLogsRouter } from "./routers/userLogs";
 import { formulasRouter } from "./routers/formulas";
-import { feedbackRouter } from "./routers/feedback";
-import { conversationRouter } from "./routers/conversations";
-import { rawMaterialsConversationRouter } from "./routers/raw-materials-conversations";
-import { rawMaterialsFeedbackRouter } from "./routers/raw-materials-feedback";
-import { ragRouter } from "./routers/rag";
+import { vectorIndexRouter } from "./routers/vector-index";
 import { stockRouter } from "./routers/stock";
 import { calculationsRouter } from "./routers/calculations";
 import { formulaCommentsRouter } from "./routers/formula-comments";
@@ -25,11 +21,7 @@ export const appRouter = router({
   products: productsRouter,
   userLogs: userLogsRouter,
   formulas: formulasRouter,
-  feedback: feedbackRouter,
-  conversations: conversationRouter,
-  rawMaterialsConversations: rawMaterialsConversationRouter,
-  rawMaterialsFeedback: rawMaterialsFeedbackRouter,
-  rag: ragRouter,
+  vectorIndex: vectorIndexRouter,
   stock: stockRouter,
   calculations: calculationsRouter,
   formulaComments: formulaCommentsRouter,

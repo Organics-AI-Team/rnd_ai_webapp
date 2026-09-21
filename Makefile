@@ -1,6 +1,6 @@
 .PHONY: help install dev dev-web dev-ai build build-web build-ai clean clean-all reset
-.PHONY: seed-admin migrate index index-resume check-chromadb
-.PHONY: docker-up docker-down docker-logs docker-build
+.PHONY: seed-admin migrate index check-qdrant
+.PHONY: docker-up docker-down docker-logs docker-build docker-logs-qdrant
 .PHONY: quick-start lint test
 
 # ============================================================================
@@ -46,9 +46,6 @@ help: ## Show this help message
 
 install: ## Install all dependencies
 	@echo "$(BLUE)Installing dependencies for monorepo...$(NC)"
-	@echo "Using --legacy-peer-deps to handle conflicts:"
-	@echo "  - chromadb@1.8.1 (requires @google/generative-ai@^0.1.1)"
-	@echo "  - @langchain/google-genai (requires @google/generative-ai@^0.24.0)"
 	npm install --legacy-peer-deps
 	@echo "$(GREEN)✓ Installation complete!$(NC)"
 
@@ -160,24 +157,14 @@ migrate: ## Run database migrations
 	npm run migrate
 	@echo "$(GREEN)✓ Migrations complete!$(NC)"
 
-index: ## Index data to ChromaDB
-	@echo "$(BLUE)Indexing data to ChromaDB...$(NC)"
-	npm run index:chromadb
+index: ## Index all sources into Qdrant
+	@echo "$(BLUE)Indexing data to Qdrant...$(NC)"
+	npm run index:qdrant
 	@echo "$(GREEN)✓ Indexing complete!$(NC)"
 
-index-resume: ## Resume ChromaDB indexing
-	@echo "$(BLUE)Resuming ChromaDB indexing...$(NC)"
-	npm run index:chromadb:resume
-	@echo "$(GREEN)✓ Indexing resumed!$(NC)"
-
-index-fast: ## Fast ChromaDB indexing
-	@echo "$(BLUE)Fast ChromaDB indexing...$(NC)"
-	npm run index:chromadb:fast
-	@echo "$(GREEN)✓ Fast indexing complete!$(NC)"
-
-check-chromadb: ## Check ChromaDB statistics
-	@echo "$(BLUE)Checking ChromaDB statistics...$(NC)"
-	npm run check:chromadb
+check-qdrant: ## Check Qdrant statistics
+	@echo "$(BLUE)Checking Qdrant statistics...$(NC)"
+	npm run check:qdrant
 
 # ============================================================================
 # DOCKER
@@ -188,8 +175,7 @@ docker-up: ## Start all services with Docker Compose
 	docker-compose up -d
 	@echo "$(GREEN)✓ Services started!$(NC)"
 	@echo "$(BLUE)Web:      http://localhost:3000$(NC)"
-	@echo "$(BLUE)AI:       http://localhost:3001$(NC)"
-	@echo "$(BLUE)ChromaDB: http://localhost:8000$(NC)"
+	@echo "$(BLUE)Qdrant:   http://localhost:6333$(NC)"
 
 docker-down: ## Stop all Docker services
 	@echo "$(BLUE)Stopping Docker services...$(NC)"
@@ -202,11 +188,8 @@ docker-logs: ## View Docker logs (all services)
 docker-logs-web: ## View web app logs
 	docker-compose logs -f web
 
-docker-logs-ai: ## View AI service logs
-	docker-compose logs -f ai
-
-docker-logs-chroma: ## View ChromaDB logs
-	docker-compose logs -f chromadb
+docker-logs-qdrant: ## View Qdrant logs
+	docker-compose logs -f qdrant
 
 docker-build: ## Rebuild Docker images
 	@echo "$(BLUE)Rebuilding Docker images...$(NC)"
@@ -219,15 +202,9 @@ docker-rebuild: docker-down docker-build docker-up ## Rebuild and restart servic
 # DEPLOYMENT
 # ============================================================================
 
-deploy-railway: ## Deploy to Railway
-	@echo "$(BLUE)Deploying to Railway...$(NC)"
-	railway up
-	@echo "$(GREEN)✓ Deployment started!$(NC)"
-
-deploy-railway-web: ## Deploy web app to Railway
-	@echo "$(BLUE)Deploying web app to Railway...$(NC)"
-	railway up --config config/railway.web.json
-	@echo "$(GREEN)✓ Deployment started!$(NC)"
+deploy-droplet: ## Deploy the checked-out revision on the production DigitalOcean Droplet
+	@echo "$(BLUE)Deploying to the production Droplet...$(NC)"
+	@echo "$(YELLOW)Run this from the Droplet checkout after pushing a verified commit: ./scripts/deploy-droplet.sh --up$(NC)"
 
 # ============================================================================
 # UTILITIES

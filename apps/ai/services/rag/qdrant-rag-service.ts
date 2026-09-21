@@ -1,17 +1,14 @@
 /**
  * Qdrant RAG (Retrieval-Augmented Generation) Service
- * High-level RAG service — drop-in replacement for ChromaRAGService.
+ * High-level RAG service backed by Qdrant.
  *
  * Orchestrates:
  *   - Embedding generation via UniversalEmbeddingService
  *   - Vector storage / search via QdrantService (low-level client)
  *   - Document preparation, batch indexing, and result formatting
  *
- * Service name → Qdrant collection mapping:
- *   rawMaterialsAllAI      → raw_materials_fda
- *   rawMaterialsAI         → raw_materials_console
- *   salesRndAI             → sales_rnd
- *   rawMaterialsMySkinAI   → raw_materials_myskin
+ * The service accepts a canonical Qdrant collection name directly. This keeps
+ * indexing independent from the retired specialist-agent naming scheme.
  *
  * @author AI Management System
  * @date 2026-03-27
@@ -23,8 +20,12 @@ import {
   UniversalEmbeddingService,
 } from '../embeddings/universal-embedding-service';
 import { Logger } from '@rnd-ai/shared-utils';
-import { ErrorHandler, ErrorType } from '@/ai/utils/error-handler';
-import { EMBEDDING_BATCH_DELAY_MS } from '../../config/qdrant-config';
+import { ErrorHandler, ErrorType } from '../../utils/error-handler';
+import {
+  EMBEDDING_BATCH_DELAY_MS,
+  get_search_defaults,
+  QDRANT_COLLECTIONS,
+} from '../../config/qdrant-config';
 
 const logger = Logger.scope('QdrantRAGService');
 
@@ -88,58 +89,8 @@ export interface RAGSearchResult {
   document?: string;
 }
 
-/**
- * Known service names that map to Qdrant collections.
- */
-export type RAGServicesConfig = {
-  rawMaterialsAllAI: unknown;
-  rawMaterialsAI: unknown;
-  salesRndAI: unknown;
-  rawMaterialsMySkinAI: unknown;
-  [key: string]: unknown;
-};
-
-// ---------------------------------------------------------------------------
-// Service Name → Collection Mapping
-// ---------------------------------------------------------------------------
-
-/**
- * Maps high-level service names to Qdrant collection identifiers.
- * Kept as a plain object so it can be extended without touching config files.
- */
-const SERVICE_COLLECTION_MAP: Record<string, string> = {
-  rawMaterialsAllAI: 'raw_materials_fda',
-  rawMaterialsAI: 'raw_materials_console',
-  salesRndAI: 'sales_rnd',
-  rawMaterialsMySkinAI: 'raw_materials_myskin',
-};
-
-/**
- * Default search parameters per service, aligned with rag-config.ts values.
- */
-const SERVICE_DEFAULTS: Record<string, Omit<RAGSearchConfig, 'filter' | 'collectionName'>> = {
-  rawMaterialsAllAI: { topK: 5, similarityThreshold: 0.7, includeMetadata: true },
-  rawMaterialsAI: { topK: 5, similarityThreshold: 0.7, includeMetadata: true },
-  salesRndAI: { topK: 8, similarityThreshold: 0.65, includeMetadata: true },
-  rawMaterialsMySkinAI: { topK: 5, similarityThreshold: 0.7, includeMetadata: true },
-};
-
-/**
- * Resolve search defaults for a given service name.
- *
- * @param service_name - Key from RAGServicesConfig
- * @returns Default RAGSearchConfig (without filter/collectionName)
- */
-function get_service_defaults(
-  service_name: string,
-): Omit<RAGSearchConfig, 'filter' | 'collectionName'> {
-  console.log('[QdrantRAGService] get_service_defaults — start', { service_name });
-
-  const defaults = SERVICE_DEFAULTS[service_name] || SERVICE_DEFAULTS.rawMaterialsAllAI;
-
-  console.log('[QdrantRAGService] get_service_defaults — done', { service_name, defaults });
-  return defaults;
-}
+/** Canonical collection names registered in Qdrant configuration. */
+export type QdrantCollectionName = keyof typeof QDRANT_COLLECTIONS;
 
 // ---------------------------------------------------------------------------
 // Module-level embedding service (lazy singleton)
@@ -184,29 +135,28 @@ export class QdrantRAGService {
   /**
    * Create a new QdrantRAGService instance.
    *
-   * @param service_name            - Key from RAGServicesConfig (determines collection + defaults)
+   * @param collection_name         - Canonical Qdrant collection to access
    * @param config                  - Optional partial config to override defaults
    * @param custom_embedding_service - Optional pre-configured embedding service
    */
   constructor(
-    service_name?: keyof RAGServicesConfig,
+    collection_name: QdrantCollectionName = 'raw_materials_console',
     config?: Partial<RAGSearchConfig>,
     custom_embedding_service?: UniversalEmbeddingService,
   ) {
-    console.log('[QdrantRAGService] constructor — start', { service_name });
+    console.log('[QdrantRAGService] constructor — start', { collection_name });
 
-    const resolved_name = (service_name || 'rawMaterialsAllAI') as string;
-    const defaults = get_service_defaults(resolved_name);
+    const defaults = get_search_defaults(collection_name);
 
     this.config = {
-      topK: defaults.topK,
-      similarityThreshold: defaults.similarityThreshold,
-      includeMetadata: defaults.includeMetadata,
+      topK: defaults.top_k,
+      similarityThreshold: defaults.score_threshold,
+      includeMetadata: defaults.with_payload,
       ...config,
     };
 
     this.collection_name =
-      config?.collectionName || SERVICE_COLLECTION_MAP[resolved_name] || 'raw_materials_fda';
+      config?.collectionName || collection_name;
 
     this.embedding_service = custom_embedding_service || get_default_embedding_service();
     this.qdrant_service = get_qdrant_service();
@@ -215,7 +165,7 @@ export class QdrantRAGService {
     this.init_promise = this.initialize_qdrant();
 
     logger.info('Initializing QdrantRAGService', {
-      service_name: resolved_name,
+      collection_name,
       collection: this.collection_name,
       config: this.config,
     });
@@ -705,13 +655,3 @@ export class QdrantRAGService {
     return '\n\nVector Database Search Results (Qdrant):\n' + formatted.join('\n\n');
   }
 }
-
-// ---------------------------------------------------------------------------
-// Backward-Compatible Aliases
-// ---------------------------------------------------------------------------
-
-/**
- * Aliases for backward compatibility with consumers that reference PineconeRAGService / RAGConfig.
- */
-export { QdrantRAGService as PineconeRAGService };
-export type { RAGSearchConfig as RAGConfig };

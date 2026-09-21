@@ -4,17 +4,17 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@rnd-ai/shared-utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-1.5 py-0.5 text-2xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
+  "inline-flex items-center rounded-full border px-1.5 py-0.5 text-2xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-gray-900 text-white",
+          "border-transparent bg-gradient-to-br from-emerald-600 to-green-600 text-white",
         secondary:
-          "border-gray-200 bg-gray-50 text-gray-700",
+          "border-emerald-100 bg-emerald-50 text-emerald-800",
         destructive:
           "border-transparent bg-red-600 text-white",
-        outline: "text-gray-700 border-gray-200",
+        outline: "text-emerald-800 border-emerald-200 bg-white/70",
         line: "bg-emerald-50 text-emerald-700 border-emerald-200",
         shopee: "bg-orange-50 text-orange-700 border-orange-200",
         lazada: "bg-blue-50 text-blue-700 border-blue-200",

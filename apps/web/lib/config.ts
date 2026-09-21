@@ -129,10 +129,7 @@ export const ROUTES = {
    */
   ai: {
     home: '/ai',
-    analytics: '/ai/analytics',
-    agents: '/ai/agents',
-    raw_materials: '/ai/raw-materials-ai',
-    sales_rnd: '/ai/sales-rnd-ai',
+    assistant: '/ai',
   },
 
   /**
@@ -150,14 +147,6 @@ export const ROUTES = {
    */
   api: {
     trpc: '/api/trpc',
-    /** Auth is handled entirely via tRPC (auth.login / auth.signup / auth.logout / auth.me) */
-    agents: {
-      list: '/api/agents',
-      chat: (agent_id: string) => `/api/agents/${agent_id}/chat`,
-    },
-    rag: {
-      search: '/api/rag/search',
-    },
   },
 } as const;
 

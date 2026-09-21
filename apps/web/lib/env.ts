@@ -30,7 +30,6 @@ type OptionalEnvVar =
   | 'OPENAI_API_KEY'
   | 'QDRANT_URL'
   | 'QDRANT_API_KEY'
-  | 'PINECONE_API_KEY'  // @deprecated — use QDRANT_URL; kept for backward compat only
   | 'NEXT_PUBLIC_APP_URL'
   | 'NEXT_PUBLIC_API_URL'
   | 'NODE_ENV'
@@ -170,18 +169,6 @@ export const env = {
   qdrant_api_key: () => get_optional_env('QDRANT_API_KEY', ''),
 
   /**
-   * @deprecated Use qdrant_url() instead. Kept for backward compatibility only.
-   * Will be removed once apps/web/lib/services/embedding.ts is migrated to Qdrant.
-   */
-  pinecone_api_key: () => {
-    const key = process.env.PINECONE_API_KEY;
-    if (!key) {
-      throw new Error('PINECONE_API_KEY is not set in environment variables (deprecated — migrate to QDRANT_URL)');
-    }
-    return key;
-  },
-
-  /**
    * Application URLs
    */
   app_url: () => get_optional_env('NEXT_PUBLIC_APP_URL', 'http://localhost:3000'),
@@ -226,7 +213,6 @@ export function get_env_status(): Record<string, string> {
     'OPENAI_API_KEY',
     'QDRANT_URL',
     'QDRANT_API_KEY',
-    'PINECONE_API_KEY',  // deprecated
     'NEXT_PUBLIC_APP_URL',
     'NODE_ENV',
     'DEBUG_AI',

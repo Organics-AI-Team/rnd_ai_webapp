@@ -42,20 +42,20 @@ export function ConsolePageShell({
 }: ConsolePageShellProps) {
   return (
     <div className="h-full flex flex-col p-2 lg:p-3">
-      <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-gray-200/60 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-emerald-100/90 bg-white/80 shadow-[0_14px_36px_rgba(16,185,129,0.10)] backdrop-blur-sm overflow-hidden">
         {/* Header toolbar */}
-        <div className="flex items-center justify-between h-11 px-4 border-b border-gray-100/80 flex-shrink-0">
+        <div className="flex items-center justify-between h-12 px-4 border-b border-emerald-100/80 bg-gradient-to-r from-emerald-50/80 via-white to-green-50/70 flex-shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <h1 className="text-[13px] font-medium text-gray-800 truncate">{title}</h1>
+            <h1 className="text-[13px] font-semibold text-emerald-950 truncate">{title}</h1>
             {subtitle && (
-              <span className="text-[11px] text-gray-400 flex-shrink-0">{subtitle}</span>
+              <span className="text-[11px] text-emerald-800/55 flex-shrink-0">{subtitle}</span>
             )}
           </div>
           {show_action && action_label && on_action && (
             <Button
               size="sm"
               onClick={on_action}
-              className="h-7 text-[11px] px-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg shadow-sm"
+              className="h-7 text-[11px] px-2.5"
             >
               <Plus className="h-3 w-3 mr-1" />
               {action_label}
@@ -100,10 +100,10 @@ export function ConsoleSection({
   return (
     <div className={className}>
       {(title || trailing) && (
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-emerald-50">
           <div>
-            {title && <h2 className="text-[12px] font-medium text-gray-600">{title}</h2>}
-            {subtitle && <p className="text-[11px] text-gray-400">{subtitle}</p>}
+            {title && <h2 className="text-[12px] font-medium text-emerald-900">{title}</h2>}
+            {subtitle && <p className="text-[11px] text-emerald-800/55">{subtitle}</p>}
           </div>
           {trailing}
         </div>

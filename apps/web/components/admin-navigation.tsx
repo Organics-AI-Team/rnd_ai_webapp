@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Database, Settings, ChevronLeft, ChevronRight, LogOut, Menu, X, Package } from "lucide-react";
+import { Database, Settings, ChevronLeft, ChevronRight, LogOut, Menu, X, BoxIcon } from "lucide-react";
 import { cn } from "@rnd-ai/shared-utils";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
@@ -25,7 +25,7 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
     { type: "link", href: "/admin/credits", label: "Credit Management", icon: Settings },
     { type: "separator" },
     { type: "section-title", label: "DATA" },
-    { type: "link", href: "/products", label: "Add Ingredients", icon: Package },
+    { type: "link", href: "/ingredients", label: "Ingredients", icon: BoxIcon },
     { type: "link", href: "/formulas/create", label: "Add Formulas", icon: Settings },
   ];
 
@@ -41,9 +41,11 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
             <h1 className="text-sm font-semibold text-gray-900">Admin</h1>
           </div>
           <button
+            type="button"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-1.5 hover:bg-gray-100 rounded transition-colors text-gray-600"
+            className="rounded p-1.5 text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
             aria-label="Toggle menu"
+            aria-expanded={isMobileMenuOpen}
           >
             {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
@@ -52,7 +54,12 @@ export function AdminNavigation({ children }: { children: React.ReactNode }) {
 
       {/* Overlay */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 bg-black/40 z-40" onClick={closeMobileMenu} />
+        <button
+          type="button"
+          className="fixed inset-0 z-40 border-0 bg-black/40 p-0 lg:hidden"
+          onClick={closeMobileMenu}
+          aria-label="Close navigation menu"
+        />
       )}
 
       {/* Sidebar */}

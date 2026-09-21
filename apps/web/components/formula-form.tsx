@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Search, Beaker } from "lucide-react";
+import { Plus, Trash2, Search, Beaker, CheckCircle2, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { to_formula_ingredients, type GeneratedFormula } from "@/lib/ai/formula-conversion";
 import {
   Table,
   TableBody,
@@ -39,6 +40,13 @@ interface FormulaIngredient {
   notes?: string;
 }
 
+const FORMULA_EDITOR_STATUSES = ["draft", "confirmed", "testing", "approved", "rejected"] as const;
+type FormulaEditorStatus = typeof FORMULA_EDITOR_STATUSES[number];
+
+function is_formula_editor_status(value: unknown): value is FormulaEditorStatus {
+  return typeof value === "string" && FORMULA_EDITOR_STATUSES.includes(value as FormulaEditorStatus);
+}
+
 /**
  * FormulaForm — Create or edit a formula.
  * Reads `?edit=<id>` from the URL to determine edit mode.
@@ -60,13 +68,18 @@ export function FormulaForm() {
   const [ingredients, setIngredients] = useState<FormulaIngredient[]>([]);
   const [totalAmount, setTotalAmount] = useState(100);
   const [remarks, setRemarks] = useState("");
-  const [status, setStatus] = useState<"draft" | "confirmed" | "testing" | "approved" | "rejected">("draft");
+  const [status, setStatus] = useState<FormulaEditorStatus>("draft");
   const [formLoaded, setFormLoaded] = useState(false);
 
   const [showIngredientPicker, setShowIngredientPicker] = useState(false);
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [filterByBenefit, setFilterByBenefit] = useState("");
   const [filterByUseCase, setFilterByUseCase] = useState("");
+  const [aiBrief, setAiBrief] = useState("");
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [agentStatus, setAgentStatus] = useState("");
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentSuccess, setAgentSuccess] = useState<string | null>(null);
 
   // --- Fetch existing formula when in edit mode ---
   const { data: existingFormula, isLoading: formulaLoading } = trpc.formulas.getById.useQuery(
@@ -84,7 +97,7 @@ export function FormulaForm() {
       setTargetBenefits(existingFormula.targetBenefits || []);
       setTotalAmount(existingFormula.totalAmount || 100);
       setRemarks(existingFormula.remarks || "");
-      setStatus((existingFormula.status as any) || "draft");
+      setStatus(is_formula_editor_status(existingFormula.status) ? existingFormula.status : "draft");
       setIngredients(
         (existingFormula.ingredients || []).map((ing: any) => ({
           materialId: ing.materialId || "",
@@ -105,6 +118,91 @@ export function FormulaForm() {
     offset: 0,
   });
   const products = productsData?.products || [];
+
+  /**
+   * Ask the ReAct formula agent for a structured plan, then populate every
+   * editable field. The chat endpoint is explicitly instructed not to save;
+   * this screen remains the user's review-and-save step.
+   */
+  const generateFormulaPlan = useCallback(async () => {
+    const brief = aiBrief.trim();
+    if (!brief) {
+      setAgentError("Describe the product, benefits, texture, size, and any constraints first.");
+      return;
+    }
+
+    setIsGeneratingPlan(true);
+    setAgentError(null);
+    setAgentSuccess(null);
+    setAgentStatus("Planning the formula and checking the ingredient knowledge base...");
+
+    try {
+      const response = await fetch("/api/ai/rnd-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Create a complete, editable cosmetic formula plan for this brief: ${brief}. Use the generate_formula tool. Return a structured formula with ingredients, percentages, batch amounts, and review warnings.`,
+          userId: "formula-editor",
+          conversationHistory: [],
+          persistFormula: false,
+          enableEnhancements: true,
+          enableSearch: true,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || "The formula agent could not complete the plan. Please refine the brief and try again.");
+      }
+
+      const formula = data?.metadata?.artifacts?.formula as GeneratedFormula | undefined;
+      if (!formula) {
+        throw new Error("The agent returned a response but no structured formula plan. Please ask for a product type and at least one target benefit.");
+      }
+
+      setAgentStatus("Matching the agent plan to your ingredient catalog and filling the editor...");
+      const plannedIngredients = to_formula_ingredients(formula).map((ingredient) => {
+        const catalogProduct = products.find((product: any) => (
+          product.productCode === ingredient.rm_code
+          || product.inci_name?.toLowerCase() === ingredient.inci_name?.toLowerCase()
+          || product.productName?.toLowerCase() === ingredient.productName.toLowerCase()
+        ));
+
+        return {
+          ...ingredient,
+          materialId: catalogProduct?._id || ingredient.materialId,
+          rm_code: catalogProduct?.productCode || ingredient.rm_code,
+          productName: catalogProduct?.productName || ingredient.productName,
+          inci_name: catalogProduct?.inci_name || ingredient.inci_name,
+        };
+      });
+      if (plannedIngredients.length === 0) {
+        throw new Error("The plan has no usable ingredients, so nothing was filled. Please try a more specific product brief.");
+      }
+
+      const warnings = Array.isArray(formula.warnings)
+        ? formula.warnings.map((warning) => typeof warning === "string" ? warning : warning.message).filter(Boolean)
+        : [];
+      setFormulaName(String(formula.formula_name || `AI ${formula.product_type || "Formula"}`));
+      setVersion(1);
+      setTargetBenefits(Array.isArray(formula.target_benefits) ? formula.target_benefits.map(String) : []);
+      setTotalAmount(Number(formula.batch_size_grams) > 0 ? Number(formula.batch_size_grams) : 100);
+      setIngredients(plannedIngredients);
+      setRemarks([
+        `AI formula plan from brief: ${brief}`,
+        formula.generation_prompt ? `Agent plan: ${formula.generation_prompt}` : "",
+        warnings.length ? `Review before production: ${warnings.join(" | ")}` : "",
+      ].filter(Boolean).join("\n"));
+      setStatus("draft");
+      setAgentStatus("");
+      setAgentSuccess(`Formula plan added: ${plannedIngredients.length} ingredients are ready to review and edit.`);
+    } catch (error) {
+      console.error("[formula-form] generateFormulaPlan failed", error);
+      setAgentStatus("");
+      setAgentError(error instanceof Error ? error.message : "The formula agent failed before it could fill the form.");
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  }, [aiBrief, products]);
 
   const createFormula = trpc.formulas.create.useMutation({
     onSuccess: () => {
@@ -194,6 +292,7 @@ export function FormulaForm() {
       amount: Number(ing.amount),
       percentage: ing.percentage ? Number(ing.percentage) : undefined,
     }));
+    const editable_status = status === "confirmed" ? "draft" : status;
 
     try {
       if (isEditMode && editId) {
@@ -206,7 +305,7 @@ export function FormulaForm() {
           ingredients: mapped_ingredients,
           totalAmount,
           remarks,
-          status,
+          ...(status === "confirmed" ? {} : { status: editable_status }),
         });
       } else {
         await createFormula.mutateAsync({
@@ -217,7 +316,7 @@ export function FormulaForm() {
           ingredients: mapped_ingredients,
           totalAmount,
           remarks,
-          status,
+          status: editable_status,
         });
       }
     } catch (error) {
@@ -266,6 +365,52 @@ export function FormulaForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Agentic formula planner */}
+      <section className="relative overflow-hidden rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-green-50 p-4 shadow-[0_14px_36px_rgba(16,185,129,0.12)]">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-emerald-300/25 blur-2xl" />
+        <div className="relative flex flex-col gap-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-[0_8px_18px_rgba(5,150,105,0.28)]">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-950">
+                Agentic Formula Planner <span className="rounded-full border border-emerald-200 bg-white/70 px-2 py-0.5 text-[10px] font-medium text-emerald-700">AI draft</span>
+              </h2>
+              <p className="mt-0.5 text-xs leading-relaxed text-emerald-900/65">
+                Describe the product. The agent plans the formula, checks the ingredient knowledge base, and fills this editable draft for you to review.
+              </p>
+            </div>
+          </div>
+          <Textarea
+            value={aiBrief}
+            onChange={(event) => setAiBrief(event.target.value)}
+            placeholder="Example: Create a light, fragrance-free niacinamide gel serum for oily skin, 100 g batch. Avoid alcohol and keep the texture non-sticky."
+            rows={3}
+            disabled={isGeneratingPlan}
+            className="min-h-[84px] rounded-xl border-emerald-200/80 bg-white/80 pr-3 text-sm shadow-inner shadow-emerald-950/[0.03] focus:border-emerald-400"
+            aria-describedby="formula-agent-help"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p id="formula-agent-help" className="text-[11px] text-emerald-800/60">
+              Nothing is saved automatically. You can edit every field before saving the draft.
+            </p>
+            <Button
+              type="button"
+              onClick={generateFormulaPlan}
+              disabled={isGeneratingPlan || !aiBrief.trim()}
+              className="h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-green-600 px-3.5 text-xs text-white shadow-[0_8px_18px_rgba(5,150,105,0.22)] hover:from-emerald-500 hover:to-green-500"
+            >
+              {isGeneratingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              {isGeneratingPlan ? "Agent is planning..." : "Generate & auto-fill"}
+            </Button>
+          </div>
+          {agentStatus && <p role="status" className="flex items-center gap-1.5 text-xs text-emerald-700"><Loader2 className="h-3.5 w-3.5 animate-spin" />{agentStatus}</p>}
+          {agentSuccess && <p role="status" className="flex items-center gap-1.5 text-xs text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{agentSuccess}</p>}
+          {agentError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{agentError}</p>}
+        </div>
+      </section>
+
       {/* Formula Details */}
       <Card>
         <CardHeader>
@@ -329,14 +474,23 @@ export function FormulaForm() {
             <select
               id="status"
               value={status}
-              onChange={(e) => setStatus(e.target.value as any)}
-              className="w-full px-3 py-2 border rounded-md"
+              onChange={(e) => {
+                if (is_formula_editor_status(e.target.value)) {
+                  setStatus(e.target.value);
+                }
+              }}
+              disabled={status === "confirmed"}
+              className="w-full rounded-md border px-3 py-2 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
             >
+              {status === "confirmed" && <option value="confirmed">Confirmed</option>}
               <option value="draft">Draft</option>
               <option value="testing">Testing</option>
               <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
             </select>
+            {status === "confirmed" && (
+              <p className="text-xs text-muted-foreground">Confirmed formulas retain their status. Create a new draft to make a revision.</p>
+            )}
           </div>
 
           <div className="space-y-2">

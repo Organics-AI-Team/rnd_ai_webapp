@@ -11,6 +11,7 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc-client";
+import { APP_CONFIG } from "@/lib/config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
 import {
   Beaker, Search, Eye, Edit, Trash2, Sparkles, GitBranch, CheckCircle,
-  X, Plus, Save, Wand2,
+  X, Plus, Save, Wand2, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { FormulaComments } from "@/components/formula-comments";
@@ -60,6 +61,7 @@ export default function FormulasPage() {
 
   // --- State ---
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [panelFormula, setPanelFormula] = useState<any>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
 
@@ -208,7 +210,7 @@ export default function FormulasPage() {
    * Call AI to generate formula from a brief, then auto-open
    * the newly created draft in the slide-over panel.
    *
-   * @remarks Posts to /api/ai/raw-materials-agent which triggers
+   * @remarks Posts to /api/ai/rnd-agent which triggers
    *          the ReAct agent's generate_formula tool, persisting
    *          the draft to MongoDB. After success we refetch the
    *          list and open the first (newest) draft.
@@ -218,7 +220,7 @@ export default function FormulasPage() {
     console.log("[formulas] handleAiSuggest — start", { brief: aiBrief });
     setAiLoading(true);
     try {
-      const res = await fetch("/api/ai/raw-materials-agent", {
+      const res = await fetch("/api/ai/rnd-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -259,6 +261,24 @@ export default function FormulasPage() {
     rejected: "text-red-500 border-red-200/80 bg-red-50/50",
   }[status] || "text-gray-500 border-gray-200/80");
 
+  const itemsPerPage = APP_CONFIG.pagination.default_page_size;
+  const filteredFormulas = formulas?.filter((f: any) => {
+    const s = searchTerm.toLowerCase();
+    return f.formulaCode?.toLowerCase().includes(s) || f.formulaName?.toLowerCase().includes(s) || f.client?.toLowerCase().includes(s);
+  }) || [];
+  const totalPages = Math.max(1, Math.ceil(filteredFormulas.length / itemsPerPage));
+  const activePage = Math.min(currentPage, totalPages);
+  const pageStart = (activePage - 1) * itemsPerPage;
+  const paginatedFormulas = filteredFormulas.slice(pageStart, pageStart + itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
   // --- Loading / Auth guards ---
   if (isLoading || formulasLoading) {
     return (
@@ -276,17 +296,12 @@ export default function FormulasPage() {
     );
   }
 
-  const filteredFormulas = formulas?.filter((f: any) => {
-    const s = searchTerm.toLowerCase();
-    return f.formulaCode?.toLowerCase().includes(s) || f.formulaName?.toLowerCase().includes(s) || f.client?.toLowerCase().includes(s);
-  });
-
   const isPanelOpen = !!panelFormula && !!panelMode;
 
   return (
     <ConsolePageShell
       title="Formulas"
-      subtitle={`${filteredFormulas?.length || 0} formulas`}
+      subtitle={`${filteredFormulas.length} formulas`}
       action_label={user.role === "admin" ? "Add" : undefined}
       on_action={user.role === "admin" ? () => router.push("/formulas/create") : undefined}
       show_action={user.role === "admin"}
@@ -315,28 +330,29 @@ export default function FormulasPage() {
 
       {/* Table */}
       <div className={`transition-all duration-200 ${isPanelOpen ? "mr-[70vw]" : ""}`}>
-        {filteredFormulas && filteredFormulas.length > 0 ? (
-          <Table>
+        {filteredFormulas.length > 0 ? (
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow className="border-b border-gray-100/80">
-                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Code</TableHead>
+                <TableHead className="w-28 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Code</TableHead>
                 <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Name</TableHead>
-                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Ver</TableHead>
-                <TableHead className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">Status</TableHead>
-                <TableHead className="w-20"></TableHead>
+                <TableHead className="w-14 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Ver</TableHead>
+                <TableHead className="w-24 text-[10px] font-medium text-gray-400 uppercase tracking-wider">Status</TableHead>
+                <TableHead className="w-28"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredFormulas.map((f: any) => (
+              {paginatedFormulas.map((f: any) => (
                 <TableRow
                   key={f._id}
-                  className={`border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer ${panelFormula?._id === f._id ? "bg-blue-50/50" : ""}`}
-                  onClick={() => openPanel(f, "view")}
+                  className={`border-b border-gray-50 hover:bg-gray-50/50 ${panelFormula?._id === f._id ? "bg-blue-50/50" : ""}`}
                 >
-                  <TableCell className="font-mono text-[11px] text-gray-400">{f.formulaCode}</TableCell>
-                  <TableCell className="text-[12px] font-medium text-gray-800">
-                    <div className="flex items-center gap-1.5">
-                      {f.formulaName}
+                  <TableCell className="font-mono text-[11px] text-gray-400 truncate" title={f.formulaCode}>
+                    {f.formulaCode}
+                  </TableCell>
+                  <TableCell className="max-w-0 text-[12px] font-medium text-gray-800">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 truncate" title={f.formulaName}>{f.formulaName}</span>
                       {f.aiGenerated && <Sparkles className="h-3 w-3 text-violet-400" />}
                     </div>
                   </TableCell>
@@ -345,18 +361,28 @@ export default function FormulasPage() {
                     <Badge variant="outline" className={`text-[10px] px-1.5 py-0 font-normal capitalize ${status_style(f.status)}`}>{f.status}</Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-0.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => openPanel(f, "view")}
+                        className="h-6 w-6 p-0 text-gray-300 hover:text-gray-500"
+                        title="View details"
+                        aria-label={`View ${f.formulaName}`}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
                       {f.status === "draft" && (
-                        <Button size="sm" variant="ghost" onClick={() => handleConfirm(f._id, f.formulaName)} className="h-6 w-6 p-0 text-gray-300 hover:text-emerald-500" title="Confirm">
+                        <Button size="sm" variant="ghost" onClick={() => handleConfirm(f._id, f.formulaName)} className="h-6 w-6 p-0 text-gray-300 hover:text-emerald-500" title="Confirm" aria-label={`Confirm ${f.formulaName}`}>
                           <CheckCircle className="h-3.5 w-3.5" />
                         </Button>
                       )}
                       {user.role === "admin" && (
                         <>
-                          <Button size="sm" variant="ghost" onClick={() => openPanel(f, "edit")} className="h-6 w-6 p-0 text-gray-300 hover:text-gray-500" title="Edit">
+                          <Button size="sm" variant="ghost" onClick={() => openPanel(f, "edit")} className="h-6 w-6 p-0 text-gray-300 hover:text-gray-500" title="Edit" aria-label={`Edit ${f.formulaName}`}>
                             <Edit className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(f._id, f.formulaName)} className="h-6 w-6 p-0 text-gray-300 hover:text-red-500" title="Delete">
+                          <Button size="sm" variant="ghost" onClick={() => handleDelete(f._id, f.formulaName)} className="h-6 w-6 p-0 text-gray-300 hover:text-red-500" title="Delete" aria-label={`Delete ${f.formulaName}`}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </>
@@ -375,13 +401,49 @@ export default function FormulasPage() {
         )}
       </div>
 
+      {filteredFormulas.length > itemsPerPage && (
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100/80">
+          <span className="text-[11px] text-gray-400 tabular-nums">
+            {pageStart + 1}–{Math.min(pageStart + itemsPerPage, filteredFormulas.length)} of {filteredFormulas.length.toLocaleString()}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={activePage === 1}
+              className="h-7 w-7 p-0 text-gray-400"
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-[11px] text-gray-400 px-2 tabular-nums">{activePage} / {totalPages}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+              disabled={activePage === totalPages}
+              className="h-7 w-7 p-0 text-gray-400"
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* ============================================================ */}
       {/* Slide-over Panel — 70% width */}
       {/* ============================================================ */}
       {isPanelOpen && (
         <>
           {/* Backdrop */}
-          <div className="fixed inset-0 bg-black/20 z-40" onClick={closePanel} />
+          <button
+            type="button"
+            className="fixed inset-0 z-40 border-0 bg-black/20 p-0"
+            onClick={closePanel}
+            aria-label="Close formula details"
+          />
 
           {/* Panel */}
           <div className="fixed inset-y-0 right-0 w-[70vw] bg-white shadow-xl z-50 flex flex-col border-l border-gray-200 animate-in slide-in-from-right duration-200">

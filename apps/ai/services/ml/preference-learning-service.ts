@@ -4,7 +4,17 @@
  */
 
 import * as tf from '@tensorflow/tfjs';
-import { EnhancedUserPreferences } from '../enhanced/enhanced-ai-service';
+
+/** Preference profile produced by the unified assistant's optional learning service. */
+export interface LearnedUserPreferences {
+  userId: string;
+  preferredLength: 'concise' | 'medium' | 'detailed';
+  preferredStyle: 'formal' | 'casual' | 'technical';
+  preferredComplexity: 'basic' | 'intermediate' | 'advanced';
+  expertiseLevel: 'beginner' | 'intermediate' | 'expert';
+  language: string;
+  interests?: string[];
+}
 
 interface UserInteraction {
   userId: string;
@@ -372,7 +382,7 @@ export class PreferenceLearningService {
   /**
    * Predict user preferences based on history
    */
-  async predictPreferences(userId: string, currentContext: any): Promise<Partial<EnhancedUserPreferences>> {
+  async predictPreferences(userId: string, currentContext: any): Promise<Partial<LearnedUserPreferences>> {
     if (!this.isInitialized || !this.preferenceModel) {
       await this.initializeModels();
     }
@@ -410,7 +420,7 @@ export class PreferenceLearningService {
   /**
    * Interpret model prediction
    */
-  private interpretPrediction(predictionData: Float32Array): Partial<EnhancedUserPreferences> {
+  private interpretPrediction(predictionData: Float32Array): Partial<LearnedUserPreferences> {
     const [conciseScore, mediumScore, detailedScore] = predictionData;
 
     let preferredLength: 'concise' | 'medium' | 'detailed' = 'medium';
@@ -428,7 +438,7 @@ export class PreferenceLearningService {
   /**
    * Get default preferences for new users
    */
-  private getDefaultPreferences(): Partial<EnhancedUserPreferences> {
+  private getDefaultPreferences(): Partial<LearnedUserPreferences> {
     return {
       preferredLength: 'medium',
       preferredStyle: 'casual',

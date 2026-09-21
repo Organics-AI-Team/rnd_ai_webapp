@@ -773,11 +773,11 @@ When schema changes are needed:
 ### Example Migration Script
 
 ```typescript
-// scripts/migrations/001_add_product_code.ts
-import { connectToDatabase } from "@/lib/mongodb";
+// apps/ai/scripts/migrations/001_add_product_code.ts
+import client_promise from "@rnd-ai/shared-database";
 
 async function migrate() {
-  const client = await connectToDatabase();
+  const client = await client_promise;
   const db = client.db();
 
   // Add productCode field to all orders

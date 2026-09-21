@@ -46,9 +46,6 @@ yarn-error.log*
 .env
 .env*.local
 
-# vercel
-.vercel
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -67,3 +64,17 @@ _archive/
 .worktrees/
 .planning/
 .playwright-mcp/
+
+# Local AI evaluation artifacts can contain retrieved production context.
+/evals/rag/results/*
+!/evals/rag/results/.gitkeep
+/evals/rag/reports/*
+!/evals/rag/reports/.gitkeep
+/evals/promptfoo/reports/*
+/evals/rag/.venv/
+
+# Claude Code skill vendoring
+.agents/
+
+# Playwright debug screenshots at repo root
+e2e-*.png

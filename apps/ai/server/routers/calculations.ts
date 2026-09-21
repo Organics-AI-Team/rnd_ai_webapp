@@ -8,6 +8,10 @@ import { Logger } from "@rnd-ai/shared-utils";
 // Create scoped logger for this module
 const logger = Logger.scope('CalculationsRouter');
 
+function to_error(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 /**
  * Price Calculation Router
  *
@@ -194,11 +198,10 @@ export const calculationsRouter = router({
         });
 
         return result;
-      } catch (error: any) {
+      } catch (error: unknown) {
         const elapsedTime = Date.now() - startTime;
-        logger.error("Manual price calculation failed", {
-          error: error.message,
-          stack: error.stack,
+        const calculation_error = to_error(error);
+        logger.error("Manual price calculation failed", calculation_error, {
           userId: ctx.user._id,
           elapsedTimeMs: elapsedTime,
         });
@@ -244,9 +247,8 @@ export const calculationsRouter = router({
           _id: result.insertedId.toString(),
           ...calculation,
         };
-      } catch (error: any) {
-        logger.error("Failed to save calculation", {
-          error: error.message,
+      } catch (error: unknown) {
+        logger.error("Failed to save calculation", to_error(error), {
           formulaId: input.formulaId,
         });
         throw error;
@@ -291,10 +293,8 @@ export const calculationsRouter = router({
         });
 
         return calculations;
-      } catch (error: any) {
-        logger.error("Failed to list calculations", {
-          error: error.message,
-          stack: error.stack,
+      } catch (error: unknown) {
+        logger.error("Failed to list calculations", to_error(error), {
           userId: ctx.user._id,
         });
         throw error;
@@ -325,7 +325,7 @@ export const calculationsRouter = router({
         });
 
         if (!calculation) {
-          logger.error("Calculation not found", { calculationId: input.id });
+          logger.error("Calculation not found", undefined, { calculationId: input.id });
           throw new Error("Calculation not found");
         }
 
@@ -334,9 +334,8 @@ export const calculationsRouter = router({
         });
 
         return calculation;
-      } catch (error: any) {
-        logger.error("Failed to get calculation", {
-          error: error.message,
+      } catch (error: unknown) {
+        logger.error("Failed to get calculation", to_error(error), {
           calculationId: input.id,
         });
         throw error;
@@ -367,7 +366,7 @@ export const calculationsRouter = router({
         });
 
         if (result.deletedCount === 0) {
-          logger.error("Calculation not found for deletion", {
+          logger.error("Calculation not found for deletion", undefined, {
             calculationId: input.id,
           });
           throw new Error("Calculation not found");
@@ -378,9 +377,8 @@ export const calculationsRouter = router({
         });
 
         return { success: true };
-      } catch (error: any) {
-        logger.error("Failed to delete calculation", {
-          error: error.message,
+      } catch (error: unknown) {
+        logger.error("Failed to delete calculation", to_error(error), {
           calculationId: input.id,
         });
         throw error;

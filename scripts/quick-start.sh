@@ -196,7 +196,7 @@ echo ""
 echo -e "${YELLOW}Important Notes:${NC}"
 echo "• Make sure MongoDB is running and accessible"
 echo "• Add your API keys (GEMINI_API_KEY, OPENAI_API_KEY) to .env files"
-echo "• Run 'npm run index:chromadb' to index your data for AI features"
+echo "• Run 'npm run index:qdrant' to index your data for AI features"
 echo ""
 
 echo -e "${GREEN}Happy coding! 🚀${NC}"

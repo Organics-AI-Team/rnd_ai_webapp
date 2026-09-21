@@ -10,7 +10,7 @@
  *
  * Usage:
  *   Logger.info('User query received', { userId: '123', query: 'cosmetic ingredients' });
- *   Logger.error('Database connection failed', error, { service: 'PineconeService' });
+ *   Logger.error('Database connection failed', error, { service: 'QdrantService' });
  *   Logger.debug('Cache hit', { key: 'embedding:abc123' });
  *
  * @module logger
@@ -246,7 +246,7 @@ export class Logger {
    *
    * @example
    * Logger.error('Database query failed', dbError, {
-   *   service: 'PineconeService',
+   *   service: 'QdrantService',
    *   query: 'search',
    *   userId: '123'
    * });
@@ -263,7 +263,7 @@ export class Logger {
    * @returns Scoped logger instance
    *
    * @example
-   * const logger = Logger.scope('EnhancedRawMaterialsAgent');
+   * const logger = Logger.scope('RAndDAgent');
    * logger.info('Processing query'); // Automatically includes service name
    */
   static scope(serviceName: string) {

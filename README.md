@@ -27,8 +27,8 @@
 
 R&D AI Management is a multi-tenant platform for cosmetic R&D teams, featuring:
 
-- **AI-Powered Chatbots**: Raw Materials AI and Sales R&D AI with RAG (Retrieval Augmented Generation)
-- **Vector Search**: ChromaDB and Pinecone integration for semantic search
+- **AI-Powered R&D Agent**: One skill-based agent for raw-material, stock, formula, and sales R&D work
+- **Vector Search**: Qdrant-backed semantic search across R&D knowledge
 - **Order Management**: Complete order lifecycle with multi-channel support
 - **Analytics Dashboard**: Real-time insights and reporting
 - **Credit System**: Organization-based credit management for shipping
@@ -39,23 +39,19 @@ R&D AI Management is a multi-tenant platform for cosmetic R&D teams, featuring:
 
 ### 🤖 AI Capabilities
 
-- **Raw Materials AI Agent**
+- **Unified R&D AI Agent**
   - Intelligent ingredient search and recommendations
   - Regulatory compliance checking
   - Material compatibility analysis
   - Real-time stock information
-
-- **Sales R&D AI Agent**
   - Market intelligence gathering
-  - Pitch deck generation
   - Product formulation suggestions
   - Trend analysis
 
 - **Vector Search (RAG)**
   - Semantic search across knowledge base
-  - ChromaDB for local/Railway deployment
-  - Pinecone for cloud deployment
-  - Hybrid search (vector + keyword)
+  - Qdrant collections for FDA, stock, sales R&D, and MySkin data
+  - Gemini embeddings with OpenAI fallback
 
 ### 📊 Management Features
 
@@ -115,10 +111,9 @@ rnd_ai_management/
 **Backend (apps/ai)**
 - Node.js + TypeScript
 - tRPC Server
-- LangChain & LangGraph
 - Google Gemini AI
 - OpenAI
-- ChromaDB / Pinecone
+- Qdrant
 - MongoDB
 
 ---
@@ -158,14 +153,13 @@ RAW_MATERIALS_REAL_STOCK_MONGODB_URI=mongodb+srv://...
 # AI Keys
 GEMINI_API_KEY=AIza...
 OPENAI_API_KEY=sk-...
-PINECONE_API_KEY=pcsk_... # Optional
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY= # Optional for authenticated clusters
 
 # Admin Credentials
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=your_secure_password
 
-# Vector DB Provider
-VECTOR_DB_PROVIDER=chroma  # or pinecone
 ```
 
 ### Run Development Server
@@ -214,9 +208,8 @@ npm run build:ai   # Build AI service only
 ```bash
 npm run seed-admin           # Seed admin user
 npm run migrate              # Run migrations
-npm run index:chromadb       # Index to ChromaDB
-npm run index:chromadb:resume # Resume indexing
-npm run check:chromadb       # Check ChromaDB stats
+npm run index:qdrant         # Index all RAG collections in Qdrant
+npm run check:qdrant         # Check Qdrant statistics
 ```
 
 **Maintenance**
@@ -243,7 +236,7 @@ docker-compose up -d
 
 # View logs
 docker-compose logs -f web
-docker-compose logs -f ai
+docker-compose logs -f qdrant
 
 # Stop services
 docker-compose down
@@ -251,17 +244,14 @@ docker-compose down
 
 Services:
 - **Web**: http://localhost:3000
-- **AI**: http://localhost:3001
-- **ChromaDB**: http://localhost:8000
+- **Qdrant**: http://localhost:6333
 
-### Railway Deployment
+### Production Deployment (DigitalOcean Droplet)
 
 ```bash
-# Deploy using root Dockerfile
-railway up
-
-# Or use web-specific config
-railway up --config config/railway.web.json
+# On the production Droplet, from /opt/rnd-ai/app
+git pull --ff-only
+./scripts/deploy-droplet.sh --up
 ```
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
@@ -271,9 +261,8 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
 ## 📚 Documentation
 
 - **[MONOREPO_README.md](docs/MONOREPO_README.md)** - Architecture & workspace guide
-- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment strategies
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - DigitalOcean Droplet deployment
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history & changes
-- **[AI_RESPONSE_OPTIMIZATION_TH.md](docs/AI_RESPONSE_OPTIMIZATION_TH.md)** - AI optimization guide
 
 ---
 
@@ -291,9 +280,9 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
 ### Backend
 - **Runtime**: Node.js + TypeScript
 - **API**: tRPC Server
-- **AI**: LangChain, LangGraph
+- **AI**: Gemini with OpenAI embedding fallback and skill-based tools
 - **LLMs**: Google Gemini, OpenAI
-- **Vector DB**: ChromaDB, Pinecone
+- **Vector DB**: Qdrant
 - **Database**: MongoDB
 - **Real-time**: Socket.IO
 - **ML**: TensorFlow.js
@@ -301,7 +290,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
 ### DevOps
 - **Monorepo**: npm workspaces
 - **Containerization**: Docker, Docker Compose
-- **Deployment**: Railway
+- **Deployment**: DigitalOcean Droplet + Docker Compose
 - **CI/CD**: Git hooks
 
 ---

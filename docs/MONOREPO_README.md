@@ -17,12 +17,10 @@ rnd_ai_management/
 │   │   └── tsconfig.json       # Web TypeScript config
 │   │
 │   └── ai/                     # AI Backend Service
-│       ├── agents/             # AI agents (raw-materials, sales)
+│       ├── agents/react/       # Unified R&D agent and documented runtime skills
 │       ├── server/             # tRPC server & routers
 │       ├── scripts/            # Indexing & migration scripts
-│       ├── chromadb-service/   # Vector database service
 │       ├── lib/                # AI-specific utilities
-│       ├── .chromadb/          # ChromaDB data directory
 │       ├── package.json        # AI service dependencies
 │       └── tsconfig.json       # AI TypeScript config
 │
@@ -101,12 +99,8 @@ npm run seed-admin              # Seed admin user
 npm run migrate                 # Run migrations
 
 # Vector database indexing
-npm run create-sales-index      # Create sales AI index
-npm run index-sales-data        # Index sales data
-npm run index:chromadb          # Index to ChromaDB
-npm run index:chromadb:resume   # Resume ChromaDB indexing
-npm run index:chromadb:fast     # Fast ChromaDB indexing
-npm run check:chromadb          # Check ChromaDB stats
+npm run index:qdrant            # Index FDA, stock, sales R&D, and MySkin collections
+npm run check:qdrant            # Check Qdrant statistics
 ```
 
 ### Cleaning
@@ -127,7 +121,7 @@ npm run reset        # Clean and reinstall dependencies
 - **API Communication**: tRPC client
 - **Features**:
   - Admin dashboard
-  - AI chat interfaces (Raw Materials AI, Sales R&D AI)
+  - Unified R&D AI chat interface for raw-material, stock, formula, and sales work
   - Stock management
   - Formula management
   - User authentication
@@ -136,15 +130,15 @@ npm run reset        # Clean and reinstall dependencies
 
 - **Framework**: Node.js with TypeScript
 - **API**: tRPC server
-- **AI**: LangChain, Google Gemini, OpenAI
-- **Vector DB**: ChromaDB (primary), Pinecone (optional)
+- **AI**: Google Gemini with OpenAI embedding fallback
+- **Vector DB**: Qdrant
 - **Database**: MongoDB
 - **Features**:
-  - AI agents (Raw Materials, Sales R&D)
+  - One skill-based R&D AI agent
   - RAG (Retrieval Augmented Generation)
   - Vector search & embeddings
   - Real-time chat via Socket.IO
-  - Agent orchestration with sub-agents
+  - Plan → act → verify execution traces
 
 ### Shared Packages
 
@@ -168,10 +162,9 @@ npm run reset        # Clean and reinstall dependencies
 - Node.js
 - TypeScript
 - tRPC Server
-- LangChain & LangGraph
 - Google Gemini AI
 - OpenAI
-- ChromaDB (vector database)
+- Qdrant (vector database)
 - MongoDB (primary database)
 - Socket.IO (real-time)
 - TensorFlow.js (ML)
@@ -198,8 +191,8 @@ Required environment variables:
 - `MONGODB_URI` - MongoDB connection string
 - `GEMINI_API_KEY` - Google Gemini API key
 - `OPENAI_API_KEY` - OpenAI API key (optional)
-- `PINECONE_API_KEY` - Pinecone API key (optional)
-- `VECTOR_DB_PROVIDER` - Vector DB provider (chroma or pinecone)
+- `QDRANT_URL` - Qdrant server URL
+- `QDRANT_API_KEY` - Qdrant API key (optional for authenticated clusters)
 
 ## Deployment
 
@@ -212,11 +205,11 @@ docker build -t rnd-ai-web -f apps/web/Dockerfile .
 docker build -t rnd-ai-service -f apps/ai/Dockerfile .
 ```
 
-### Railway
+### Production Droplet
 
-Deployment configurations:
-- `railway.json` - Railway deployment config
-- `railway.toml` - Railway service definitions
+Production runs on the `rnd-ai-prod` DigitalOcean Droplet with Docker Compose.
+Use `scripts/deploy-droplet.sh --up` from the server checkout after a verified
+revision has been pushed. See [DEPLOYMENT.md](DEPLOYMENT.md) for the full runbook.
 
 ## Benefits of Monorepo Structure
 
@@ -259,7 +252,7 @@ If builds fail:
 If dev servers won't start:
 1. Check ports 3000 (web) and 3001 (ai) are not in use
 2. Verify environment variables are set
-3. Check MongoDB and ChromaDB connections
+3. Check MongoDB and Qdrant connections
 
 ## Contributing
 

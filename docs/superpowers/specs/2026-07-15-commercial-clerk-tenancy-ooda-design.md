@@ -1027,7 +1027,7 @@ The implementation must update or retire documentation that conflicts with this 
 - `docs/database-schema.md`
 - `docs/MIGRATION_GUIDE.md`
 - `docs/DEPLOYMENT.md`
-- `docs/langgraph-integration-roadmap.md`
+- retired LangGraph roadmap documentation
 - AI agent READMEs and management documentation
 - Environment-variable examples and secret guidance
 - API and event contract references

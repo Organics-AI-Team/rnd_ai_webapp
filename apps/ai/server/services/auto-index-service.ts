@@ -37,7 +37,7 @@ interface MaterialDocument {
 export async function auto_index_material(material: MaterialDocument): Promise<boolean> {
   console.log(`[auto-index] auto_index_material: rm_code=${material.rm_code}, start`);
   try {
-    const ragService = new QdrantRAGService('rawMaterialsAI');
+    const ragService = new QdrantRAGService('raw_materials_console');
     const doc = QdrantRAGService.prepare_raw_material_document(material as any);
     await ragService.upsert_documents([doc]);
     console.log(`[auto-index] auto_index_material: rm_code=${material.rm_code}, success`);

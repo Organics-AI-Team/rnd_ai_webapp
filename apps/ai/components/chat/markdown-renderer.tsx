@@ -19,7 +19,18 @@ interface MarkdownRendererProps {
   content: string;
 }
 
+/**
+ * Tool and database values occasionally contain HTML line-break tags. Raw
+ * HTML is intentionally disabled in ReactMarkdown, so present those values
+ * as readable plain Markdown instead of exposing literal `<br>` text.
+ */
+function normalize_markdown_content(content: string): string {
+  return content.replace(/<\s*br\s*\/?\s*>/gi, ' · ');
+}
+
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+  const normalized_content = normalize_markdown_content(content);
+
   // Custom components for markdown elements with Tailwind styling
   const components: Partial<Components> = {
     // Headings
@@ -149,7 +160,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         remarkPlugins={[remarkGfm]}
         components={components}
       >
-        {content}
+        {normalized_content}
       </ReactMarkdown>
     </div>
   );

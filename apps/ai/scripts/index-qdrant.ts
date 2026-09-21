@@ -5,8 +5,8 @@
  * via QdrantRAGService (embedding generation + vector upsert).
  *
  * Index targets:
- *   1. rnd_ai.raw_materials_console → Qdrant raw_materials_fda  (RAG: rawMaterialsAllAI)
- *   2. raw_materials.raw_materials_real_stock → Qdrant raw_materials_stock (RAG: rawMaterialsAI)
+ *   1. rnd_ai.raw_materials_console → Qdrant raw_materials_console
+ *   2. raw_materials.raw_materials_real_stock → Qdrant raw_materials_stock
  *
  * Environment Variables:
  *   - MONGODB_URI                          — connection string for rnd_ai database (required)
@@ -34,13 +34,6 @@ import { QDRANT_COLLECTIONS } from '../config/qdrant-config';
 // ---------------------------------------------------------------------------
 
 /**
- * Known RAG service names that map to Qdrant collections.
- * Each key selects both the embedding defaults and the target collection
- * inside QdrantRAGService.
- */
-type RagServiceName = 'rawMaterialsAllAI' | 'rawMaterialsAI' | 'salesRndAI' | 'rawMaterialsMySkinAI';
-
-/**
  * Definition of a single indexing target mapping MongoDB source to Qdrant collection.
  *
  * @param name              - Human-readable label for progress logs
@@ -48,15 +41,13 @@ type RagServiceName = 'rawMaterialsAllAI' | 'rawMaterialsAI' | 'salesRndAI' | 'r
  * @param mongo_collection  - MongoDB collection name
  * @param mongo_uri_env     - Environment variable name holding the MongoDB connection string
  * @param qdrant_collection - Target Qdrant collection name
- * @param rag_service_name  - RAG service key (maps to collection + defaults in QdrantRAGService)
  */
 interface IndexTarget {
   name: string;
   mongo_db: string;
   mongo_collection: string;
   mongo_uri_env: string;
-  qdrant_collection: string;
-  rag_service_name: RagServiceName;
+  qdrant_collection: keyof typeof QDRANT_COLLECTIONS;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,8 +60,7 @@ const INDEX_TARGETS: IndexTarget[] = [
     mongo_db: 'rnd_ai',
     mongo_collection: 'raw_materials_console',
     mongo_uri_env: 'MONGODB_URI',
-    qdrant_collection: 'raw_materials_fda',
-    rag_service_name: 'rawMaterialsAllAI',
+    qdrant_collection: 'raw_materials_console',
   },
   {
     name: 'Stock Raw Materials',
@@ -79,17 +69,14 @@ const INDEX_TARGETS: IndexTarget[] = [
     // Falls back to MONGODB_URI when the dedicated env var is not set
     mongo_uri_env: 'RAW_MATERIALS_REAL_STOCK_MONGODB_URI',
     qdrant_collection: 'raw_materials_stock',
-    rag_service_name: 'rawMaterialsAI',
   },
   {
     name: 'Sales R&D Intelligence',
     mongo_db: 'raw_materials',
     mongo_collection: 'raw_materials_real_stock',
-    // Same source collection as stock, but indexed with salesRndAI service
-    // for sales-oriented search (different embedding context / metadata)
+    // Same source collection as stock, indexed into the commercial context collection.
     mongo_uri_env: 'RAW_MATERIALS_REAL_STOCK_MONGODB_URI',
     qdrant_collection: 'sales_rnd',
-    rag_service_name: 'salesRndAI',
   },
   {
     name: 'MySkin Raw Materials',
@@ -97,7 +84,6 @@ const INDEX_TARGETS: IndexTarget[] = [
     mongo_collection: 'raw_materials_myskin',
     mongo_uri_env: 'MONGODB_URI',
     qdrant_collection: 'raw_materials_myskin',
-    rag_service_name: 'rawMaterialsMySkinAI',
   },
 ];
 
@@ -227,10 +213,7 @@ async function index_target(
     }
 
     // Create QdrantRAGService for this target's collection
-    const rag_service = new QdrantRAGService(
-      target.rag_service_name as any,
-      { collectionName: target.qdrant_collection },
-    );
+    const rag_service = new QdrantRAGService(target.qdrant_collection);
 
     // Stream through cursor
     const cursor = mongo_collection.find({}).batchSize(batch_size);

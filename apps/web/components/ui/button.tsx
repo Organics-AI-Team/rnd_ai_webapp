@@ -5,20 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@rnd-ai/shared-utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-gray-900 text-white shadow-sm hover:bg-gray-800",
+          "bg-gradient-to-br from-emerald-600 to-green-600 text-white shadow-[0_6px_14px_rgba(5,150,105,0.22)] hover:-translate-y-0.5 hover:from-emerald-500 hover:to-green-500",
         destructive:
           "bg-red-600 text-white shadow-sm hover:bg-red-700",
         outline:
-          "border border-gray-200 bg-white text-gray-900 hover:bg-gray-50",
+          "border border-emerald-200/80 bg-white/80 text-emerald-950 hover:bg-emerald-50",
         secondary:
-          "bg-gray-100 text-gray-900 hover:bg-gray-200",
-        ghost: "text-gray-700 hover:bg-gray-100 hover:text-gray-900",
-        link: "text-blue-600 underline-offset-4 hover:underline",
+          "bg-emerald-50 text-emerald-900 hover:bg-emerald-100",
+        ghost: "text-emerald-800 hover:bg-emerald-50 hover:text-emerald-950",
+        link: "text-emerald-700 underline-offset-4 hover:underline",
       },
       size: {
         default: "h-8 px-3 py-1.5 text-sm",

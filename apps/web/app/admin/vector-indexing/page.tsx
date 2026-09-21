@@ -15,8 +15,8 @@ export default function VectorIndexingPage() {
   const [startIndex, setStartIndex] = useState(0);
   const [isIndexing, setIsIndexing] = useState(false);
 
-  const indexMutation = trpc.rag.indexRawMaterials.useMutation();
-  const statsQuery = trpc.rag.getIndexStats.useQuery();
+  const indexMutation = trpc.vectorIndex.indexRawMaterials.useMutation();
+  const statsQuery = trpc.vectorIndex.getIndexStats.useQuery();
 
   const handleIndexBatch = async () => {
     setIsIndexing(true);
@@ -224,20 +224,20 @@ export default function VectorIndexingPage() {
         <CardContent>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="font-medium">Pinecone Index:</span>
-              <Badge variant="outline">002-rnd-ai</Badge>
+              <span className="font-medium">Qdrant Collections:</span>
+              <Badge variant="outline">raw_materials_fda + raw_materials_stock + sales_rnd</Badge>
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Source Collection:</span>
-              <Badge variant="outline">raw_materials_real_stock</Badge>
+              <Badge variant="outline">raw_materials_console</Badge>
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Embedding Model:</span>
-              <Badge variant="outline">text-embedding-3-small</Badge>
+              <Badge variant="outline">Gemini text-embedding-004</Badge>
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Vector Dimensions:</span>
-              <Badge variant="outline">1536</Badge>
+              <Badge variant="outline">768 core / 3072 MySkin</Badge>
             </div>
           </div>
         </CardContent>

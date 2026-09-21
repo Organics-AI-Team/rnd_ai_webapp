@@ -94,14 +94,14 @@ RUN mkdir -p ./apps/web/public
 USER nextjs
 
 # Expose port 3000
-# Railway will map this to a public URL
+# The reverse proxy on the production Droplet maps this port to the public URL.
 EXPOSE 3000
 
 # Set port environment variable
 ENV PORT=3000
 
 # Set hostname to listen on all network interfaces
-# Required for Railway to properly route traffic
+# Required for Docker to accept traffic from the reverse proxy.
 ENV HOSTNAME="0.0.0.0"
 
 # Start the Next.js application

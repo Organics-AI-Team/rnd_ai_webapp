@@ -28,7 +28,6 @@ type OptionalEnvVar =
   | 'RAW_MATERIALS_REAL_STOCK_MONGODB_URI'
   | 'GEMINI_API_KEY'
   | 'OPENAI_API_KEY'
-  | 'PINECONE_API_KEY'
   | 'NEXT_PUBLIC_APP_URL'
   | 'NEXT_PUBLIC_API_URL'
   | 'NODE_ENV'
@@ -144,14 +143,6 @@ export const env = {
     return key;
   },
 
-  pinecone_api_key: () => {
-    const key = process.env.PINECONE_API_KEY;
-    if (!key) {
-      throw new Error('PINECONE_API_KEY is not set in environment variables');
-    }
-    return key;
-  },
-
   /**
    * Application URLs
    */
@@ -195,7 +186,6 @@ export function get_env_status(): Record<string, string> {
     'RAW_MATERIALS_REAL_STOCK_MONGODB_URI',
     'GEMINI_API_KEY',
     'OPENAI_API_KEY',
-    'PINECONE_API_KEY',
     'NEXT_PUBLIC_APP_URL',
     'NODE_ENV',
     'DEBUG_AI',

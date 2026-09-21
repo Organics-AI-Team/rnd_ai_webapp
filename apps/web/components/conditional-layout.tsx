@@ -14,9 +14,7 @@ export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   // Check if current route is an admin route
   const isAdminRoute = pathname.startsWith("/admin");
 
-  // AI pages need full height without padding for proper viewport sizing
-  const aiPages = ["/ai/raw-materials-ai", "/ai/sales-rnd-ai"];
-  const isAIPage = aiPages.includes(pathname);
+  const isAIPage = pathname === "/ai";
 
   if (isPublicPage) {
     return <>{children}</>;

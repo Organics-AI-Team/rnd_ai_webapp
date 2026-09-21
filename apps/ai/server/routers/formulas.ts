@@ -1,9 +1,35 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import client_promise from "@rnd-ai/shared-database";
-import { FormulaSchema } from "@/lib/types";
 import { ObjectId } from "mongodb";
 import { logActivity } from "@/lib/userLog";
+
+type FormulaStatus = "draft" | "confirmed" | "testing" | "approved" | "rejected";
+
+interface FormulaDocument {
+  _id?: ObjectId;
+  organizationId: string;
+  formulaCode?: string;
+  formulaName: string;
+  version: number;
+  client?: string;
+  targetBenefits?: string[];
+  ingredients: Array<{
+    materialId: string;
+    rm_code: string;
+    productName: string;
+    inci_name?: string;
+    amount: number;
+    percentage?: number;
+    notes?: string;
+  }>;
+  totalAmount?: number;
+  remarks?: string;
+  status: FormulaStatus;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export const formulasRouter = router({
   // Get next auto-generated formula code
@@ -43,7 +69,7 @@ export const formulasRouter = router({
     const db = client.db();
 
     const formulas = await db
-      .collection("formulas")
+      .collection<FormulaDocument>("formulas")
       .find({ organizationId: ctx.user.organizationId })
       .sort({ createdAt: -1 })
       .toArray();
@@ -61,7 +87,7 @@ export const formulasRouter = router({
       const client = await client_promise;
       const db = client.db();
 
-      const formula = await db.collection("formulas").findOne({
+      const formula = await db.collection<FormulaDocument>("formulas").findOne({
         _id: new ObjectId(input.id),
         organizationId: ctx.user.organizationId,
       });

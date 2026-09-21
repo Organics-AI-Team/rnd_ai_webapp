@@ -23,7 +23,7 @@ const nextConfig = {
       : false
   },
 
-  // Fix for Pinecone fs module issue and MongoDB browser compatibility
+  // Keep server-only database modules out of client bundles.
   // Prevents bundling Node.js modules in client-side code
   webpack: (config, { isServer }) => {
     // Add path aliases for monorepo AI service and server
@@ -32,19 +32,6 @@ const nextConfig = {
       '@/ai': require('path').resolve(__dirname, '../ai'),
       '@/server': require('path').resolve(__dirname, '../ai/server')
     };
-
-    // ChromaDB and optional dependencies exclusion (both server and client)
-    // ChromaDB has optional peer dependencies that cause build issues
-    config.externals = config.externals || [];
-    if (typeof config.externals === 'object' && !Array.isArray(config.externals)) {
-      config.externals = [config.externals];
-    }
-    config.externals.push({
-      'chromadb': 'commonjs chromadb',
-      '@chroma-core/default-embed': 'commonjs @chroma-core/default-embed',
-      'hnswlib-node': 'commonjs hnswlib-node',
-      'tiktoken': 'commonjs tiktoken'
-    });
 
     if (!isServer) {
       config.resolve.fallback = {
@@ -105,23 +92,10 @@ const nextConfig = {
         'mongodb/lib/cmap/auth/mongodb_oidc/callback_workflow': 'mongodb/lib/cmap/auth/mongodb_oidc/callback_workflow',
         'mongodb/lib/cmap/auth/mongodb_oidc/automated_callback_workflow': 'mongodb/lib/cmap/auth/mongodb_oidc/automated_callback_workflow',
         'mongodb/lib/mongo_client_auth_providers': 'mongodb/lib/mongo_client_auth_providers',
-        '@langchain/langgraph': '@langchain/langgraph',
-        // '@pinecone-database/pinecone': '@pinecone-database/pinecone', // Disabled - Using ChromaDB instead
         '@tensorflow/tfjs': '@tensorflow/tfjs',
         'node:async_hooks': 'node:async_hooks',
         'node:stream': 'node:stream',
-        // Enhanced services exclusions
-        '@/ai/services/knowledge/cosmetic-knowledge-sources': '@/ai/services/knowledge/cosmetic-knowledge-sources',
-        '@/ai/services/quality/cosmetic-quality-scorer': '@/ai/services/quality/cosmetic-quality-scorer',
-        '@/ai/services/regulatory/cosmetic-regulatory-sources': '@/ai/services/regulatory/cosmetic-regulatory-sources',
-        '@/ai/services/credibility/cosmetic-credibility-weighting': '@/ai/services/credibility/cosmetic-credibility-weighting',
-        '@/ai/services/response/response-reranker': '@/ai/services/response/response-reranker',
-        '@/ai/services/rag/enhanced-hybrid-search-service': '@/ai/services/rag/enhanced-hybrid-search-service',
-        '@/ai/services/ml/preference-learning-service': '@/ai/services/ml/preference-learning-service',
-        '@/ai/services/vector/chroma-service': '@/ai/services/vector/chroma-service',
-        '@/ai/services/rag/chroma-rag-service': '@/ai/services/rag/chroma-rag-service',
-        '@/ai/agents/raw-materials-ai/enhanced-raw-materials-agent': '@/ai/agents/raw-materials-ai/enhanced-raw-materials-agent',
-        '@/ai/agents/sales-rnd-ai/enhanced-sales-rnd-agent': '@/ai/agents/sales-rnd-ai/enhanced-sales-rnd-agent'
+        '@/ai/services/ml/preference-learning-service': '@/ai/services/ml/preference-learning-service'
       };
 
       config.resolve.extensions = ['.js', '.jsx', '.ts', '.tsx'];
