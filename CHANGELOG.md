@@ -1,5 +1,61 @@
 # Changelog
 
+## [2026-09-21] fix(auth): typed error codes, 60s session poll, orphan worker stopped
+
+### Summary
+
+Closing out the remaining items from the production health check.
+
+- **Auth failures returned HTTP 500.** Every tRPC handler threw a bare `Error`,
+  so `INTERNAL_SERVER_ERROR` was the response to a wrong password — clients
+  could not distinguish an auth failure from a server fault, and each failed
+  login counted toward the 5xx rate.
+- **The session was re-read every 5 seconds** per open tab — three queries each
+  time — to observe data that changes about once a session.
+- **An orphan `rnd-ai-worker` container** had been running 7-week-old code from
+  the undeployed Clerk branch, absent from the compose file, holding `.env`
+  credentials and a Mongo connection.
+
+### Changes
+
+- `apps/ai/server/routers/auth.ts`, `apps/ai/server/trpc.ts` — typed `TRPCError`
+  on the auth-critical path: `UNAUTHORIZED` for bad credentials and dead
+  sessions, `FORBIDDEN` for a deactivated account, `CONFLICT` for duplicate
+  signup, `NOT_FOUND` for a missing profile. Both credential failures keep an
+  identical message deliberately — distinguishing "no such account" from "wrong
+  password" is an account-enumeration oracle.
+- `apps/web/lib/auth-context.tsx` — `refetchInterval` 5s -> 60s. `refreshUser()`
+  covers immediacy; `refetchOnWindowFocus` covers returning tabs.
+- `tests/security/api-auth-boundary.test.cjs` — fourth assertion: no bare throw
+  on the auth path. Verified it fails when one is restored.
+
+### Sweep
+
+57 bare `throw new Error` across 11 routers. The 8 on the auth/authorization
+path are converted and guarded. The other 50 need per-site semantic judgement
+(`NOT_FOUND` vs `FORBIDDEN` vs `BAD_REQUEST`), so they are catalogued with
+file:line counts in `TODOS.md` rather than bulk-replaced — extend
+`AUTH_CRITICAL_PATH` in the test as each router is converted.
+
+### Operations
+
+`rnd-ai-worker` stopped after confirming it had no work: `ai_run_jobs` 42 total
+/ 0 pending, nothing written since 2026-08-02, matching its 7-week uptime. The
+current deployment cannot enqueue runs at all (`/api/ai/runs` is 404). Stopped,
+not removed — `docker start rnd-ai-worker` restores it if `v2/dev` is redeployed.
+
+### Verification
+
+Live: `auth.login` with bad credentials and `auth.me` with a dead token both now
+return `UNAUTHORIZED` / HTTP 401 (previously 500). API auth boundary still 401
+unauthenticated, `/login` 200, web container healthy.
+
+### Note
+
+Three files were rsynced to the droplet before their backup command ran (a shell
+quoting error meant the backup silently did not execute). No loss — prior
+versions are in git at `654edfc^`, and the deploy verified clean.
+
 ## [2026-09-21] ops: reclaim droplet disk and index the sessions collection
 
 ### Summary

@@ -34,10 +34,6 @@
       Clerk) or `v2/dev` (Clerk + multi-tenant RBAC + governed run API, finished and tested,
       currently undeployed). This morning's deploy replaced the Clerk cutover recorded in
       `16d65e3` — unclear whether that was intentional. Everything below waits on the answer.
-- [ ] Orphan `rnd-ai-worker` container on the droplet — 7-week-old code from the undeployed
-      Clerk branch, idle 24h, absent from `docker compose config --services`, still holding
-      `.env` credentials and a Mongo connection. Stop it, or redeploy `v2/dev` and make it
-      current. Do not leave it drifting indefinitely.
 - [ ] Finish porting the `/ai` rework to `v2/dev` (est. ~2d) — see `TODOS.md` on that branch.
       Pointless if production stays on `dev/droplet`.
 
@@ -48,6 +44,11 @@
       path still reachable) but no authenticated agent run has exercised it.
 
 ## Done ✓
+
+- [x] Stopped the orphan `rnd-ai-worker` container — 7 weeks idle with zero pending jobs
+      (`ai_run_jobs` pending=0, nothing since 2026-08-02), running undeployed Clerk-branch code
+      while holding credentials. Stopped, not removed: `docker start rnd-ai-worker` restores it
+      if `v2/dev` is redeployed.
 
 - [x] Guard every API route at the edge — nine endpoints were reachable unauthenticated in
       production. See `CHANGELOG.md` 2026-09-21 and `tests/security/api-auth-boundary.test.cjs`.
