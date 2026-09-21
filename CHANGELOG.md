@@ -1,5 +1,51 @@
 # Changelog
 
+## [2026-09-21] ops: reclaim droplet disk and index the sessions collection
+
+### Summary
+
+Follow-up to the auth-boundary fix, from a health check of the production droplet.
+
+- **Disk was 80% full and would have failed a future deploy.** Docker build
+  cache had grown to 54.73 GB (49.59 GB reclaimable) — images account for only
+  1.2 GB, so the cache *was* the disk usage, and every rebuild added more.
+  `docker builder prune -f` took the volume from 61 GB used / 16 GB free to
+  15 GB used / 63 GB free (80% -> 19%).
+- **`sessions` carried only the default `_id_` index.** Two consequences: every
+  session lookup scanned the collection on `token` — and `auth.me` is polled
+  once per 5s per signed-in user, plus once per `protectedProcedure` call — and
+  expired rows were never reclaimed, since `auth.me` merely filters them out
+  with `expiresAt: { $gt: now }`.
+
+### Changes
+
+- `apps/ai/scripts/ensure-session-indexes.ts` (new) — idempotent creation of
+  `token_unique` (unique; tokens are 32 random bytes, so a collision is a bug,
+  not traffic) and `expiresAt_ttl` (`expireAfterSeconds: 0`, so each session is
+  reaped at its own stored expiry rather than a fixed age). Refuses to run if
+  duplicate tokens exist rather than silently degrading to a non-unique index.
+- `apps/ai/package.json` — `npm run ensure:session-indexes --workspace=apps/ai`.
+
+Written as a script rather than applied by hand so the index state is
+reproducible on a rebuild or a new environment.
+
+### Verification
+
+Applied to production and re-run to confirm the no-op path. `sessions` now
+reports `_id_`, `token_unique` (unique), `expiresAt_ttl` (ttl 0). Web container
+healthy, no errors; auth boundary still returns 401 unauthenticated and `/login`
+200.
+
+### Not done
+
+- Orphan `rnd-ai-worker` container — running 7-week-old code from the
+  undeployed Clerk branch, idle 24h, absent from the compose file, still
+  holding credentials and a Mongo connection. Left running pending the decision
+  on which branch production should serve.
+- The 5-second `auth.me` poll in `apps/web/lib/auth-context.tsx` is now cheap
+  per call but is still three queries per user per 5s; nothing in the UI needs
+  that freshness.
+
 ## [2026-09-21] fix(security): every API route ran unauthenticated in production
 
 ### Summary

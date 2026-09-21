@@ -13,7 +13,8 @@
     "seed-admin": "tsx scripts/seed-admin.ts",
     "migrate": "tsx scripts/migrate-to-mongo.ts",
     "index:qdrant": "tsx scripts/index-qdrant.ts",
-    "check:qdrant": "tsx scripts/check-qdrant.ts"
+    "check:qdrant": "tsx scripts/check-qdrant.ts",
+    "ensure:session-indexes": "tsx scripts/ensure-session-indexes.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
