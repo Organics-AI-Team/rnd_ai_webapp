@@ -1,5 +1,68 @@
 # Changelog
 
+## [2026-09-21] fix(security): every API route ran unauthenticated in production
+
+### Summary
+
+Found while answering "is it deployed?" — the answer turned up a live,
+publicly reachable auth hole rather than a deployment question.
+
+- **Nine API endpoints were callable by anyone on the internet.** `middleware.ts`
+  excluded `/api` from its matcher, and not one handler under `apps/web/app/api`
+  performed a credential check of its own. Confirmed against production: each
+  returned its own 400/503 field-validation error to an anonymous POST, proving
+  the handler body executed. Anyone could run the R&D agent — on the project's
+  Gemini and Qdrant spend — and reach the RAG search and indexing routes.
+- **Identity came from the request body.** `/api/ai/rnd-agent` read the acting
+  `userId` from JSON the caller controls, so even after authentication a user
+  could act as any other user by editing one field.
+- **The readiness probe fell back to `NEXT_PUBLIC_GEMINI_API_KEY`.** That prefix
+  is inlined into client bundles, so the pattern ships a provider credential to
+  every browser that loads the app.
+
+### Root cause
+
+One missing guard, not nine missing checks: the edge gate opted `/api` out
+wholesale. Fixed upstream — the matcher now covers `/api` and returns **401 JSON**
+(a 307 to the login HTML would read to an API client as a malformed success).
+`PUBLIC_API_PREFIXES` names the single opt-out, `/api/trpc`, which must stay
+reachable because it carries login and signup and authorizes per procedure.
+
+### Sweep
+
+`find apps/web/app/api -name route.ts` plus an auth-check grep across the
+deployed tree at `/opt/rnd-ai` (which predates the legacy-route cleanup in
+`884a3be`): **10 handlers, 0 with any check.** All 10 are now covered by the
+edge gate — the 8 this branch had already deleted stayed live in production
+until this deploy. Sibling sweep for `NEXT_PUBLIC_*` credential reads across
+`apps/`, `packages/`, `scripts/`, `evals/`: one instance, fixed.
+
+### Changes
+
+- `apps/web/middleware.ts` — matcher covers `/api`; 401 JSON for unauthenticated
+  API calls; `PUBLIC_API_PREFIXES` allowlist; rejections logged with pathname and
+  timestamp.
+- `apps/web/app/api/ai/rnd-agent/route.ts` — POST and PUT resolve the actor from
+  the session via `createTRPCContext()`; `body.userId` no longer read; readiness
+  probe no longer falls back to the client-exposed key.
+- `tests/security/api-auth-boundary.test.cjs` — class-level guard: the matcher
+  never re-excludes `/api`, the public allowlist never widens, no handler reads
+  identity from the body. Verified it fails when the original matcher is restored.
+- `package.json` — `npm test` wired to `node --test` (20 tests pass).
+
+### Verification
+
+All 9 endpoints return 401 unauthenticated in production; `/login` and the
+`/api/trpc` login path still reach their handlers; `apps/web` typecheck clean;
+web container healthy with no runtime errors after rebuild.
+
+### Known follow-ups
+
+- tRPC throws bare `Error`, so auth failures surface as HTTP 500
+  (`INTERNAL_SERVER_ERROR`) instead of 401/400. Pre-existing; not touched here.
+- Session token still lives in `localStorage` + a non-httpOnly cookie, and
+  `sessions` has no TTL index on `expiresAt`. Tracked in `TODOS.md` on `v2/dev`.
+
 ## [2026-09-21] fix(ui): rework the /ai workspace layout — two sidebars, stray scrollbar, unscannable thread
 
 ### Summary
