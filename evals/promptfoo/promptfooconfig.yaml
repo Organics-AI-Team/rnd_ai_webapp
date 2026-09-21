@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Recorded unified R&D AI RAG regression suite
+
+prompts:
+  - "{{question}}"
+
+providers:
+  - id: file://./recorded-output-provider.cjs
+    label: captured-rnd-agent-run
+    config:
+      resultsPath: evals/rag/results/latest.jsonl
+
+tests:
+  - file://./generate_tests.py:generate_tests

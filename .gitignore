@@ -20,6 +20,9 @@ __pycache__/
 
 # testing
 /coverage
+/evals/reports/
+/playwright-report/
+/test-results/
 
 # next.js
 /.next/
@@ -44,7 +47,8 @@ yarn-error.log*
 
 # local env files
 .env
-.env*.local
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -64,5 +68,10 @@ _archive/
 
 # Local tool directories
 .claude/
+.worktrees/
 .planning/
 .playwright-mcp/
+.loop/
+
+# knowledge-ingest resume checkpoints (local/droplet state, never committed)
+.import-progress-*.json

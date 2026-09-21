@@ -1,244 +1,255 @@
 /**
- * MongoDB Query Tool Handler
- * Handles the `mongo_query` ReAct tool by executing read-only MongoDB
- * operations (find, findOne, aggregate, count) against either the rnd_ai
- * or raw_materials database.
+ * MongoDB Diagnostic Tool Handler (G2.6 — locked down).
  *
- * Design decisions:
- * - MongoClient instances are cached per URI in a module-level Map to avoid
- *   reconnection overhead across repeated tool calls within a session.
- * - Results are capped at 20 documents to prevent oversized LLM context.
- * - Only read operations are permitted; write access is explicitly blocked.
+ * This tool previously accepted a model-supplied collection name, raw filter,
+ * and aggregation pipeline — a direct cross-tenant data-exfiltration vector: a
+ * model (or a prompt-injected instruction) could read any collection with any
+ * filter. It is now restricted to a small set of server-authored, read-only
+ * named diagnostics. The model may only choose a diagnostic by name and pass a
+ * narrow set of validated scalar parameters; it can never name a collection,
+ * supply a filter, or author an aggregation stage. Every tenant-scoped
+ * diagnostic pins its query to the trusted execution context's tenant.
  *
  * @author AI Management System
  * @date 2026-03-27
  */
 
-import { MongoClient, Document } from 'mongodb';
+import { MongoClient, type Db } from 'mongodb';
+import client_promise from '@rnd-ai/shared-database';
+import type { ToolHandlerContext } from '../types';
+import { tenant_scoped_query_filter } from '../tenant-tool-scope';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Maximum documents returned per query to keep LLM context manageable */
+/** Maximum documents returned per diagnostic to keep LLM context manageable. */
 const MAX_RESULTS = 20;
 
-/** Default limit when caller does not specify one */
+/** Default document limit when the caller does not specify one. */
 const DEFAULT_LIMIT = 10;
 
-/** Allowed MongoDB read operations — write operations are explicitly excluded */
-const ALLOWED_OPERATIONS = ['find', 'findOne', 'aggregate', 'count'] as const;
+/**
+ * Formula lifecycle statuses the model may filter recent-formula diagnostics
+ * by. Anything outside this allowlist is rejected — the model can never inject
+ * an arbitrary filter value.
+ */
+const ALLOWED_FORMULA_STATUSES = [
+  'draft',
+  'testing',
+  'approved',
+  'rejected',
+  'confirmed',
+] as const;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Union of permitted read operation names */
-type MongoOperation = typeof ALLOWED_OPERATIONS[number];
-
 /**
- * Input parameters for the mongo_query tool handler.
+ * Model-visible input for the mongo_query diagnostic tool. Deliberately carries
+ * no collection, database, filter, projection, sort, or aggregation field.
  *
- * @param collection  - MongoDB collection name to query
- * @param database    - Target database: 'rnd_ai' uses MONGODB_URI; 'raw_materials' uses RAW_MATERIALS_REAL_STOCK_MONGODB_URI
- * @param operation   - Read operation to perform: find | findOne | aggregate | count
- * @param filter      - MongoDB query filter document
- * @param projection  - Optional field selection document (1 = include, 0 = exclude)
- * @param sort        - Optional sort specification (e.g. { cost: 1 } for ascending)
- * @param limit       - Max documents to return for find (default: 10, capped at 20)
+ * @param query_name - Name of a server-authored diagnostic (allowlisted).
+ * @param status     - Optional formula status filter (allowlist-validated).
+ * @param limit      - Optional document cap (clamped to 1..MAX_RESULTS).
  */
-interface MongoQueryParams {
-  collection: string;
-  database: string;
-  operation: MongoOperation;
-  filter: Record<string, unknown>;
-  projection?: Record<string, unknown>;
-  sort?: Record<string, unknown>;
+interface MongoDiagnosticParams {
+  query_name?: string;
+  status?: string;
   limit?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Client Cache
-// ---------------------------------------------------------------------------
+/** Validated, server-controlled parameters passed to a diagnostic runner. */
+interface DiagnosticSafeParams {
+  status: (typeof ALLOWED_FORMULA_STATUSES)[number] | null;
+  limit: number;
+}
 
 /**
- * Module-level cache of connected MongoClient instances, keyed by URI.
- * Avoids creating a new connection on every tool invocation.
+ * A single server-authored diagnostic. `requires_tenant` marks queries that
+ * read tenant data and therefore fail closed without a tenant scope.
  */
-const client_cache = new Map<string, MongoClient>();
+interface DiagnosticDefinition {
+  description: string;
+  requires_tenant: boolean;
+  run: (
+    context: DiagnosticRunContext,
+    params: DiagnosticSafeParams,
+  ) => Promise<unknown>;
+}
+
+/** Runtime handles a diagnostic runner may use. */
+interface DiagnosticRunContext {
+  main_db: Db;
+  tenant_scope: { tenantId: { $in: (string | import('mongodb').ObjectId)[] } } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Raw-materials client cache (platform-global reference DB only)
+// ---------------------------------------------------------------------------
 
 /**
- * Retrieve or create a cached MongoClient for the given URI.
- * On first call for a URI, connects and stores the client.
+ * Module-level cache of connected MongoClient instances for the platform-global
+ * raw-materials database, keyed by URI. Tenant diagnostics use the shared main
+ * client (client_promise) instead so they honour tenant provenance.
+ */
+const raw_materials_client_cache = new Map<string, MongoClient>();
+
+/**
+ * Resolve the platform-global raw-materials database connection URI.
  *
- * @param uri - MongoDB connection string
- * @returns Connected MongoClient instance
- * @throws Error if the URI is empty or connection fails
+ * @returns The raw-materials connection URI string.
+ * @throws Error if RAW_MATERIALS_REAL_STOCK_MONGODB_URI is not set.
  */
-async function get_or_create_client(uri: string): Promise<MongoClient> {
-  console.log('[mongo-query-handler] get_or_create_client — start', {
-    uri_preview: uri.substring(0, 30) + '...',
-  });
-
+function resolve_raw_materials_uri(): string {
+  const uri = process.env.RAW_MATERIALS_REAL_STOCK_MONGODB_URI;
   if (!uri) {
-    throw new Error('MongoDB URI is empty. Check environment variables.');
+    throw new Error(
+      'Missing environment variable "RAW_MATERIALS_REAL_STOCK_MONGODB_URI".',
+    );
   }
+  return uri;
+}
 
-  if (client_cache.has(uri)) {
-    console.log('[mongo-query-handler] get_or_create_client — cache hit');
-    return client_cache.get(uri)!;
+/**
+ * Retrieve or create a cached MongoClient for the raw-materials database.
+ *
+ * @returns Connected MongoClient for the raw-materials database.
+ * @throws Error if the URI is missing or the connection fails.
+ */
+async function get_raw_materials_client(): Promise<MongoClient> {
+  const uri = resolve_raw_materials_uri();
+  const cached = raw_materials_client_cache.get(uri);
+  if (cached) {
+    return cached;
   }
-
   const client = new MongoClient(uri, {
     maxPoolSize: 5,
     connectTimeoutMS: 10_000,
     serverSelectionTimeoutMS: 10_000,
   });
-
   await client.connect();
-  client_cache.set(uri, client);
-
-  console.log('[mongo-query-handler] get_or_create_client — connected and cached');
+  raw_materials_client_cache.set(uri, client);
   return client;
 }
 
 // ---------------------------------------------------------------------------
-// URI Resolver
+// Diagnostic registry (server-authored, read-only)
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the MongoDB connection URI for the requested database.
- * - 'raw_materials' → RAW_MATERIALS_REAL_STOCK_MONGODB_URI
- * - 'rnd_ai' (or any other value) → MONGODB_URI
- *
- * @param database - Logical database identifier from the tool params
- * @returns The connection URI string
- * @throws Error if the required environment variable is not set
+ * Registry of allowlisted diagnostics. Each entry owns its collection, filter,
+ * and (where relevant) tenant predicate — none of which the model can supply.
  */
-function resolve_mongo_uri(database: string): string {
-  console.log('[mongo-query-handler] resolve_mongo_uri — start', { database });
-
-  const uri =
-    database === 'raw_materials'
-      ? process.env.RAW_MATERIALS_REAL_STOCK_MONGODB_URI
-      : process.env.MONGODB_URI;
-
-  if (!uri) {
-    const env_var =
-      database === 'raw_materials'
-        ? 'RAW_MATERIALS_REAL_STOCK_MONGODB_URI'
-        : 'MONGODB_URI';
-    throw new Error(
-      `Missing environment variable "${env_var}" for database "${database}".`,
-    );
-  }
-
-  console.log('[mongo-query-handler] resolve_mongo_uri — done');
-  return uri;
-}
+const NAMED_DIAGNOSTIC_QUERIES: Record<string, DiagnosticDefinition> = {
+  tenant_formula_count: {
+    description: "Count the caller's formulas, optionally filtered by status.",
+    requires_tenant: true,
+    run: async ({ main_db, tenant_scope }, params) => {
+      const filter: Record<string, unknown> = { ...tenant_scope };
+      if (params.status) {
+        filter.status = params.status;
+      }
+      const count = await main_db.collection('formulas').countDocuments(filter);
+      return { count };
+    },
+  },
+  tenant_formula_status_breakdown: {
+    description: "Count the caller's formulas grouped by lifecycle status.",
+    requires_tenant: true,
+    run: async ({ main_db, tenant_scope }) => {
+      const rows = await main_db
+        .collection('formulas')
+        .aggregate([
+          { $match: { ...tenant_scope } },
+          { $group: { _id: '$status', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: MAX_RESULTS },
+        ])
+        .toArray();
+      return rows.map((row) => ({ status: row._id ?? 'unknown', count: row.count }));
+    },
+  },
+  tenant_recent_formulas: {
+    description:
+      "List the caller's most recently updated formulas (code, name, status).",
+    requires_tenant: true,
+    run: async ({ main_db, tenant_scope }, params) => {
+      const filter: Record<string, unknown> = { ...tenant_scope };
+      if (params.status) {
+        filter.status = params.status;
+      }
+      const docs = await main_db
+        .collection('formulas')
+        .find(filter, {
+          projection: {
+            formulaCode: 1,
+            formulaName: 1,
+            status: 1,
+            version: 1,
+            updatedAt: 1,
+          },
+        })
+        .sort({ updatedAt: -1, _id: -1 })
+        .limit(params.limit)
+        .toArray();
+      return docs.map((doc) => ({
+        formula_id: doc._id.toString(),
+        formula_code: doc.formulaCode ?? null,
+        formula_name: doc.formulaName ?? null,
+        status: doc.status ?? null,
+        version: doc.version ?? null,
+      }));
+    },
+  },
+  raw_material_count: {
+    description:
+      'Count platform-global raw materials in the shared reference database.',
+    requires_tenant: false,
+    run: async () => {
+      const client = await get_raw_materials_client();
+      const count = await client
+        .db('raw_materials')
+        .collection('raw_materials_console')
+        .countDocuments({});
+      return { count };
+    },
+  },
+};
 
 // ---------------------------------------------------------------------------
-// Operation Executors
+// Parameter validation
 // ---------------------------------------------------------------------------
 
 /**
- * Execute a MongoDB `find` operation with optional projection, sort, and limit.
+ * Validate and clamp the model-supplied scalar parameters. Unknown status
+ * values are rejected so the model cannot inject an arbitrary filter value.
  *
- * @param collection_ref - MongoDB Collection object
- * @param params         - Full MongoQueryParams for filter/projection/sort/limit
- * @returns Array of matching documents (capped at MAX_RESULTS)
+ * @param params - Raw model-supplied parameters.
+ * @returns Validated safe parameters, or an error string.
  */
-async function execute_find(
-  collection_ref: ReturnType<ReturnType<MongoClient['db']>['collection']>,
-  params: MongoQueryParams,
-): Promise<Document[]> {
-  console.log('[mongo-query-handler] execute_find — start');
-
-  const safe_limit = Math.min(params.limit ?? DEFAULT_LIMIT, MAX_RESULTS);
-  let cursor = collection_ref.find(params.filter);
-
-  if (params.projection && Object.keys(params.projection).length > 0) {
-    cursor = cursor.project(params.projection);
-  }
-  if (params.sort && Object.keys(params.sort).length > 0) {
-    cursor = cursor.sort(params.sort as any);
-  }
-
-  const docs = await cursor.limit(safe_limit).toArray();
-  console.log('[mongo-query-handler] execute_find — done', { doc_count: docs.length });
-  return docs;
-}
-
-/**
- * Execute a MongoDB `findOne` operation.
- *
- * @param collection_ref - MongoDB Collection object
- * @param params         - Full MongoQueryParams for filter/projection
- * @returns Single document or null if not found
- */
-async function execute_find_one(
-  collection_ref: ReturnType<ReturnType<MongoClient['db']>['collection']>,
-  params: MongoQueryParams,
-): Promise<Document | null> {
-  console.log('[mongo-query-handler] execute_find_one — start');
-
-  const options: Record<string, unknown> = {};
-  if (params.projection && Object.keys(params.projection).length > 0) {
-    options.projection = params.projection;
+function validate_safe_params(
+  params: MongoDiagnosticParams,
+): DiagnosticSafeParams | { error: string } {
+  let status: DiagnosticSafeParams['status'] = null;
+  if (params.status !== undefined && params.status !== null) {
+    if (!ALLOWED_FORMULA_STATUSES.includes(params.status as never)) {
+      return {
+        error:
+          `Error: status "${params.status}" is not allowed. ` +
+          `Allowed: ${ALLOWED_FORMULA_STATUSES.join(', ')}.`,
+      };
+    }
+    status = params.status as DiagnosticSafeParams['status'];
   }
 
-  const doc = await collection_ref.findOne(params.filter, options as any);
-  console.log('[mongo-query-handler] execute_find_one — done', { found: !!doc });
-  return doc;
-}
+  const requested = Number(params.limit ?? DEFAULT_LIMIT);
+  const limit = Number.isFinite(requested)
+    ? Math.min(Math.max(Math.trunc(requested), 1), MAX_RESULTS)
+    : DEFAULT_LIMIT;
 
-/**
- * Execute a MongoDB `aggregate` pipeline.
- * Expects params.filter to be an array of pipeline stages.
- *
- * @param collection_ref - MongoDB Collection object
- * @param params         - MongoQueryParams; filter must be pipeline stages array
- * @returns Array of aggregated documents (capped at MAX_RESULTS)
- */
-async function execute_aggregate(
-  collection_ref: ReturnType<ReturnType<MongoClient['db']>['collection']>,
-  params: MongoQueryParams,
-): Promise<Document[]> {
-  console.log('[mongo-query-handler] execute_aggregate — start');
-
-  // Support both array pipeline and object (wrap single stage)
-  const pipeline: Document[] = Array.isArray(params.filter)
-    ? (params.filter as Document[])
-    : [{ $match: params.filter }];
-
-  // Inject $limit stage if not already present and cap at MAX_RESULTS
-  const has_limit_stage = pipeline.some((stage) => '$limit' in stage);
-  if (!has_limit_stage) {
-    pipeline.push({ $limit: MAX_RESULTS });
-  }
-
-  const docs = await collection_ref.aggregate(pipeline).toArray();
-  const capped = docs.slice(0, MAX_RESULTS);
-  console.log('[mongo-query-handler] execute_aggregate — done', { doc_count: capped.length });
-  return capped;
-}
-
-/**
- * Execute a MongoDB `countDocuments` operation.
- *
- * @param collection_ref - MongoDB Collection object
- * @param filter         - MongoDB filter document
- * @returns Count as a plain object `{ count: number }`
- */
-async function execute_count(
-  collection_ref: ReturnType<ReturnType<MongoClient['db']>['collection']>,
-  filter: Record<string, unknown>,
-): Promise<{ count: number }> {
-  console.log('[mongo-query-handler] execute_count — start');
-
-  const count = await collection_ref.countDocuments(filter as any);
-  console.log('[mongo-query-handler] execute_count — done', { count });
-  return { count };
+  return { status, limit };
 }
 
 // ---------------------------------------------------------------------------
@@ -246,88 +257,86 @@ async function execute_count(
 // ---------------------------------------------------------------------------
 
 /**
- * Handle the `mongo_query` ReAct tool call.
+ * Handle the `mongo_query` diagnostic tool call.
  *
  * Workflow:
- * 1. Validate required params
- * 2. Resolve MongoDB URI based on database field
- * 3. Get or create a cached MongoClient
- * 4. Dispatch to the correct operation executor
- * 5. Return JSON-stringified results with a context header
+ * 1. Resolve the named diagnostic (reject unknown names).
+ * 2. Validate the narrow scalar parameters (reject disallowed values).
+ * 3. Resolve the tenant scope from the trusted context; fail closed when a
+ *    tenant-scoped diagnostic has no tenant.
+ * 4. Run the server-authored diagnostic and return its JSON result.
  *
- * @param params - MongoQueryParams specifying collection, database, operation, filter, etc.
- * @returns JSON string of query results or a descriptive error string
- * @throws Never throws directly — errors are caught and returned as strings
+ * @param params  - MongoDiagnosticParams (query_name + validated scalars only).
+ * @param context - Tool handler context; its verified tenant_id scopes every
+ *                  tenant diagnostic. Never throws — errors are returned as
+ *                  descriptive strings.
+ * @returns JSON string of the diagnostic result, or a descriptive error string.
  */
-export async function handle_mongo_query(params: MongoQueryParams): Promise<string> {
+export async function handle_mongo_query(
+  params: MongoDiagnosticParams,
+  context?: ToolHandlerContext,
+): Promise<string> {
   const start_ts = Date.now();
   console.log('[mongo-query-handler] handle_mongo_query — start', {
-    collection: params.collection,
-    database: params.database,
-    operation: params.operation,
+    query_name: params.query_name,
+    status: params.status,
     limit: params.limit,
+    tenant_id: context?.tenant_id,
   });
 
-  // --- Validation ---
-  if (!params.collection) {
-    return 'Error: collection parameter is required.';
+  const available = Object.keys(NAMED_DIAGNOSTIC_QUERIES).join(', ');
+
+  if (!params.query_name) {
+    return (
+      'Error: query_name is required. Free-form collection/filter/aggregation ' +
+      `is no longer allowed. Choose an allowlisted diagnostic: ${available}.`
+    );
   }
-  if (!params.database) {
-    return 'Error: database parameter is required.';
+
+  const definition = NAMED_DIAGNOSTIC_QUERIES[params.query_name];
+  if (!definition) {
+    return `Error: unknown diagnostic "${params.query_name}". Allowed: ${available}.`;
   }
-  if (!ALLOWED_OPERATIONS.includes(params.operation)) {
-    return `Error: unsupported operation "${params.operation}". Allowed: ${ALLOWED_OPERATIONS.join(', ')}.`;
+
+  const safe_params = validate_safe_params(params);
+  if ('error' in safe_params) {
+    return safe_params.error;
   }
-  if (!params.filter) {
-    return 'Error: filter parameter is required (use {} for no filter).';
+
+  const tenant_scope = tenant_scoped_query_filter(context?.tenant_id);
+  if (definition.requires_tenant && !tenant_scope) {
+    return (
+      `Error: diagnostic "${params.query_name}" requires a tenant scope, but ` +
+      'no verified tenant is present in the execution context.'
+    );
   }
 
   try {
-    const uri = resolve_mongo_uri(params.database);
-    const client = await get_or_create_client(uri);
-    const db = client.db(params.database);
-    const col = db.collection(params.collection);
+    const main_client = await client_promise;
+    const main_db = main_client.db();
 
-    let result: Document | Document[] | { count: number } | null;
-
-    switch (params.operation) {
-      case 'find':
-        result = await execute_find(col, params);
-        break;
-      case 'findOne':
-        result = await execute_find_one(col, params);
-        break;
-      case 'aggregate':
-        result = await execute_aggregate(col, params);
-        break;
-      case 'count':
-        result = await execute_count(col, params.filter);
-        break;
-      default:
-        return `Error: unrecognised operation "${params.operation}".`;
-    }
+    const result = await definition.run(
+      { main_db, tenant_scope },
+      safe_params,
+    );
 
     const elapsed = Date.now() - start_ts;
-    const doc_count = Array.isArray(result) ? result.length : 1;
-
     console.log('[mongo-query-handler] handle_mongo_query — done', {
-      operation: params.operation,
-      doc_count,
+      query_name: params.query_name,
       elapsed_ms: elapsed,
     });
 
     const header =
-      `MongoDB query result — db: "${params.database}", collection: "${params.collection}", ` +
-      `operation: "${params.operation}", elapsed: ${elapsed}ms\n`;
-
+      `MongoDB diagnostic result — query: "${params.query_name}", elapsed: ${elapsed}ms\n`;
     return header + JSON.stringify(result, null, 2);
   } catch (error) {
     const elapsed = Date.now() - start_ts;
     const err_msg = error instanceof Error ? error.message : String(error);
     console.log('[mongo-query-handler] handle_mongo_query — error', {
+      query_name: params.query_name,
       error: err_msg,
       elapsed_ms: elapsed,
     });
-    return `MongoDB query failed (db: "${params.database}", collection: "${params.collection}"): ${err_msg}`;
+    return `MongoDB diagnostic "${params.query_name}" failed: ${err_msg}`;
   }
 }

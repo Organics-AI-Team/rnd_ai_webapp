@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { trpc } from "@/lib/trpc-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Beaker, BoxIcon, TrendingUp, Users } from "lucide-react";

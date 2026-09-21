@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -62,7 +62,7 @@ export function AccessDeniedCard() {
 export function AuthGuard({
   children,
   requireAdmin = false,
-  fallbackPath = "/login"
+  fallbackPath = "/sign-in"
 }: AuthGuardProps) {
   const { user, isLoading } = useAuth();
   const router = useRouter();

@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/surface';
 
 /**
  * AI Empty State — ChatGPT/Gemini-inspired centered welcome.
@@ -28,31 +30,31 @@ export function AIEmptyState({
   on_suggestion_click,
 }: AIEmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 sm:py-20 px-4 sm:px-6">
+    <div className="flex flex-col items-center justify-center px-5 py-16 sm:px-6 sm:py-24">
       {/* Gradient icon circle */}
       <div className="relative mb-5">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-50 border border-gray-100/80 flex items-center justify-center shadow-sm">
-          <div className="text-gray-300">
-            {icon}
-          </div>
-        </div>
-        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-sm">
-          <Sparkles className="w-2.5 h-2.5 text-white" />
+        <IconTile tone="brand" className="size-16 rounded-3xl">
+          {icon}
+        </IconTile>
+        <div className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-brand text-white shadow-sm">
+          <Sparkles className="h-2.5 w-2.5" />
         </div>
       </div>
 
-      <p className="text-[13px] text-gray-400 mb-6 text-center max-w-sm leading-relaxed">{greeting}</p>
+      <p className="mb-7 max-w-sm text-center text-sm leading-relaxed text-muted">{greeting}</p>
 
       {/* Clickable suggestion chips */}
       <div className="flex flex-wrap justify-center gap-2 max-w-md">
         {suggestions.map((suggestion, index) => (
-          <button
+          <Button
             key={index}
             onClick={() => on_suggestion_click?.(suggestion)}
-            className="text-[11px] sm:text-[12px] text-gray-500 bg-white border border-gray-200/80 rounded-lg px-2.5 sm:px-3 py-1.5 hover:border-gray-300 hover:text-gray-700 hover:shadow-sm transition-all cursor-pointer"
+            variant="outline"
+            size="sm"
+            className="h-9 px-4 text-xs"
           >
             {suggestion}
-          </button>
+          </Button>
         ))}
       </div>
     </div>

@@ -45,13 +45,13 @@ export function AIChatInput({
   };
 
   return (
-    <div className="px-3 sm:px-4 py-3">
-      <div className="relative max-w-2xl mx-auto">
+    <div className="px-5 py-5 sm:px-8">
+      <div className="relative mx-auto max-w-3xl">
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="min-h-[44px] max-h-[140px] resize-none rounded-xl border-gray-200/80 bg-gray-50/50 text-sm text-gray-900 py-3 px-4 pr-12 focus:bg-white focus:border-gray-300 transition-colors shadow-sm"
+          className="min-h-[58px] max-h-[160px] resize-none py-4 pl-4 pr-16"
           onKeyDown={handle_key_down}
           disabled={disabled}
           rows={1}
@@ -61,7 +61,7 @@ export function AIChatInput({
           onClick={onSend}
           disabled={!value.trim() || disabled}
           size="icon"
-          className="absolute right-2 bottom-2 h-8 w-8 rounded-lg bg-gray-900 hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-colors shadow-sm"
+          className="absolute bottom-2.5 right-2.5 h-10 w-10"
           aria-label="Send message"
         >
           <ArrowUp className="w-4 h-4" />

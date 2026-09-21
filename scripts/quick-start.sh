@@ -25,13 +25,13 @@ echo -e "${YELLOW}[1/6] Checking prerequisites...${NC}"
 
 # Check Node.js
 if ! command -v node &> /dev/null; then
-    echo -e "${RED}❌ Node.js is not installed. Please install Node.js 18+ first.${NC}"
+    echo -e "${RED}❌ Node.js is not installed. Please install Node.js 24+ first.${NC}"
     exit 1
 fi
 
 NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 18 ]; then
-    echo -e "${RED}❌ Node.js version must be 18 or higher. Current: $(node -v)${NC}"
+if [ "$NODE_VERSION" -lt 24 ]; then
+    echo -e "${RED}❌ Node.js version must be 24 or higher. Current: $(node -v)${NC}"
     exit 1
 fi
 
@@ -196,7 +196,7 @@ echo ""
 echo -e "${YELLOW}Important Notes:${NC}"
 echo "• Make sure MongoDB is running and accessible"
 echo "• Add your API keys (GEMINI_API_KEY, OPENAI_API_KEY) to .env files"
-echo "• Run 'npm run index:chromadb' to index your data for AI features"
+echo "• Run 'npm run index:qdrant' to index your data for AI features"
 echo ""
 
 echo -e "${GREEN}Happy coding! 🚀${NC}"

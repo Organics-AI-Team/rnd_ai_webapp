@@ -28,7 +28,7 @@
 R&D AI Management is a multi-tenant platform for cosmetic R&D teams, featuring:
 
 - **AI-Powered Chatbots**: Raw Materials AI and Sales R&D AI with RAG (Retrieval Augmented Generation)
-- **Vector Search**: ChromaDB and Pinecone integration for semantic search
+- **Vector Search**: Qdrant-backed semantic knowledge search
 - **Order Management**: Complete order lifecycle with multi-channel support
 - **Analytics Dashboard**: Real-time insights and reporting
 - **Credit System**: Organization-based credit management for shipping
@@ -53,8 +53,8 @@ R&D AI Management is a multi-tenant platform for cosmetic R&D teams, featuring:
 
 - **Vector Search (RAG)**
   - Semantic search across knowledge base
-  - ChromaDB for local/Railway deployment
-  - Pinecone for cloud deployment
+  - Qdrant on the DigitalOcean droplet
+  - Legacy ChromaDB/Pinecone adapters retained during migration
   - Hybrid search (vector + keyword)
 
 ### 📊 Management Features
@@ -98,7 +98,8 @@ rnd_ai_management/
 │   ├── shared-types/       # Shared TypeScript types
 │   └── shared-config/      # Shared configurations
 │
-├── config/                 # Deployment configs
+├── docker-compose.yml      # DigitalOcean droplet stack
+├── scripts/                # Deployment and operational scripts
 ├── docs/                   # Documentation
 └── _archive/               # Legacy files
 ```
@@ -118,7 +119,7 @@ rnd_ai_management/
 - LangChain & LangGraph
 - Google Gemini AI
 - OpenAI
-- ChromaDB / Pinecone
+- Qdrant
 - MongoDB
 
 ---
@@ -127,8 +128,8 @@ rnd_ai_management/
 
 ### Prerequisites
 
-- Node.js 18+
-- MongoDB (local or Atlas)
+- Node.js 24+
+- MongoDB (DigitalOcean Managed MongoDB or compatible provider)
 - npm or pnpm
 
 ### Installation
@@ -160,12 +161,10 @@ GEMINI_API_KEY=AIza...
 OPENAI_API_KEY=sk-...
 PINECONE_API_KEY=pcsk_... # Optional
 
-# Admin Credentials
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=your_secure_password
-
-# Vector DB Provider
-VECTOR_DB_PROVIDER=chroma  # or pinecone
+# Vector and search services
+QDRANT_URL=http://localhost:6333
+GOOGLE_SEARCH_API_KEY=...
+GOOGLE_SEARCH_CSE_ID=...
 ```
 
 ### Run Development Server
@@ -214,9 +213,8 @@ npm run build:ai   # Build AI service only
 ```bash
 npm run seed-admin           # Seed admin user
 npm run migrate              # Run migrations
-npm run index:chromadb       # Index to ChromaDB
-npm run index:chromadb:resume # Resume indexing
-npm run check:chromadb       # Check ChromaDB stats
+npm run index:qdrant         # Index knowledge into Qdrant
+npm run check:qdrant         # Check Qdrant collections
 ```
 
 **Maintenance**
@@ -235,33 +233,32 @@ See [docs/MONOREPO_README.md](docs/MONOREPO_README.md) for detailed architecture
 
 ## 🐳 Docker & Deployment
 
-### Docker Compose (Local Development)
+### Docker Compose
 
 ```bash
 # Build and start all services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f web
-docker-compose logs -f ai
+docker compose logs -f web
+docker compose logs -f qdrant
 
 # Stop services
-docker-compose down
+docker compose down
 ```
 
 Services:
 - **Web**: http://localhost:3000
-- **AI**: http://localhost:3001
-- **ChromaDB**: http://localhost:8000
+- **Qdrant**: http://localhost:6333
 
-### Railway Deployment
+### DigitalOcean Droplet Deployment
 
 ```bash
-# Deploy using root Dockerfile
-railway up
-
-# Or use web-specific config
-railway up --config config/railway.web.json
+# Run on the droplet after cloning to /opt/rnd-ai
+./scripts/deploy-droplet.sh --setup
+nano .env
+./scripts/deploy-droplet.sh --up
+./scripts/deploy-droplet.sh --health
 ```
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
@@ -293,7 +290,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
 - **API**: tRPC Server
 - **AI**: LangChain, LangGraph
 - **LLMs**: Google Gemini, OpenAI
-- **Vector DB**: ChromaDB, Pinecone
+- **Vector DB**: Qdrant; legacy ChromaDB/Pinecone adapters remain during migration
 - **Database**: MongoDB
 - **Real-time**: Socket.IO
 - **ML**: TensorFlow.js
@@ -301,7 +298,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment guides.
 ### DevOps
 - **Monorepo**: npm workspaces
 - **Containerization**: Docker, Docker Compose
-- **Deployment**: Railway
+- **Deployment**: DigitalOcean Droplet, Docker Compose, Nginx
 - **CI/CD**: Git hooks
 
 ---

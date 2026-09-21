@@ -1,17 +1,14 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
+
 const nextConfig = {
   /* config options here */
-
-  // Temporarily disable TypeScript checking during build
-  // TODO: Re-enable after resolving all type errors
-  typescript: {
-    ignoreBuildErrors: true,
-  },
 
   // Enable standalone output for Docker
   // This creates a minimal server.js file with all dependencies bundled
   // Reduces image size and improves cold start performance
   output: 'standalone',
+  outputFileTracingRoot: path.join(__dirname, '../..'),
 
   // Disable minification in development to avoid webpack compatibility issues
   // Production builds can be optimized once dependencies are resolved
@@ -29,8 +26,8 @@ const nextConfig = {
     // Add path aliases for monorepo AI service and server
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@/ai': require('path').resolve(__dirname, '../ai'),
-      '@/server': require('path').resolve(__dirname, '../ai/server')
+      '@/ai': path.resolve(__dirname, '../ai'),
+      '@/server': path.resolve(__dirname, '../ai/server')
     };
 
     // ChromaDB and optional dependencies exclusion (both server and client)

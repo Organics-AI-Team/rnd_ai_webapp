@@ -18,4 +18,11 @@ export interface ToolHandlerContext {
   user_id: string;
   organization_id?: string;
   session_id?: string;
+  /**
+   * Verified tenant ID injected by trusted server code (from the request's
+   * TenantExecutionContext). When present, handlers MUST pin every tenant
+   * record lookup/mutation to it and never trust a model-supplied ID alone
+   * (G2.6). Absent only on legacy call sites still being converted.
+   */
+  tenant_id?: string;
 }

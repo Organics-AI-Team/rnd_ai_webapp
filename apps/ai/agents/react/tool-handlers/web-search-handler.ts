@@ -14,13 +14,13 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
+
+import { get_gemini_search_model } from '../../../config/gemini-models';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/** Gemini model used for search-grounded queries */
-const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,12 +65,9 @@ let genai_client: GoogleGenAI | null = null;
 function get_genai_client(): GoogleGenAI {
   if (genai_client) return genai_client;
 
-  const api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!api_key) {
-    throw new Error('GEMINI_API_KEY not configured — required for web search');
-  }
+  const credentials = require_server_ai_credentials(process.env);
 
-  genai_client = new GoogleGenAI({ apiKey: api_key });
+  genai_client = new GoogleGenAI({ apiKey: credentials.gemini_api_key });
   console.log('[web-search-handler] GoogleGenAI client initialised');
   return genai_client;
 }
@@ -95,7 +92,7 @@ async function search_with_gemini_grounding(
   const ai = get_genai_client();
 
   const response = await ai.models.generateContent({
-    model: SEARCH_MODEL,
+    model: get_gemini_search_model(),
     contents: `Search the web and provide factual, current information about: ${query}\n\nProvide a concise summary with key facts. Include specific data points, dates, and numbers when available.`,
     config: {
       tools: [{ googleSearch: {} }],
@@ -198,8 +195,9 @@ export async function handle_web_search(params: WebSearchParams): Promise<string
   }
 
   // --- Check Gemini API key ---
-  const api_key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!api_key) {
+  try {
+    require_server_ai_credentials(process.env);
+  } catch {
     const elapsed = Date.now() - start_ts;
     console.log('[web-search-handler] handle_web_search — no GEMINI_API_KEY, fallback', { elapsed_ms: elapsed });
 

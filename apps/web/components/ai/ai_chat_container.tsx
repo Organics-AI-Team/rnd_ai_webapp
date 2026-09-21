@@ -40,7 +40,7 @@ interface AIChatInputContainerProps {
 
 export function AIChatInputContainer({ inputArea }: AIChatInputContainerProps) {
   return (
-    <div className="bg-white">
+    <div className="border-t border-border bg-surface">
       {inputArea}
     </div>
   );

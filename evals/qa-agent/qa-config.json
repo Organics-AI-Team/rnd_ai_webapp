@@ -1,0 +1,6 @@
+{
+  "thresholds": {
+    "min_pass_rate": 1,
+    "p95_latency_ms": 30000
+  }
+}

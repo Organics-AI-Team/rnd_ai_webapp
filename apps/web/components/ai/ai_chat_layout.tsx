@@ -3,6 +3,7 @@
 import React from 'react';
 import { PanelLeftClose, PanelLeft, X } from 'lucide-react';
 import { cn } from '@rnd-ai/shared-utils';
+import { Surface } from '@/components/ui/surface';
 
 /**
  * AI Chat Layout — Responsive container with sidebar.
@@ -30,12 +31,12 @@ export function AIChatLayout({
   on_toggle_sidebar,
 }: AIChatLayoutProps) {
   return (
-    <div className="relative flex h-full overflow-hidden rounded-xl border border-gray-200/60 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+    <Surface variant="panel" className="relative flex h-full overflow-hidden">
       {/* Desktop sidebar — pushes content */}
       <div
         className={cn(
           'hidden lg:block transition-[width] duration-200 ease-out overflow-hidden flex-shrink-0',
-          is_sidebar_open ? 'w-60 border-r border-gray-100/80' : 'w-0',
+          is_sidebar_open ? 'w-72 border-r border-border' : 'w-0',
         )}
       >
         {is_sidebar_open && sidebar}
@@ -45,23 +46,23 @@ export function AIChatLayout({
       {is_sidebar_open && (
         <>
           <div
-            className="lg:hidden fixed inset-0 bg-black/20 z-40"
+            className="lg:hidden fixed inset-0 z-40 bg-overlay"
             onClick={on_toggle_sidebar}
           />
-          <div className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-64 bg-white shadow-xl rounded-r-xl overflow-hidden">
-            <div className="h-11 flex items-center justify-end px-3 border-b border-gray-100/80">
+          <Surface variant="panel" className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-80 rounded-l-none overflow-hidden">
+            <div className="flex h-16 items-center justify-end border-b border-border px-4">
               <button
                 onClick={on_toggle_sidebar}
-                className="p-1 rounded-md hover:bg-gray-100 text-gray-400"
+                className="rounded-full p-2 text-muted hover:bg-subtle hover:text-ink"
                 aria-label="Close sidebar"
               >
                 <X size={16} strokeWidth={1.5} />
               </button>
             </div>
-            <div className="h-[calc(100%-2.75rem)] overflow-hidden">
+            <div className="h-[calc(100%-4rem)] overflow-hidden">
               {sidebar}
             </div>
-          </div>
+          </Surface>
         </>
       )}
 
@@ -69,7 +70,7 @@ export function AIChatLayout({
       <div className="flex-1 min-w-0 flex flex-col">
         {children}
       </div>
-    </div>
+    </Surface>
   );
 }
 
@@ -92,7 +93,7 @@ export function SidebarToggleButton({ is_open, on_toggle }: SidebarToggleButtonP
   return (
     <button
       onClick={on_toggle}
-      className="p-1 rounded-md hover:bg-gray-100/80 text-gray-300 hover:text-gray-500 transition-colors"
+      className="rounded-full p-2 text-muted hover:bg-subtle hover:text-ink transition-colors"
       title={is_open ? 'Hide history' : 'Show history'}
       aria-label={is_open ? 'Hide history' : 'Show history'}
     >

@@ -3,8 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #111111;
+  --ui-canvas: #f8f9f9;
+  --ui-surface: #ffffff;
+  --ui-surface-subtle: #f5f7f6;
+  --ui-ink: #242a2d;
+  --ui-muted: #737c80;
+  --ui-border: #e2e6e5;
+  --ui-border-strong: #d2d8d6;
+  --ui-brand: #16a85a;
+  --ui-brand-hover: #0c8d48;
+  --ui-brand-soft: #e8f8ee;
+  --ui-overlay: rgb(36 42 45 / 0.45);
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 * {
@@ -13,12 +23,12 @@
 }
 
 body {
-  color: var(--foreground);
-  background: #f8f9fa;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
-  letter-spacing: -0.006em;
+  color: var(--ui-ink);
+  background: var(--ui-canvas);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
 }
 
 /* Clean scrollbar */
@@ -30,9 +40,87 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
+  background: #cfd5d3;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: #adb6b2;
+}
+
+::selection {
+  background: var(--ui-brand-soft);
+  color: var(--ui-ink);
+}
+
+@layer components {
+  .ui-divider {
+    border-color: var(--ui-border);
+  }
+
+  .ui-field {
+    border: 1px solid var(--ui-border-strong);
+    background: var(--ui-surface);
+    color: var(--ui-ink);
+    box-shadow: none;
+  }
+
+  .ui-field::placeholder {
+    color: var(--ui-muted);
+  }
+
+  .ui-field:focus-visible {
+    border-color: var(--ui-brand);
+    box-shadow: 0 0 0 3px rgb(22 168 90 / 0.12);
+  }
+
+  /* The only decorative treatment: a green primary action with a soft gel glow. */
+  .gel-action {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border: 0;
+    color: #ffffff;
+    background: linear-gradient(135deg, #43cf77 0%, #1fad5b 48%, #108a47 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.42),
+      inset 0 -2px 3px rgb(5 95 48 / 0.18),
+      0 8px 18px rgb(22 168 90 / 0.22),
+      0 0 0 3px rgb(22 168 90 / 0.08);
+  }
+
+  .gel-action::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    inset: 1px 1px 52% 1px;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0));
+    pointer-events: none;
+  }
+
+  .gel-action > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .gel-action:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: saturate(1.04) brightness(1.02);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.48),
+      inset 0 -2px 3px rgb(5 95 48 / 0.16),
+      0 11px 22px rgb(22 168 90 / 0.28),
+      0 0 0 4px rgb(22 168 90 / 0.10);
+  }
+
+  .gel-action:focus-visible {
+    outline: 2px solid var(--ui-brand);
+    outline-offset: 3px;
+  }
+
+  .gel-action:disabled {
+    color: #ffffff;
+    background: #aebbb4;
+    box-shadow: none;
+  }
 }

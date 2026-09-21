@@ -102,10 +102,7 @@ export async function ragOperationsExample() {
   const agent = getRawMaterialsAIAgent();
 
   // Vector search
-  const vectorResults = await agent.searchVectorDatabase("chemical compounds", {
-    topK: 3,
-    threshold: 0.7
-  });
+  const vectorResults = await agent.searchVectorDatabase("chemical compounds", 3);
 
   // Hybrid search (vector + keyword fallback)
   const hybridResults = await agent.hybridSearch("raw materials pricing", {
@@ -113,7 +110,7 @@ export async function ragOperationsExample() {
   });
 
   // Format results for AI context
-  const formattedResults = agent.formatSearchResults(vectorResults, "chemical compounds");
+  const formattedResults = agent.formatSearchResults(vectorResults);
 
   console.log("Vector Results:", vectorResults);
   console.log("Hybrid Results:", hybridResults);

@@ -13,6 +13,11 @@
  * @module env
  */
 
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
+
+export { require_server_ai_credentials } from '@rnd-ai/server-config';
+export type { ServerAICredentials } from '@rnd-ai/server-config';
+
 /**
  * Required environment variable keys
  * These MUST be set for the application to function
@@ -131,15 +136,11 @@ export const env = {
    * AI service API keys
    */
   gemini_api_key: () => {
-    const key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!key) {
-      throw new Error('GEMINI_API_KEY is not set in environment variables');
-    }
-    return key;
+    return require_server_ai_credentials(process.env).gemini_api_key;
   },
 
   openai_api_key: () => {
-    const key = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    const key = process.env.OPENAI_API_KEY?.trim();
     if (!key) {
       throw new Error('OPENAI_API_KEY is not set in environment variables');
     }

@@ -1,6 +1,7 @@
 .PHONY: help install dev dev-web dev-ai build build-web build-ai clean clean-all reset
-.PHONY: seed-admin migrate index index-resume check-chromadb
+.PHONY: seed-admin migrate index check-qdrant
 .PHONY: docker-up docker-down docker-logs docker-build
+.PHONY: deploy-droplet droplet-health droplet-logs droplet-restart
 .PHONY: quick-start lint test
 
 # ============================================================================
@@ -160,24 +161,14 @@ migrate: ## Run database migrations
 	npm run migrate
 	@echo "$(GREEN)✓ Migrations complete!$(NC)"
 
-index: ## Index data to ChromaDB
-	@echo "$(BLUE)Indexing data to ChromaDB...$(NC)"
-	npm run index:chromadb
+index: ## Index data to Qdrant
+	@echo "$(BLUE)Indexing data to Qdrant...$(NC)"
+	npm run index:qdrant
 	@echo "$(GREEN)✓ Indexing complete!$(NC)"
 
-index-resume: ## Resume ChromaDB indexing
-	@echo "$(BLUE)Resuming ChromaDB indexing...$(NC)"
-	npm run index:chromadb:resume
-	@echo "$(GREEN)✓ Indexing resumed!$(NC)"
-
-index-fast: ## Fast ChromaDB indexing
-	@echo "$(BLUE)Fast ChromaDB indexing...$(NC)"
-	npm run index:chromadb:fast
-	@echo "$(GREEN)✓ Fast indexing complete!$(NC)"
-
-check-chromadb: ## Check ChromaDB statistics
-	@echo "$(BLUE)Checking ChromaDB statistics...$(NC)"
-	npm run check:chromadb
+check-qdrant: ## Check Qdrant statistics
+	@echo "$(BLUE)Checking Qdrant statistics...$(NC)"
+	npm run check:qdrant
 
 # ============================================================================
 # DOCKER
@@ -185,32 +176,28 @@ check-chromadb: ## Check ChromaDB statistics
 
 docker-up: ## Start all services with Docker Compose
 	@echo "$(BLUE)Starting services with Docker Compose...$(NC)"
-	docker-compose up -d
+	docker compose up -d
 	@echo "$(GREEN)✓ Services started!$(NC)"
 	@echo "$(BLUE)Web:      http://localhost:3000$(NC)"
-	@echo "$(BLUE)AI:       http://localhost:3001$(NC)"
-	@echo "$(BLUE)ChromaDB: http://localhost:8000$(NC)"
+	@echo "$(BLUE)Qdrant:   http://localhost:6333$(NC)"
 
 docker-down: ## Stop all Docker services
 	@echo "$(BLUE)Stopping Docker services...$(NC)"
-	docker-compose down
+	docker compose down
 	@echo "$(GREEN)✓ Services stopped!$(NC)"
 
 docker-logs: ## View Docker logs (all services)
-	docker-compose logs -f
+	docker compose logs -f
 
 docker-logs-web: ## View web app logs
-	docker-compose logs -f web
+	docker compose logs -f web
 
-docker-logs-ai: ## View AI service logs
-	docker-compose logs -f ai
-
-docker-logs-chroma: ## View ChromaDB logs
-	docker-compose logs -f chromadb
+docker-logs-qdrant: ## View Qdrant logs
+	docker compose logs -f qdrant
 
 docker-build: ## Rebuild Docker images
 	@echo "$(BLUE)Rebuilding Docker images...$(NC)"
-	docker-compose build
+	docker compose build
 	@echo "$(GREEN)✓ Build complete!$(NC)"
 
 docker-rebuild: docker-down docker-build docker-up ## Rebuild and restart services
@@ -219,15 +206,17 @@ docker-rebuild: docker-down docker-build docker-up ## Rebuild and restart servic
 # DEPLOYMENT
 # ============================================================================
 
-deploy-railway: ## Deploy to Railway
-	@echo "$(BLUE)Deploying to Railway...$(NC)"
-	railway up
-	@echo "$(GREEN)✓ Deployment started!$(NC)"
+deploy-droplet: ## Build and deploy the stack on the DigitalOcean droplet
+	./scripts/deploy-droplet.sh --up
 
-deploy-railway-web: ## Deploy web app to Railway
-	@echo "$(BLUE)Deploying web app to Railway...$(NC)"
-	railway up --config config/railway.web.json
-	@echo "$(GREEN)✓ Deployment started!$(NC)"
+droplet-health: ## Check web and Qdrant health on the droplet
+	./scripts/deploy-droplet.sh --health
+
+droplet-logs: ## Follow droplet service logs
+	./scripts/deploy-droplet.sh --logs
+
+droplet-restart: ## Restart the droplet stack
+	./scripts/deploy-droplet.sh --restart
 
 # ============================================================================
 # UTILITIES

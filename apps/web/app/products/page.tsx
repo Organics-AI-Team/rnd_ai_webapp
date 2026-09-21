@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { trpc } from "@/lib/trpc-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Package, Edit, Trash2, Search, ArrowUpDown, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,6 +21,62 @@ import {
 } from "@/components/ui/table";
 import { ConsolePageShell, ConsoleSection } from "@/components/console_page_shell";
 
+interface ProductFormData {
+  productName: string;
+  inciName: string;
+  description: string;
+  price: string;
+  supplier: string;
+  benefits: string;
+  details: string;
+}
+
+/**
+ * Create an empty product form value.
+ *
+ * @returns Empty product form fields.
+ */
+function create_empty_product_form(): ProductFormData {
+  return {
+    productName: "",
+    inciName: "",
+    description: "",
+    price: "",
+    supplier: "",
+    benefits: "",
+    details: "",
+  };
+}
+
+/**
+ * Parse a duplicated-product payload from the URL into initial form state.
+ *
+ * @param is_duplicate - Whether duplicate mode was explicitly requested.
+ * @param raw_data - JSON-encoded source product.
+ * @returns Pre-populated form fields, or null when the payload is absent or invalid.
+ */
+function parse_duplicate_product_form(
+  is_duplicate: boolean,
+  raw_data: string | null
+): ProductFormData | null {
+  if (!is_duplicate || !raw_data) return null;
+
+  try {
+    const data = JSON.parse(raw_data);
+    return {
+      productName: data.productName || "",
+      inciName: data.inci_name || "",
+      description: data.description || "",
+      price: data.price?.toString() || "",
+      supplier: data.supplier || "",
+      benefits: Array.isArray(data.benefits) ? data.benefits.join(", ") : "",
+      details: Array.isArray(data.usecase) ? data.usecase.join(", ") : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * ProductsContent — Main products management page (Cloudflare-minimal design).
  * Lists all raw materials/ingredients with CRUD operations.
@@ -32,10 +88,14 @@ function ProductsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const utils = trpc.useUtils();
+  const [duplicate_product_form] = useState(() => parse_duplicate_product_form(
+    searchParams.get("duplicate") === "true",
+    searchParams.get("data")
+  ));
 
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(() => duplicate_product_form !== null);
   const [editingProduct, setEditingProduct] = useState<any>(null);
-  const [isDuplicateMode, setIsDuplicateMode] = useState(false);
+  const [isDuplicateMode, setIsDuplicateMode] = useState(() => duplicate_product_form !== null);
   const [hasChangedDuplicate, setHasChangedDuplicate] = useState(false);
   const [searchInput, setSearchInput] = useState(""); // What user types
   const [searchTerm, setSearchTerm] = useState(""); // What's sent to server
@@ -44,46 +104,15 @@ function ProductsContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
-  const [formData, setFormData] = useState({
-    productName: "",
-    inciName: "",
-    description: "",
-    price: "",
-    supplier: "",
-    benefits: "",
-    details: "",
-  });
+  const [formData, setFormData] = useState<ProductFormData>(
+    () => duplicate_product_form || create_empty_product_form()
+  );
 
   // Fetch next auto-generated code (only when form is open and not editing)
   const { data: nextCodeData, refetch: refetchNextCode } = trpc.products.getNextCode.useQuery(
     undefined,
     { enabled: showAddForm && !editingProduct }
   );
-
-  // Handle duplicate mode on page load
-  useEffect(() => {
-    const isDuplicate = searchParams.get("duplicate") === "true";
-    const duplicateData = searchParams.get("data");
-
-    if (isDuplicate && duplicateData) {
-      try {
-        const data = JSON.parse(duplicateData);
-        setIsDuplicateMode(true);
-        setShowAddForm(true);
-        setFormData({
-          productName: data.productName || "",
-          inciName: data.inci_name || "",
-          description: data.description || "",
-          price: data.price?.toString() || "",
-          supplier: data.supplier || "",
-          benefits: Array.isArray(data.benefits) ? data.benefits.join(", ") : "",
-          details: Array.isArray(data.usecase) ? data.usecase.join(", ") : "",
-        });
-      } catch (error) {
-        console.error("Error parsing duplicate data:", error);
-      }
-    }
-  }, [searchParams]);
 
   const createProduct = trpc.products.create.useMutation({
     onSuccess: () => {
@@ -143,16 +172,12 @@ function ProductsContent() {
   const totalPages = productsData?.totalPages || 1;
   const hasMore = productsData?.hasMore || false;
 
-  // Reset to page 1 when search term, sort field, or sort direction changes
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, sortField, sortDirection]);
-
   /**
    * handleSearch — Commits the search input to the server-side query.
    */
   const handleSearch = () => {
     setSearchTerm(searchInput);
+    setCurrentPage(1);
   };
 
   /**
@@ -523,7 +548,10 @@ function ProductsContent() {
         <div className="flex items-center gap-2">
           <select
             value={sortField}
-            onChange={(e) => setSortField(e.target.value)}
+            onChange={(e) => {
+              setSortField(e.target.value);
+              setCurrentPage(1);
+            }}
             className="h-8 px-2.5 border border-gray-200/60 rounded-lg text-[12px] bg-white text-gray-600"
           >
             <option value="productCode">รหัสสาร</option>
@@ -533,7 +561,10 @@ function ProductsContent() {
           </select>
           <Button
             variant="ghost"
-            onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+            onClick={() => {
+              setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+              setCurrentPage(1);
+            }}
             className="h-8 text-[11px] px-2 text-gray-500 hover:text-gray-700"
           >
             <ArrowUpDown className="h-3.5 w-3.5 mr-1" />

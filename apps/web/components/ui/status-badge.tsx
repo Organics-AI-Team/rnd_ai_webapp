@@ -10,7 +10,7 @@ const defaultStatusConfig = {
   processing: { label: "Processing", className: "bg-blue-50 text-blue-700 border-blue-200" },
   completed: { label: "Completed", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   cancelled: { label: "Cancelled", className: "bg-red-50 text-red-700 border-red-200" },
-  draft: { label: "Draft", className: "bg-gray-50 text-gray-600 border-gray-200" },
+  draft: { label: "Draft", className: "bg-subtle text-muted border-border" },
   testing: { label: "Testing", className: "bg-amber-50 text-amber-700 border-amber-200" },
   approved: { label: "Approved", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   rejected: { label: "Rejected", className: "bg-red-50 text-red-700 border-red-200" },
@@ -18,8 +18,8 @@ const defaultStatusConfig = {
   shipper: { label: "Shipper", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   member: { label: "Member", className: "bg-violet-50 text-violet-700 border-violet-200" },
   active: { label: "Active", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  inactive: { label: "Inactive", className: "bg-gray-50 text-gray-600 border-gray-200" },
-  archived: { label: "Archived", className: "bg-gray-50 text-gray-600 border-gray-200" },
+  inactive: { label: "Inactive", className: "bg-subtle text-muted border-border" },
+  archived: { label: "Archived", className: "bg-subtle text-muted border-border" },
 };
 
 export function StatusBadge({
@@ -28,7 +28,7 @@ export function StatusBadge({
 }: StatusBadgeProps) {
   const statusInfo = statusConfig[status] || {
     label: status,
-    className: "bg-gray-50 text-gray-600 border-gray-200"
+    className: "bg-subtle text-muted border-border"
   };
 
   return (

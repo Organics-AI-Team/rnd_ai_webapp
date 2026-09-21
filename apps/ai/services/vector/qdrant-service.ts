@@ -28,6 +28,10 @@ import {
   UPSERT_BATCH_SIZE,
   type QdrantCollectionSchema,
 } from '../../config/qdrant-config';
+import type {
+  KnowledgeCollectionDefinition,
+  KnowledgeQdrantDriver,
+} from '../../server/services/knowledge/qdrant-collections';
 
 const logger = Logger.scope('QdrantService');
 
@@ -99,6 +103,12 @@ export interface QdrantCollectionInfo {
  * Low-level Qdrant vector database client.
  * Provides collection management, batched upsert, filtered search,
  * delete, scroll, and health-check operations.
+ *
+ * LEGACY BOUNDARY: these generic methods intentionally retain arbitrary
+ * collection/filter arguments for the pre-control-plane RAG callers. Governed
+ * tenant knowledge must never receive this class directly; it uses
+ * create_knowledge_qdrant_driver + create_qdrant_knowledge_adapter, whose
+ * public surface has no caller-controlled collection name or filter.
  */
 export class QdrantService {
   private client: QdrantClient | null = null;
@@ -230,6 +240,50 @@ export class QdrantService {
         `Failed to ensure collection: ${schema.name}`,
         ErrorType.DATABASE_ERROR,
         { collectionName: schema.name },
+      );
+    }
+  }
+
+  /**
+   * Ensure a governed knowledge collection and every payload index.
+   *
+   * Unlike the legacy schema helper, indexes are asserted even when the
+   * collection already exists, and the tenant_id keyword index can carry
+   * Qdrant's `is_tenant` optimization flag.
+   *
+   * @param definition - Server-authored governed collection definition.
+   */
+  async ensure_knowledge_collection(
+    definition: KnowledgeCollectionDefinition,
+  ): Promise<void> {
+    const client = await this.await_ready();
+    try {
+      const existing = await client.getCollections();
+      const exists = existing.collections.some(
+        (collection: { name: string }) => collection.name === definition.name,
+      );
+      if (!exists) {
+        await client.createCollection(definition.name, {
+          vectors: {
+            size: definition.vector_size,
+            distance: definition.distance,
+          },
+          on_disk_payload: definition.on_disk_payload,
+        });
+      }
+      for (const index of definition.payload_indexes) {
+        await client.createPayloadIndex(definition.name, {
+          wait: true,
+          field_name: index.field_name,
+          field_schema: index.field_schema as any,
+        });
+      }
+    } catch (error) {
+      throw ErrorHandler.wrap(
+        error,
+        `Failed to ensure governed knowledge collection: ${definition.name}`,
+        ErrorType.DATABASE_ERROR,
+        { collectionName: definition.name },
       );
     }
   }
@@ -655,4 +709,43 @@ export function reset_qdrant_service(): void {
 
   logger.info('QdrantService singleton reset');
   console.log('[QdrantService] reset_qdrant_service — done');
+}
+
+/**
+ * Adapt the legacy low-level client to the raw governed-knowledge driver.
+ *
+ * This is the sole production bridge into the sealed knowledge adapter. Keep
+ * it out of routes and tools: the returned driver still has raw capabilities.
+ *
+ * @param service - Qdrant service instance (defaults to the production singleton).
+ * @returns Raw driver consumed only by create_qdrant_knowledge_adapter.
+ */
+export function create_knowledge_qdrant_driver(
+  service: QdrantService = get_qdrant_service(),
+): KnowledgeQdrantDriver {
+  return {
+    async ensure_collection(definition) {
+      await service.ensure_knowledge_collection(definition);
+    },
+    async search(collection_name, vector, options) {
+      return service.search(collection_name, [...vector], {
+        topK: options.topK,
+        filter: options.filter as unknown as Record<string, unknown>,
+        withPayload: options.withPayload,
+      });
+    },
+    async upsert(collection_name, points) {
+      await service.upsert(
+        collection_name,
+        points.map((point) => ({
+          id: point.id,
+          vector: [...point.vector],
+          payload: point.payload,
+        })),
+      );
+    },
+    async delete(collection_name, filter) {
+      await service.delete(collection_name, filter);
+    },
+  };
 }

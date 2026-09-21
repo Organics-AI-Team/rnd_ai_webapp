@@ -128,42 +128,28 @@ function build_mongo_query_declaration(): GeminiFunctionDeclaration {
   return {
     name: 'mongo_query',
     description:
-      'Execute a read-only MongoDB query. Use for exact field lookups, ' +
-      'aggregations, counts, and structured data retrieval where ' +
-      'vector search is unnecessary.',
+      'Run a read-only diagnostic by name. Collection names, filters, and ' +
+      'aggregation stages CANNOT be supplied — only an allowlisted diagnostic ' +
+      'is run, automatically scoped to your tenant. Use for quick counts and ' +
+      'recent-record checks; use search_reference_formulas for content search.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        collection: {
+        query_name: {
+          type: 'STRING',
+          description: 'The named diagnostic to run.',
+          enum: [
+            'tenant_formula_count',
+            'tenant_formula_status_breakdown',
+            'tenant_recent_formulas',
+            'raw_material_count',
+          ],
+        },
+        status: {
           type: 'STRING',
           description:
-            'MongoDB collection name, e.g. "raw_materials", "formulas", "orders".',
-        },
-        database: {
-          type: 'STRING',
-          description: 'Target database.',
-          enum: ['rnd_ai', 'raw_materials'],
-        },
-        operation: {
-          type: 'STRING',
-          description: 'MongoDB read operation to execute.',
-          enum: ['find', 'findOne', 'aggregate', 'count'],
-        },
-        filter: {
-          type: 'OBJECT',
-          description:
-            'MongoDB query filter object, e.g. {"rm_code": "RM001234"} or ' +
-            '{"Function": {"$regex": "ANTI-AGING", "$options": "i"}}.',
-        },
-        projection: {
-          type: 'OBJECT',
-          description:
-            'Fields to include/exclude, e.g. {"INCI_name": 1, "Function": 1, "_id": 0}.',
-        },
-        sort: {
-          type: 'OBJECT',
-          description:
-            'Sort specification, e.g. {"cost": 1} for ascending cost.',
+            'Optional formula status filter for formula diagnostics.',
+          enum: ['draft', 'testing', 'approved', 'rejected', 'confirmed'],
         },
         limit: {
           type: 'NUMBER',
@@ -171,7 +157,7 @@ function build_mongo_query_declaration(): GeminiFunctionDeclaration {
             'Maximum documents to return. Defaults to 10, capped at 20.',
         },
       },
-      required: ['collection', 'database', 'operation', 'filter'],
+      required: ['query_name'],
     },
   };
 }

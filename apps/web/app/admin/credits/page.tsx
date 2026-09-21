@@ -56,11 +56,11 @@ export default function AdminCreditsPage() {
   const [description, setDescription] = useState("");
 
   const handleAddCredits = (userId: string) => {
+    // The acting identity derives from the server-verified principal.
     addCredits.mutate({
       userId,
       amount: parseFloat(amount),
       description,
-      performedBy: "admin",
     });
   };
 
@@ -69,7 +69,6 @@ export default function AdminCreditsPage() {
       userId,
       newAmount: parseFloat(newAmount),
       description,
-      performedBy: "admin",
     });
   };
 

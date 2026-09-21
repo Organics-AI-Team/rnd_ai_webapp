@@ -30,7 +30,7 @@ import {
   Activity,
   Filter
 } from 'lucide-react';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth } from "@/lib/app-auth";
 
 // Mock data - in real app, this would come from your API
 const mockUsageData = [

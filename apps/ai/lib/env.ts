@@ -13,6 +13,11 @@
  * @module env
  */
 
+import { require_server_ai_credentials } from '@rnd-ai/server-config';
+
+export { require_server_ai_credentials } from '@rnd-ai/server-config';
+export type { ServerAICredentials } from '@rnd-ai/server-config';
+
 /**
  * Required environment variable keys
  * These MUST be set for the application to function
@@ -28,6 +33,8 @@ type OptionalEnvVar =
   | 'RAW_MATERIALS_REAL_STOCK_MONGODB_URI'
   | 'GEMINI_API_KEY'
   | 'OPENAI_API_KEY'
+  | 'QDRANT_URL'
+  | 'QDRANT_API_KEY'
   | 'PINECONE_API_KEY'
   | 'NEXT_PUBLIC_APP_URL'
   | 'NEXT_PUBLIC_API_URL'
@@ -129,20 +136,26 @@ export const env = {
    * AI service API keys
    */
   gemini_api_key: () => {
-    const key = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!key) {
-      throw new Error('GEMINI_API_KEY is not set in environment variables');
-    }
-    return key;
+    return require_server_ai_credentials(process.env).gemini_api_key;
   },
 
   openai_api_key: () => {
-    const key = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    const key = process.env.OPENAI_API_KEY?.trim();
     if (!key) {
       throw new Error('OPENAI_API_KEY is not set in environment variables');
     }
     return key;
   },
+
+  qdrant_url: () => {
+    const url = process.env.QDRANT_URL?.trim();
+    if (!url) {
+      throw new Error('QDRANT_URL is not set in environment variables');
+    }
+    return url;
+  },
+
+  qdrant_api_key: () => get_optional_env('QDRANT_API_KEY', ''),
 
   pinecone_api_key: () => {
     const key = process.env.PINECONE_API_KEY;
@@ -195,6 +208,8 @@ export function get_env_status(): Record<string, string> {
     'RAW_MATERIALS_REAL_STOCK_MONGODB_URI',
     'GEMINI_API_KEY',
     'OPENAI_API_KEY',
+    'QDRANT_URL',
+    'QDRANT_API_KEY',
     'PINECONE_API_KEY',
     'NEXT_PUBLIC_APP_URL',
     'NODE_ENV',

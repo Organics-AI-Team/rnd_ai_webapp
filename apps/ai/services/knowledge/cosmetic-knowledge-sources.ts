@@ -901,6 +901,7 @@ export class CosmeticKnowledgeService {
 // Type definitions
 export interface CosmeticSearchContext {
   region: string;
+  targetRegions?: string[];
   requireLatestInfo: boolean;
   productType?: string;
   targetMarket?: string[];

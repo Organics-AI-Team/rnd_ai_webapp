@@ -11,6 +11,30 @@ export interface EmbeddingConfig {
   dimensions?: number;
 }
 
+/**
+ * Fit a raw embedding to the configured dimensionality.
+ *
+ * gemini-embedding-001 returns 3072-dim vectors and the installed
+ * @google/generative-ai SDK (0.24.x) cannot request `outputDimensionality`.
+ * The model is Matryoshka-trained, so Google's documented downscaling is
+ * truncate-then-L2-normalize — which this applies client-side. Without it,
+ * 3072-dim vectors violate the 768-dim governed knowledge collections.
+ *
+ * @param values - Raw embedding values from the API.
+ * @param dimensions - Target dimensionality (undefined/0 = keep as-is).
+ * @returns Vector of exactly `dimensions` length, L2-normalized when truncated.
+ * @throws Error when the API returned fewer values than requested.
+ */
+export function fit_embedding_dimensions(values: number[], dimensions?: number): number[] {
+  if (!dimensions || values.length === dimensions) return values;
+  if (values.length < dimensions) {
+    throw new Error(`Embedding has ${values.length} dims; ${dimensions} requested`);
+  }
+  const truncated = values.slice(0, dimensions);
+  const norm = Math.sqrt(truncated.reduce((sum, v) => sum + v * v, 0));
+  return norm > 0 ? truncated.map((v) => v / norm) : truncated;
+}
+
 export class GeminiEmbeddingService {
   private genAI: GoogleGenerativeAI;
   private config: EmbeddingConfig;
@@ -64,8 +88,10 @@ export class GeminiEmbeddingService {
         }))
       });
 
-      // Extract embedding values from each result
-      return result.embeddings.map(embedding => embedding.values);
+      // Extract embedding values, fitted to the configured dimensionality
+      return result.embeddings.map(embedding =>
+        fit_embedding_dimensions(embedding.values, this.config.dimensions)
+      );
     } catch (error) {
       console.error(`Error in batch embedding (${texts.length} texts):`, error);
       throw error;
@@ -80,7 +106,7 @@ export class GeminiEmbeddingService {
       const model = this.genAI.getGenerativeModel({ model: this.config.model });
       const result = await model.embedContent(text);
 
-      return result.embedding.values;
+      return fit_embedding_dimensions(result.embedding.values, this.config.dimensions);
     } catch (error) {
       console.error(`Error embedding text: "${text.substring(0, 50)}..."`, error);
       throw error;

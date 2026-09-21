@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -47,6 +47,7 @@ interface OverallMetrics {
 }
 
 interface PerformanceMetrics {
+  averageResponseTime: number;
   knowledgeRetrievalTime: number;
   qualityScoringTime: number;
   regulatoryCheckTime: number;
@@ -105,6 +106,7 @@ interface TrendMetrics {
   responseTimeTrend: number[];
   usageTrend: number[];
   complianceTrend: number[];
+  userSatisfactionTrend: number[];
   timeframe: string;
 }
 
@@ -118,6 +120,87 @@ interface AlertItem {
 }
 
 /**
+ * Convert dashboard metrics into severity-sorted operational alerts.
+ *
+ * @param data - Current dashboard metrics.
+ * @returns Alerts ordered from highest to lowest severity.
+ */
+function process_alerts(data: DashboardMetrics): AlertItem[] {
+  const alerts: AlertItem[] = [];
+
+  if (data.quality.factualAccuracy < 0.7) {
+    alerts.push({
+      id: 'quality-accuracy',
+      type: 'warning',
+      title: 'Low Factual Accuracy',
+      description: `Factual accuracy has dropped to ${(data.quality.factualAccuracy * 100).toFixed(1)}%`,
+      timestamp: new Date(),
+      severity: 'medium'
+    });
+  }
+
+  if (data.quality.safetyCompliance < 0.8) {
+    alerts.push({
+      id: 'safety-compliance',
+      type: 'error',
+      title: 'Safety Compliance Issue',
+      description: `Safety compliance is at ${(data.quality.safetyCompliance * 100).toFixed(1)}%`,
+      timestamp: new Date(),
+      severity: 'high'
+    });
+  }
+
+  if (data.performance.averageResponseTime > 5000) {
+    alerts.push({
+      id: 'response-time',
+      type: 'warning',
+      title: 'Slow Response Time',
+      description: `Average response time is ${(data.performance.averageResponseTime / 1000).toFixed(1)}s`,
+      timestamp: new Date(),
+      severity: 'medium'
+    });
+  }
+
+  if (data.performance.errorRate > 0.05) {
+    alerts.push({
+      id: 'error-rate',
+      type: 'error',
+      title: 'High Error Rate',
+      description: `Error rate is ${(data.performance.errorRate * 100).toFixed(1)}%`,
+      timestamp: new Date(),
+      severity: 'high'
+    });
+  }
+
+  if (data.compliance.criticalViolations > 0) {
+    alerts.push({
+      id: 'compliance-violations',
+      type: 'error',
+      title: 'Compliance Violations',
+      description: `${data.compliance.criticalViolations} critical compliance violations detected`,
+      timestamp: new Date(),
+      severity: 'critical'
+    });
+  }
+
+  if (data.sources.riskSources > data.sources.totalSources * 0.3) {
+    alerts.push({
+      id: 'source-risk',
+      type: 'warning',
+      title: 'High Risk Sources',
+      description: `${data.sources.riskSources} sources have high or critical risk levels`,
+      timestamp: new Date(),
+      severity: 'medium'
+    });
+  }
+
+  return alerts.sort((a, b) => {
+    const severity_order = { critical: 4, high: 3, medium: 2, low: 1 };
+    return severity_order[b.severity] - severity_order[a.severity];
+  });
+}
+
+/**
  * Cosmetic AI Metrics Dashboard Component
  */
 export function CosmeticAIMetricsDashboard() {
@@ -127,16 +210,7 @@ export function CosmeticAIMetricsDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  // Fetch metrics on component mount and interval refresh
-  useEffect(() => {
-    fetchMetrics();
-
-    const interval = setInterval(fetchMetrics, 30000); // Refresh every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [selectedTimeframe]);
-
-  const fetchMetrics = async () => {
+  const fetchMetrics = useCallback(async () => {
     setIsRefreshing(true);
     try {
       const response = await fetch(`/api/ai/cosmetic-enhanced?action=metrics&timeframe=${selectedTimeframe}`);
@@ -145,13 +219,10 @@ export function CosmeticAIMetricsDashboard() {
         throw new Error('Failed to fetch metrics');
       }
 
-      const data = await response.json();
+      const data: DashboardMetrics = await response.json();
       setMetrics(data);
       setLastRefresh(new Date());
-
-      // Process alerts from metrics
-      const processedAlerts = processAlerts(data);
-      setAlerts(processedAlerts);
+      setAlerts(process_alerts(data));
 
     } catch (error) {
       console.error('Failed to fetch metrics:', error);
@@ -167,86 +238,18 @@ export function CosmeticAIMetricsDashboard() {
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [selectedTimeframe]);
 
-  const processAlerts = (data: DashboardMetrics): AlertItem[] => {
-    const alerts: AlertItem[] = [];
+  // Fetch metrics on component mount and interval refresh.
+  useEffect(() => {
+    const initial_timeout = window.setTimeout(() => void fetchMetrics(), 0);
+    const interval = window.setInterval(() => void fetchMetrics(), 30000);
 
-    // Quality alerts
-    if (data.quality.factualAccuracy < 0.7) {
-      alerts.push({
-        id: 'quality-accuracy',
-        type: 'warning',
-        title: 'Low Factual Accuracy',
-        description: `Factual accuracy has dropped to ${(data.quality.factualAccuracy * 100).toFixed(1)}%`,
-        timestamp: new Date(),
-        severity: 'medium'
-      });
-    }
-
-    if (data.quality.safetyCompliance < 0.8) {
-      alerts.push({
-        id: 'safety-compliance',
-        type: 'error',
-        title: 'Safety Compliance Issue',
-        description: `Safety compliance is at ${(data.quality.safetyCompliance * 100).toFixed(1)}%`,
-        timestamp: new Date(),
-        severity: 'high'
-      });
-    }
-
-    // Performance alerts
-    if (data.performance.averageResponseTime > 5000) {
-      alerts.push({
-        id: 'response-time',
-        type: 'warning',
-        title: 'Slow Response Time',
-        description: `Average response time is ${(data.performance.averageResponseTime / 1000).toFixed(1)}s`,
-        timestamp: new Date(),
-        severity: 'medium'
-      });
-    }
-
-    if (data.performance.errorRate > 0.05) {
-      alerts.push({
-        id: 'error-rate',
-        type: 'error',
-        title: 'High Error Rate',
-        description: `Error rate is ${(data.performance.errorRate * 100).toFixed(1)}%`,
-        timestamp: new Date(),
-        severity: 'high'
-      });
-    }
-
-    // Compliance alerts
-    if (data.compliance.criticalViolations > 0) {
-      alerts.push({
-        id: 'compliance-violations',
-        type: 'error',
-        title: 'Compliance Violations',
-        description: `${data.compliance.criticalViolations} critical compliance violations detected`,
-        timestamp: new Date(),
-        severity: 'critical'
-      });
-    }
-
-    // Source alerts
-    if (data.sources.riskSources > data.sources.totalSources * 0.3) {
-      alerts.push({
-        id: 'source-risk',
-        type: 'warning',
-        title: 'High Risk Sources',
-        description: `${data.sources.riskSources} sources have high or critical risk levels`,
-        timestamp: new Date(),
-        severity: 'medium'
-      });
-    }
-
-    return alerts.sort((a, b) => {
-      const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
-      return severityOrder[b.severity] - severityOrder[a.severity];
-    });
-  };
+    return () => {
+      window.clearTimeout(initial_timeout);
+      window.clearInterval(interval);
+    };
+  }, [fetchMetrics]);
 
   const getQualityColor = (score: number): string => {
     if (score >= 0.8) return 'text-green-600';

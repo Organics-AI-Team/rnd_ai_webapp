@@ -1,0 +1,34 @@
+/**
+ * Public surface of the governed agentic orchestration package.
+ *
+ * Consumers (the AI gateway and tests) import only from this entrypoint;
+ * everything here is dependency-isolated from legacy agent implementations.
+ */
+export * from "./version";
+export * from "./ports";
+export * from "./hash";
+export * from "./contracts";
+export * from "./context/context-pack";
+export * from "./schemas/observation";
+export * from "./state";
+export * from "./events";
+export * from "./output";
+export * from "./loop-detection";
+export * from "./routing";
+export * from "./nodes/message-builder";
+export * from "./nodes/ingress";
+export * from "./nodes/agent";
+export * from "./nodes/gate";
+export * from "./nodes/act";
+export * from "./nodes/fail";
+export * from "./graph";
+export * from "./checkpoint";
+export * from "./resume";
+export * from "./nodes/request-approval";
+export * from "./nodes/request-clarification";
+export * from "./artifacts/formula-schema";
+export * from "./artifacts/formula-validator";
+export * from "./artifacts/formula-finalizer";
+export * from "./schemas/specialist";
+export * from "./delegation/delegation-registry";
+export * from "./delegation/delegate-tool-factory";

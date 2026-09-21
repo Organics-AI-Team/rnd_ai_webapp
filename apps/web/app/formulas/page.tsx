@@ -9,7 +9,7 @@
  * @date 2026-03-30
  */
 
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { trpc } from "@/lib/trpc-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,9 @@ import {
   Beaker, Search, Eye, Edit, Trash2, Sparkles, GitBranch, CheckCircle,
   X, Plus, Save, Wand2,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useAgentRun } from "@/hooks/use_agent_run";
+import { AiRunView } from "@/components/ai";
 import { FormulaComments } from "@/components/formula-comments";
 import { FormulaVersionHistory } from "@/components/formula-version-history";
 import { Separator } from "@/components/ui/separator";
@@ -73,10 +75,16 @@ export default function FormulasPage() {
   const [editRemarks, setEditRemarks] = useState("");
   const [editStatus, setEditStatus] = useState("draft");
 
-  // AI suggest state
+  // AI suggest state — the governed run replaces the legacy ReAct fetch;
+  // aiRunStarted gates the run view (the reducer's initial status is
+  // "pending" even before any run exists)
   const [showAiSuggest, setShowAiSuggest] = useState(false);
   const [aiBrief, setAiBrief] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
+  const [aiRunStarted, setAiRunStarted] = useState(false);
+  const [aiRefreshError, setAiRefreshError] = useState<string | null>(null);
+  const confirmation_keys = useRef(new Map<string, string>());
+  const agent_run = useAgentRun();
+  const aiLoading = agent_run.is_starting || agent_run.is_streaming;
 
   // --- Queries & Mutations ---
   const { data: formulas, isLoading: formulasLoading } = trpc.formulas.list.useQuery();
@@ -171,27 +179,34 @@ export default function FormulasPage() {
   const handleSaveEdit = async () => {
     if (!panelFormula) return;
     console.log("[formulas] handleSaveEdit", { id: panelFormula._id });
-    await updateFormula.mutateAsync({
-      id: panelFormula._id,
-      formulaName: editName,
-      client: editClient,
-      targetBenefits: editBenefits,
-      ingredients: editIngredients.map((ing) => ({
-        ...ing,
-        amount: Number(ing.amount),
-        percentage: ing.percentage ? Number(ing.percentage) : undefined,
-      })),
-      totalAmount: editTotalAmount,
-      remarks: editRemarks,
-      status: editStatus as any,
-    });
+    try {
+      await updateFormula.mutateAsync({
+        id: panelFormula._id,
+        formulaName: editName,
+        client: editClient,
+        targetBenefits: editBenefits,
+        ingredients: editIngredients.map((ing) => ({
+          ...ing,
+          amount: Number(ing.amount),
+          percentage: ing.percentage ? Number(ing.percentage) : undefined,
+        })),
+        totalAmount: editTotalAmount,
+        remarks: editRemarks,
+        status: editStatus as any,
+      });
+    } catch (error) {
+      console.error("[formulas] handleSaveEdit — error", error);
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
     if (confirm(`Delete "${name}"?`)) {
-      try { await deleteFormula.mutateAsync({ id }); }
-      catch (e: any) { console.error("[formulas] handleDelete — error", e); }
-      if (panelFormula?._id === id) closePanel();
+      try {
+        await deleteFormula.mutateAsync({ id });
+        if (panelFormula?._id === id) closePanel();
+      } catch (e: any) {
+        console.error("[formulas] handleDelete — error", e);
+      }
     }
   };
 
@@ -199,57 +214,84 @@ export default function FormulasPage() {
     console.log("[formulas] handleConfirm", { id, name });
     const remarks = prompt(`Confirm "${name}" as next version?\n\nOptional remarks:`);
     if (remarks !== null) {
-      try { await confirmFormula.mutateAsync({ id, remarks: remarks || undefined }); }
+      const idempotencyKey = confirmation_keys.current.get(id) ?? crypto.randomUUID();
+      confirmation_keys.current.set(id, idempotencyKey);
+      try {
+        await confirmFormula.mutateAsync({ id, remarks: remarks || undefined, idempotencyKey });
+        confirmation_keys.current.delete(id);
+      }
       catch (e: any) { console.error("[formulas] handleConfirm — error", e); }
     }
   };
 
   /**
-   * Call AI to generate formula from a brief, then auto-open
-   * the newly created draft in the slide-over panel.
+   * Start a governed agentic run that drafts a formula from the brief.
    *
-   * @remarks Posts to /api/ai/raw-materials-agent which triggers
-   *          the ReAct agent's generate_formula tool, persisting
-   *          the draft to MongoDB. After success we refetch the
-   *          list and open the first (newest) draft.
+   * @remarks Uses the versioned run API (`useAgentRun` -> POST /api/ai/runs)
+   *          with the `formulation` agent. The run streams typed events into
+   *          the modal's AiRunView: validation findings, evidence,
+   *          clarification questions, and the manager approval checkpoint
+   *          that commits the confirmed formula. The legacy ReAct
+   *          raw-materials endpoint is no longer called from this page.
    */
   const handleAiSuggest = async () => {
-    if (!aiBrief.trim()) return;
-    console.log("[formulas] handleAiSuggest — start", { brief: aiBrief });
-    setAiLoading(true);
-    try {
-      const res = await fetch("/api/ai/raw-materials-agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `Generate a formula for: ${aiBrief}. Return only the formula data.`,
-          organizationId: user?.organizationId,
-          userId: user?.id,
-          conversationHistory: [],
-        }),
-      });
-      const data = await res.json();
-      console.log("[formulas] handleAiSuggest — response received", { success: data.success });
-
-      // Close modal and reset
-      setShowAiSuggest(false);
-      setAiBrief("");
-
-      // Refetch list then auto-open the newest draft in the panel
-      const refreshed = await utils.formulas.list.fetch();
-      if (refreshed && refreshed.length > 0) {
-        const newest_draft = refreshed.find((f: any) => f.status === "draft" && f.aiGenerated);
-        const target = newest_draft || refreshed[0];
-        console.log("[formulas] handleAiSuggest — auto-opening formula", { id: target._id });
-        openPanel(target, "view");
-      }
-    } catch (error) {
-      console.error("[formulas] handleAiSuggest — error", error);
-      alert("Failed to generate formula. Please try again.");
-    } finally {
-      setAiLoading(false);
-    }
+    if (!aiBrief.trim() || aiLoading) return;
+    console.log("[formulas] handleAiSuggest — starting governed run", { brief: aiBrief });
+    setAiRunStarted(true);
+    await agent_run.start_run({
+      thread_id: `formula_suggest_${crypto.randomUUID()}`,
+      agent_key: "formulation",
+      message: `Generate a complete formula draft for: ${aiBrief}`,
+      attachment_source_ids: [],
+      response_preferences: {
+        language: /[\u0E00-\u0E7F]/.test(aiBrief) ? "th" : "en",
+        detail: "detailed",
+      },
+    });
+    console.log("[formulas] handleAiSuggest — governed run requested");
   };
+
+  /**
+   * Close the AI suggest modal and discard any finished or cancelled run.
+   */
+  const closeAiSuggest = () => {
+    console.log("[formulas] closeAiSuggest", { status: agent_run.state.status });
+    if (agent_run.is_streaming) agent_run.cancel_stream();
+    agent_run.reset_run();
+    setAiRunStarted(false);
+    setAiBrief("");
+    setShowAiSuggest(false);
+  };
+
+  // When the governed run completes, refresh the list; auto-open only a
+  // genuinely new AI draft (a run without an approved commit produces an
+  // artifact but no Formula document, so opening an arbitrary row is wrong)
+  useEffect(() => {
+    if (!aiRunStarted || agent_run.state.status !== "completed") return;
+    console.log("[formulas] governed run completed — refreshing list");
+    let cancelled = false;
+    setAiRefreshError(null);
+    void utils.formulas.list.fetch()
+      .then((refreshed) => {
+        if (cancelled || !refreshed) return;
+        const newest_draft = refreshed.find((f: any) => f.status === "draft" && f.aiGenerated);
+        if (newest_draft) {
+          console.log("[formulas] auto-opening committed draft", { id: newest_draft._id });
+          openPanel(newest_draft, "view");
+          setShowAiSuggest(false);
+          setAiRunStarted(false);
+          setAiBrief("");
+          agent_run.reset_run();
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        console.error("[formulas] completed-run refresh failed");
+        setAiRefreshError("The AI run finished, but the formula list could not be refreshed. Please retry.");
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiRunStarted, agent_run.state.status]);
 
   const status_style = (status: string) => ({
     draft: "text-gray-500 border-gray-200/80 bg-gray-50/50",
@@ -709,8 +751,8 @@ export default function FormulasPage() {
       {/* ============================================================ */}
       {/* AI Suggest Modal */}
       {/* ============================================================ */}
-      <Dialog open={showAiSuggest} onOpenChange={setShowAiSuggest}>
-        <DialogContent className="max-w-md">
+      <Dialog open={showAiSuggest} onOpenChange={(open) => { if (!open) closeAiSuggest(); }}>
+        <DialogContent className={aiRunStarted ? "max-w-2xl" : "max-w-md"}>
           <DialogHeader>
             <DialogTitle className="text-[13px] font-medium flex items-center gap-2">
               <Wand2 className="h-4 w-4 text-violet-500" />
@@ -726,10 +768,30 @@ export default function FormulasPage() {
               value={aiBrief}
               onChange={(e) => setAiBrief(e.target.value)}
               className="min-h-[100px] text-[12px]"
+              disabled={aiLoading}
             />
+            {aiRunStarted && (
+              <div className="max-h-[50vh] overflow-y-auto rounded-md border border-gray-200/80 p-3">
+                <AiRunView
+                  state={agent_run.state}
+                  client_error={agent_run.client_error}
+                  is_streaming={agent_run.is_streaming}
+                  is_resuming={agent_run.is_resuming}
+                  is_manager={user?.role === "admin"}
+                  on_clarification={agent_run.submit_clarification}
+                  on_approval={agent_run.submit_approval}
+                  on_cancel_stream={agent_run.cancel_stream}
+                />
+              </div>
+            )}
+            {aiRefreshError && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                {aiRefreshError}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setShowAiSuggest(false)} className="h-8 text-[12px]">
-                Cancel
+              <Button size="sm" variant="ghost" onClick={closeAiSuggest} className="h-8 text-[12px]">
+                {aiRunStarted && agent_run.state.status === "completed" ? "Close" : "Cancel"}
               </Button>
               <Button
                 size="sm"
@@ -742,7 +804,7 @@ export default function FormulasPage() {
                 ) : (
                   <Sparkles className="h-3.5 w-3.5" />
                 )}
-                {aiLoading ? "Generating..." : "Generate"}
+                {aiLoading ? "Generating..." : aiRunStarted ? "Regenerate" : "Generate"}
               </Button>
             </div>
           </div>

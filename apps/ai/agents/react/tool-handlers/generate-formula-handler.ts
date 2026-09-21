@@ -571,6 +571,12 @@ async function persist_formula_to_db(
   const client = await client_promise;
   const db = client.db();
 
+  // Tenant provenance (G2.6): every AI-generated formula is stamped with the
+  // trusted tenant so later tenant-scoped reads (confirm/revise/get/search) can
+  // find it. organization_id equals the active tenant on converted call sites;
+  // tenant_id is preferred when present.
+  const tenant_id = context.tenant_id ?? context.organization_id;
+
   // Auto-generate formulaCode: same logic as tRPC formulas.create
   const total_count = await db.collection('formulas').countDocuments();
   const latest_formula = await db
@@ -602,6 +608,7 @@ async function persist_formula_to_db(
   }));
 
   const result = await db.collection('formulas').insertOne({
+    tenantId: tenant_id,
     organizationId: context.organization_id,
     formulaCode: formula_code,
     formulaName: formula.formula_name,
@@ -623,6 +630,7 @@ async function persist_formula_to_db(
   // Create initial version log entry (AI created — draft)
   try {
     await db.collection('formula_version_logs').insertOne({
+      tenantId: tenant_id,
       formulaId: result.insertedId.toString(),
       version: 0,
       previousVersion: null,
@@ -884,7 +892,7 @@ export async function handle_generate_formula(params: GenerateFormulaParams, con
     let saved_formula_id: string | null = null;
     let saved_formula_code: string | null = null;
 
-    if (context?.organization_id) {
+    if (context?.tenant_id || context?.organization_id) {
       try {
         const persist_result = await persist_formula_to_db(formula, ingredients, context);
         saved_formula_id = persist_result.formula_id;
@@ -899,7 +907,7 @@ export async function handle_generate_formula(params: GenerateFormulaParams, con
         });
       }
     } else {
-      console.log('[generate-formula] skipping DB persistence — no organization_id in context');
+      console.log('[generate-formula] skipping DB persistence — no tenant scope in context');
     }
 
     // Attach persistence info to output

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Surface, SurfaceHeader } from '@/components/ui/surface';
 
 /**
  * Console Page Shell — Shared wrapper for all console/CRUD pages.
@@ -42,32 +43,32 @@ export function ConsolePageShell({
 }: ConsolePageShellProps) {
   return (
     <div className="h-full flex flex-col p-2 lg:p-3">
-      <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-gray-200/60 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+      <Surface variant="panel" className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Header toolbar */}
-        <div className="flex items-center justify-between h-11 px-4 border-b border-gray-100/80 flex-shrink-0">
+        <SurfaceHeader className="h-16 flex-shrink-0 px-5 py-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <h1 className="text-[13px] font-medium text-gray-800 truncate">{title}</h1>
+            <h1 className="text-base font-semibold text-ink truncate">{title}</h1>
             {subtitle && (
-              <span className="text-[11px] text-gray-400 flex-shrink-0">{subtitle}</span>
+              <span className="text-sm text-muted flex-shrink-0">{subtitle}</span>
             )}
           </div>
           {show_action && action_label && on_action && (
             <Button
               size="sm"
               onClick={on_action}
-              className="h-7 text-[11px] px-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg shadow-sm"
+              className="h-9 px-4 text-xs"
             >
               <Plus className="h-3 w-3 mr-1" />
               {action_label}
             </Button>
           )}
-        </div>
+        </SurfaceHeader>
 
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-auto">
           {children}
         </div>
-      </div>
+      </Surface>
     </div>
   );
 }
@@ -100,10 +101,10 @@ export function ConsoleSection({
   return (
     <div className={className}>
       {(title || trailing) && (
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
-            {title && <h2 className="text-[12px] font-medium text-gray-600">{title}</h2>}
-            {subtitle && <p className="text-[11px] text-gray-400">{subtitle}</p>}
+            {title && <h2 className="text-sm font-semibold text-ink">{title}</h2>}
+            {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
           </div>
           {trailing}
         </div>

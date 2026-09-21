@@ -16,8 +16,7 @@ import { useChat } from '../../hooks/use-chat';
 import { useFeedback } from '../../hooks/use-feedback';
 import { useEnhancedChat } from '../../hooks/enhanced/use-enhanced-chat';
 import { FeedbackCollector } from '../feedback/feedback-collector';
-import { QdrantRAGService as PineconeClientService } from '../../services/rag/qdrant-rag-service';
-import { EnhancedHybridSearchService } from '../../services/rag/enhanced-hybrid-search-service';
+import { UnifiedSearchClient } from '../../services/rag/unified-search-client';
 import { ConversationMessage } from '../../types/conversation-types';
 import { StructuredResponse, EnhancedUserPreferences } from '../../services/enhanced/enhanced-ai-service';
 
@@ -65,50 +64,17 @@ export function AIChat({
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Enhanced RAG service with semantic reranking
+  // Browser-safe RAG client. Provider credentials remain behind the API route.
   const [ragService] = useState(() => {
-    if (!enableEnhancements) {
-      // Use legacy service when enhancements disabled
-      try {
-        const serviceToUse = (serviceName as any) || 'rawMaterialsAllAI';
-        return new PineconeClientService(serviceToUse, {
-          topK: 5,
-          similarityThreshold: 0.7
-        });
-      } catch (error) {
-        console.warn('⚠️ RAG service initialization failed:', error.message);
-        return null;
-      }
-    }
-
-    // Use enhanced service with semantic reranking
     try {
-      console.log('🚀 [AIChat] Initializing Enhanced Hybrid Search Service');
-      const enhancedService = new EnhancedHybridSearchService(
-        process.env.NEXT_PUBLIC_PINECONE_API_KEY!,
-        process.env.MONGODB_URI!,
-        'rnd_ai',
-        'raw_materials_console',
-        'raw-materials-stock'
-      );
-      // Initialize async (don't block render)
-      enhancedService.initialize().catch(error => {
-        console.warn('⚠️ Enhanced RAG service initialization failed, falling back to legacy:', error);
+      console.log('🚀 [AIChat] Initializing server-backed unified search client');
+      return new UnifiedSearchClient(serviceName || 'rawMaterialsAllAI', {
+        topK: 5,
+        similarityThreshold: 0.7,
       });
-      return enhancedService;
     } catch (error) {
-      console.warn('⚠️ Enhanced RAG service initialization failed, using legacy:', error.message);
-      // Fallback to legacy service
-      try {
-        const serviceToUse = (serviceName as any) || 'rawMaterialsAllAI';
-        return new PineconeClientService(serviceToUse, {
-          topK: 5,
-          similarityThreshold: 0.7
-        });
-      } catch (fallbackError) {
-        console.warn('⚠️ Fallback RAG service also failed:', fallbackError.message);
-        return null;
-      }
+      console.warn('⚠️ RAG client initialization failed');
+      return null;
     }
   });
 
@@ -195,36 +161,12 @@ export function AIChat({
     console.log('🔍 Starting enhanced RAG search for:', query);
     setIsSearchingRAG(true);
     try {
-      let results;
-
-      if (enableEnhancements && ragService instanceof EnhancedHybridSearchService) {
-        // Use enhanced search with semantic reranking
-        results = await ragService.enhancedSearch({
-          query,
-          userId,
-          topK: 5,
-          rerank: true,
-          semanticWeight: 0.7,
-          keywordWeight: 0.3,
-          userPreferences: (chat as any).userPreferences || {},
-        });
-
-        // Format enhanced results
-        const formattedResults = results.map((result, index) =>
-          `**${index + 1}.** ${result.content}\n*Confidence: ${(result.score * 100).toFixed(1)}%*\n`
-        ).join('\n');
-
-        console.log('✅ Enhanced RAG search results:', results);
-        setLastRAGResults(formattedResults);
-      } else {
-        // Use legacy search
-        results = await (ragService as any).searchAndFormat?.(query, {
-          topK: 5,
-          similarityThreshold: 0.7
-        }) || [];
-        console.log('✅ Legacy RAG search results:', results);
-        setLastRAGResults(results);
-      }
+      const formatted_results = await ragService.search_and_format(query, {
+        topK: 5,
+        similarityThreshold: 0.7,
+      });
+      console.log('✅ Server-backed RAG search completed');
+      setLastRAGResults(formatted_results);
     } catch (error) {
       console.error('❌ RAG search failed:', error);
       console.error('❌ Error details:', error.message, error.stack);
@@ -233,7 +175,7 @@ export function AIChat({
     } finally {
       setIsSearchingRAG(false);
     }
-  }, [ragService, enableEnhancements, userId, (chat as any).userPreferences]);
+  }, [ragService]);
 
   const handleSendMessage = async (message: string) => {
     console.log('🎯 AIChat handleSendMessage called:', message);

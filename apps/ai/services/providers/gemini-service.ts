@@ -3,6 +3,7 @@ import { BaseAIService } from '../core/base-ai-service';
 import { AIRequest, AIResponse, AIModelConfig } from '../../types/ai-types';
 import { Feedback } from '../../types/feedback-types';
 import { FeedbackAnalyzer } from '../core/feedback-analyzer';
+import { get_gemini_model } from '../../config/gemini-models';
 
 /**
  * Google Gemini service implementation using the base AI service
@@ -12,7 +13,7 @@ export class GeminiService extends BaseAIService {
 
   constructor(apiKey: string, config?: Partial<AIModelConfig>, serviceName?: string) {
     const defaultConfig: AIModelConfig = {
-      model: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
+      model: get_gemini_model(),
       temperature: 0.7,
       maxTokens: 9000,
       ...config

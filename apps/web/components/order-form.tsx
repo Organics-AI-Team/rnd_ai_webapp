@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -166,9 +166,8 @@ export function OrderForm() {
     setIsSubmitting(true);
     try {
       for (const order of ordersList) {
+        // Tenant and creator identity derive from the server-verified principal.
         await createOrder.mutateAsync({
-          organizationId: organization._id,
-          createdBy: user._id,
           productId: order.productId,
           productCode: order.productCode,
           productName: order.productName,
@@ -183,8 +182,8 @@ export function OrderForm() {
           status: "pending",
         });
       }
-      utils.orders.list.invalidate();
-      utils.orders.getStats.invalidate();
+      utils.orders.listTenant.invalidate();
+      utils.orders.getTenantStats.invalidate();
       utils.products.list.invalidate();
       setOrdersList([]);
       alert(`บันทึกออเดอร์สำเร็จ ${ordersList.length} รายการ`);

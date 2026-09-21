@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
+import { IconTile } from '@/components/ui/surface';
 import { Bot, User } from 'lucide-react';
 import { MarkdownRenderer } from '@/ai/components/chat/markdown-renderer';
 import { AIFeedbackButtons } from './ai_feedback_buttons';
@@ -48,25 +49,8 @@ interface AIChatMessageProps {
   onQuickAction?: (prompt: string) => void;
 }
 
-const themeColorMap = {
-  blue: { icon: 'text-blue-500', bg: 'bg-blue-50/80', badge: 'bg-blue-50/80 text-blue-600 border-blue-200/60' },
-  green: { icon: 'text-emerald-500', bg: 'bg-emerald-50/80', badge: 'bg-emerald-50/80 text-emerald-600 border-emerald-200/60' },
-  purple: { icon: 'text-violet-500', bg: 'bg-violet-50/80', badge: 'bg-violet-50/80 text-violet-600 border-violet-200/60' },
-  orange: { icon: 'text-orange-500', bg: 'bg-orange-50/80', badge: 'bg-orange-50/80 text-orange-600 border-orange-200/60' },
-};
-
 function getDisplayContent(content: string): string {
-  const leakedToolTrace =
-    content.includes('I reached the maximum number of reasoning steps') &&
-    content.includes('**Tool:');
-
-  if (!leakedToolTrace) return content;
-
-  return [
-    'ขออภัย ระบบดึงข้อมูลจากเครื่องมือได้แล้ว แต่ยังสรุปคำตอบสุดท้ายไม่สมบูรณ์',
-    '',
-    'กรุณาลองส่งคำถามอีกครั้งแบบเจาะจงขึ้น เช่น ระบุ product type, target benefits, texture, หรือข้อจำกัดของสูตร',
-  ].join('\n');
+  return content;
 }
 
 function getProcessSteps(metadata: Message['metadata']): Array<{ key: string; label: string }> {
@@ -110,49 +94,48 @@ function getProcessSteps(metadata: Message['metadata']): Array<{ key: string; la
  */
 export const AIChatMessage = React.memo(function AIChatMessage({
   message,
-  themeColor = 'blue',
+  themeColor: _themeColor = 'blue',
   metadataIcon,
   metadataLabel = 'Enhanced',
   onFeedback,
   feedbackSubmitted = false,
   onQuickAction,
 }: AIChatMessageProps) {
-  const colors = themeColorMap[themeColor];
   const displayContent = getDisplayContent(message.content);
   const processSteps = getProcessSteps(message.metadata);
 
   return (
-    <div className="flex gap-3 py-3">
+    <div className="flex gap-3 py-4">
       {/* Avatar */}
       <div className="flex-shrink-0 mt-0.5">
         {message.role === 'assistant' ? (
-          <div className={`w-6 h-6 rounded-md ${colors.bg} flex items-center justify-center`}>
-            <Bot className={`w-3.5 h-3.5 ${colors.icon}`} />
-          </div>
+          <IconTile tone="brand" className="size-8 rounded-xl">
+            <Bot className="h-3.5 w-3.5" />
+          </IconTile>
         ) : (
-          <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center">
-            <User className="w-3.5 h-3.5 text-gray-500" />
-          </div>
+          <IconTile className="size-8 rounded-xl">
+            <User className="h-3.5 w-3.5" />
+          </IconTile>
         )}
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-xs font-medium text-gray-700">
+          <span className="text-sm font-semibold text-ink">
             {message.role === 'assistant' ? 'AI' : 'คุณ'}
           </span>
-          <span className="text-[10px] text-gray-300 tabular-nums">
+          <span className="text-xs text-muted tabular-nums">
             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
 
         {message.role === 'assistant' ? (
-          <div className="text-sm text-gray-900 leading-relaxed break-words overflow-hidden">
+          <div className="break-words overflow-hidden text-sm leading-relaxed text-ink">
             <MarkdownRenderer content={displayContent} />
           </div>
         ) : (
-          <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">{displayContent}</p>
+          <p className="whitespace-pre-wrap break-words text-sm text-ink">{displayContent}</p>
         )}
 
         {message.role === 'assistant' && message.metadata?.formula && (
@@ -169,13 +152,13 @@ export const AIChatMessage = React.memo(function AIChatMessage({
         {message.role === 'assistant' && message.metadata && (
           <div className="mt-1.5 flex items-center gap-2">
             {message.metadata.ragUsed && (
-              <Badge variant="outline" className={`text-[10px] leading-none px-1.5 py-0.5 font-normal ${colors.badge}`}>
+              <Badge variant="outline" className="px-2 py-0.5 text-xs font-normal leading-none">
                 {metadataIcon && <span className="mr-0.5">{metadataIcon}</span>}
                 {metadataLabel}
               </Badge>
             )}
             {message.metadata.confidence != null && message.metadata.confidence > 0 && (
-              <span className="text-[10px] text-gray-300 tabular-nums">
+              <span className="text-xs text-muted tabular-nums">
                 {(message.metadata.confidence * 100).toFixed(0)}%
               </span>
             )}
@@ -183,20 +166,20 @@ export const AIChatMessage = React.memo(function AIChatMessage({
         )}
 
         {message.role === 'assistant' && processSteps.length > 0 && (
-          <details className="group mt-2 text-[11px] text-gray-400">
-            <summary className="inline-flex cursor-pointer select-none items-center gap-1 rounded-md px-1.5 py-1 hover:bg-gray-50 hover:text-gray-600">
+          <details className="group mt-3 text-xs text-muted">
+            <summary className="inline-flex cursor-pointer select-none items-center gap-1 rounded-lg border border-transparent px-2 py-1.5 hover:border-border hover:bg-subtle hover:text-ink">
               <span className="transition-transform group-open:rotate-90">›</span>
               <span>ขั้นตอน</span>
-              <span className="text-gray-300">({processSteps.length})</span>
+              <span>({processSteps.length})</span>
             </summary>
-            <div className="mt-1 ml-4 border-l border-gray-100 pl-3 text-gray-500">
+            <div className="ml-4 mt-1 border-l border-border pl-3 text-ink">
               {processSteps.map((step, index) => (
                 <div key={`${step.key}-${index}`} className="py-0.5">
                   {index + 1}. {step.label}
                 </div>
               ))}
               {message.metadata.responseTime != null && message.metadata.responseTime > 0 && (
-                <div className="py-0.5 text-gray-400">
+                <div className="py-0.5 text-muted">
                   เวลา: {(message.metadata.responseTime / 1000).toFixed(1)}s
                 </div>
               )}

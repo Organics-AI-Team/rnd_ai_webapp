@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { IconTile } from '@/components/ui/surface';
 
 /**
  * AI Auth Guard - Login prompt for unauthenticated users
@@ -23,12 +24,12 @@ export function AIAuthGuard({
 }: AIAuthGuardProps) {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="text-center max-w-sm">
-        <div className="w-10 h-10 mx-auto mb-3 text-gray-300 flex items-center justify-center">
+      <div className="max-w-sm text-center">
+        <IconTile className="mx-auto mb-3 text-muted">
           {icon}
-        </div>
-        <h2 className="text-sm font-semibold text-gray-900 mb-1">{title}</h2>
-        <p className="text-xs text-gray-500">{description}</p>
+        </IconTile>
+        <h2 className="mb-1 text-base font-semibold text-ink">{title}</h2>
+        <p className="text-sm text-muted">{description}</p>
       </div>
     </div>
   );

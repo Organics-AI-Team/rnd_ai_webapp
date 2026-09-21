@@ -3,7 +3,7 @@
 
 # Stage 1: Dependencies
 # Install all dependencies needed for building
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 
 # Add libc6-compat for compatibility with certain npm packages on Alpine Linux
 RUN apk add --no-cache libc6-compat
@@ -20,13 +20,15 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/shared-database/package.json ./packages/shared-database/
+COPY packages/server-config/package.json ./packages/server-config/
+COPY packages/ai-orchestration/package.json ./packages/ai-orchestration/
 
 # Install all workspace dependencies
 RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder
 # Build the Next.js application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -54,15 +56,15 @@ ENV NODE_ENV=production
 # Disable Next.js telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Only NEXT_PUBLIC_* variables are needed at build time (inlined by Next.js)
-# Server-side secrets are injected at runtime via docker-compose or env vars
-ARG NEXT_PUBLIC_GEMINI_API_KEY
-ARG NEXT_PUBLIC_OPENAI_API_KEY
+# Public URLs and the Clerk publishable key are inlined by Next.js at build
+# time. Provider credentials are injected only into the runtime container.
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_APP_URL
 
-ENV NEXT_PUBLIC_GEMINI_API_KEY=$NEXT_PUBLIC_GEMINI_API_KEY
-ENV NEXT_PUBLIC_OPENAI_API_KEY=$NEXT_PUBLIC_OPENAI_API_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
 # Build the Next.js app from web workspace
 WORKDIR /app/apps/web
@@ -70,7 +72,7 @@ RUN npm run build
 
 # Stage 3: Runner
 # Final stage with minimal size for running the app
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 
@@ -80,6 +82,11 @@ ENV NODE_ENV=production
 # Disable telemetry in production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Next standalone server.js chdir()s to /app/apps/web at boot, so the card
+# loader's cwd-relative probes miss the copied cards dir — pin it explicitly
+# (compose mirrors this for visibility; the image is self-sufficient either way)
+ENV AI_CAPABILITY_CARDS_ROOT=/app/apps/ai/server/services/ai-control/cards
+
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -87,6 +94,10 @@ RUN adduser --system --uid 1001 nextjs
 # Copy Next.js build output
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+
+# Capability cards are runtime-read markdown (not traced by standalone output
+# tracing); without them the run API fails closed with CARDS_ROOT_NOT_FOUND.
+COPY --from=builder --chown=nextjs:nodejs /app/apps/ai/server/services/ai-control/cards ./apps/ai/server/services/ai-control/cards
 
 # Copy Prisma client (engine binaries + generated types)
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma

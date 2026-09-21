@@ -20,9 +20,9 @@ rnd_ai_management/
 │       ├── agents/             # AI agents (raw-materials, sales)
 │       ├── server/             # tRPC server & routers
 │       ├── scripts/            # Indexing & migration scripts
-│       ├── chromadb-service/   # Vector database service
+│       ├── chromadb-service/   # Legacy ChromaDB compatibility image
 │       ├── lib/                # AI-specific utilities
-│       ├── .chromadb/          # ChromaDB data directory
+│       ├── .chromadb/          # Legacy local ChromaDB data directory
 │       ├── package.json        # AI service dependencies
 │       └── tsconfig.json       # AI TypeScript config
 │
@@ -103,10 +103,8 @@ npm run migrate                 # Run migrations
 # Vector database indexing
 npm run create-sales-index      # Create sales AI index
 npm run index-sales-data        # Index sales data
-npm run index:chromadb          # Index to ChromaDB
-npm run index:chromadb:resume   # Resume ChromaDB indexing
-npm run index:chromadb:fast     # Fast ChromaDB indexing
-npm run check:chromadb          # Check ChromaDB stats
+npm run index:qdrant            # Index knowledge into Qdrant
+npm run check:qdrant            # Check Qdrant collections
 ```
 
 ### Cleaning
@@ -137,7 +135,7 @@ npm run reset        # Clean and reinstall dependencies
 - **Framework**: Node.js with TypeScript
 - **API**: tRPC server
 - **AI**: LangChain, Google Gemini, OpenAI
-- **Vector DB**: ChromaDB (primary), Pinecone (optional)
+- **Vector DB**: Qdrant (primary); legacy ChromaDB/Pinecone adapters remain
 - **Database**: MongoDB
 - **Features**:
   - AI agents (Raw Materials, Sales R&D)
@@ -171,7 +169,7 @@ npm run reset        # Clean and reinstall dependencies
 - LangChain & LangGraph
 - Google Gemini AI
 - OpenAI
-- ChromaDB (vector database)
+- Qdrant (vector database)
 - MongoDB (primary database)
 - Socket.IO (real-time)
 - TensorFlow.js (ML)
@@ -198,8 +196,8 @@ Required environment variables:
 - `MONGODB_URI` - MongoDB connection string
 - `GEMINI_API_KEY` - Google Gemini API key
 - `OPENAI_API_KEY` - OpenAI API key (optional)
-- `PINECONE_API_KEY` - Pinecone API key (optional)
-- `VECTOR_DB_PROVIDER` - Vector DB provider (chroma or pinecone)
+- `QDRANT_URL` - Qdrant endpoint
+- `QDRANT_API_KEY` - Qdrant API key when authentication is enabled
 
 ## Deployment
 
@@ -209,14 +207,16 @@ The project includes Docker support with standalone output:
 
 ```bash
 docker build -t rnd-ai-web -f apps/web/Dockerfile .
-docker build -t rnd-ai-service -f apps/ai/Dockerfile .
 ```
 
-### Railway
+The private governed worker is built with `npm run build:worker`; it is not yet
+defined as a separate service in the production Compose file.
 
-Deployment configurations:
-- `railway.json` - Railway deployment config
-- `railway.toml` - Railway service definitions
+### DigitalOcean Droplet
+
+The production stack uses the root `docker-compose.yml` and
+`scripts/deploy-droplet.sh`. See `docs/DEPLOYMENT.md` for setup, deployment,
+health checks, logs, and rollback.
 
 ## Benefits of Monorepo Structure
 
@@ -259,7 +259,7 @@ If builds fail:
 If dev servers won't start:
 1. Check ports 3000 (web) and 3001 (ai) are not in use
 2. Verify environment variables are set
-3. Check MongoDB and ChromaDB connections
+3. Check MongoDB and Qdrant connections
 
 ## Contributing
 

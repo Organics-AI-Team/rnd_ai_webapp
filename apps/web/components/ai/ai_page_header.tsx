@@ -22,16 +22,16 @@ export function AIPageHeader({
   icon,
   title,
   description,
-  iconColor = 'text-blue-600'
+  iconColor = 'text-brand'
 }: AIPageHeaderProps) {
   return (
-    <div className="flex items-center gap-2.5 py-1">
-      <div className={`w-5 h-5 ${iconColor}`}>
+    <div className="flex items-center gap-3 py-1">
+      <div className={`h-5 w-5 ${iconColor}`}>
         {icon}
       </div>
       <div>
-        <h1 className="text-sm font-semibold text-gray-900">{title}</h1>
-        <p className="text-2xs text-gray-500">{description}</p>
+        <h1 className="text-base font-semibold text-ink">{title}</h1>
+        <p className="text-xs text-muted">{description}</p>
       </div>
     </div>
   );

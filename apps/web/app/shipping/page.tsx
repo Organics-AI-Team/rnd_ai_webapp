@@ -16,15 +16,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OrderStatusType } from "@/lib/types";
 import { useState } from "react";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/app-auth";
 
 export default function ShippingPage() {
-  const { user, organization, refreshUser } = useAuth();
-  const { data: orders = [], isLoading, error } = trpc.orders.list.useQuery();
+  const { organization } = useAuth();
+  const { data: orders = [], isLoading, error } = trpc.orders.listTenant.useQuery();
   const utils = trpc.useUtils();
   const updateStatus = trpc.orders.updateStatus.useMutation({
     onSuccess: () => {
-      utils.orders.list.invalidate();
+      utils.orders.listTenant.invalidate();
     },
   });
 
@@ -37,10 +37,9 @@ export default function ShippingPage() {
           status: "sent_to_logistic",
         });
       }
-      utils.orders.list.invalidate();
-      utils.auth.me.invalidate();
-      // Refresh user data to update credits in real-time
-      await refreshUser();
+      utils.orders.listTenant.invalidate();
+      // Refresh tenant credits in real-time
+      await utils.organizations.list.invalidate();
       setEditingOrderId(null);
       setConfirmingOrderId(null);
     },
@@ -136,9 +135,9 @@ export default function ShippingPage() {
       return;
     }
 
+    // The billed organization derives from the server-verified principal.
     updateShippingCost.mutate({
       id: confirmingOrderId,
-      organizationId: organization._id,
       pickPackCost: costs.pickPackCost,
       bubbleCost: costs.bubbleCost,
       paperInsideCost: costs.paperInsideCost,

@@ -5,25 +5,25 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@rnd-ai/shared-utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-gray-900 text-white shadow-sm hover:bg-gray-800",
+          "gel-action",
         destructive:
-          "bg-red-600 text-white shadow-sm hover:bg-red-700",
+          "border-0 bg-red-600 text-white shadow-sm hover:-translate-y-0.5 hover:bg-red-700",
         outline:
-          "border border-gray-200 bg-white text-gray-900 hover:bg-gray-50",
+          "border border-border-strong bg-surface text-ink shadow-sm hover:bg-subtle",
         secondary:
-          "bg-gray-100 text-gray-900 hover:bg-gray-200",
-        ghost: "text-gray-700 hover:bg-gray-100 hover:text-gray-900",
-        link: "text-blue-600 underline-offset-4 hover:underline",
+          "border border-border bg-subtle text-ink hover:bg-surface",
+        ghost: "text-muted hover:bg-subtle hover:text-ink",
+        link: "text-brand underline-offset-4 hover:underline",
       },
       size: {
         default: "h-8 px-3 py-1.5 text-sm",
-        sm: "h-7 rounded-md px-2.5 text-xs",
-        lg: "h-9 rounded-md px-4",
+        sm: "h-8 px-3 text-xs",
+        lg: "h-10 px-5",
         icon: "h-8 w-8",
       },
     },
